@@ -51,6 +51,7 @@ import { listVoices } from '@/services/voiceService';
 import { NeuralFileManager } from './NeuralFileManager';
 import { Settings } from './Settings';
 import { systemService } from '@/services/systemService';
+import { usePlatform } from '@/hooks/usePlatform';
 
 // Define the shape of the native API
 interface NativeFile {
@@ -561,6 +562,7 @@ export function DesktopUI({
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
   const worldOpacity = useTransform(cameraZ, [0, -1000], [0.1, 1]);
   const worldScale = useTransform(cameraZ, [0, -1000], [2, 1]);
+  const { isTauri } = usePlatform();
 
   const [openWindows, setOpenWindows] = useState<string[]>(activeTab !== 'home' ? [activeTab] : []);
   const [minimizedWindows, setMinimizedWindows] = useState<string[]>([]);
