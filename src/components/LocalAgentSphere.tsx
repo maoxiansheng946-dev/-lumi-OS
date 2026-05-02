@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, Sparkles, Volume2, Box, User as UserIcon } from 'lucide-react';
 import { Button } from './ui/button';
+import { sounds } from '../services/soundService';
 
-export function LocalAgentSphere({ t, onMessage }: { t: any; onMessage?: (text: string) => void }) {
+export function LocalAgentSphere({ t, onMessage, sentiment = 'default' }: { t: any; onMessage?: (text: string) => void; sentiment?: 'default' | 'excited' | 'focused' | 'zen' }) {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [interactionPulse, setInteractionPulse] = useState(0);
@@ -40,6 +41,7 @@ export function LocalAgentSphere({ t, onMessage }: { t: any; onMessage?: (text: 
 
     recognition.onstart = () => {
       setIsListening(true);
+      sounds.playNeural();
     };
 
     recognition.onresult = (event: any) => {
@@ -217,17 +219,47 @@ export function LocalAgentSphere({ t, onMessage }: { t: any; onMessage?: (text: 
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
+      // Sentimental speed factors
+      const speedFactor = sentiment === 'excited' ? 3 : sentiment === 'focused' ? 2 : sentiment === 'zen' ? 0.5 : 1;
+      
       // Auto rotation + Mouse rotation
       if (!mouseRef.current.isDown) {
-        rotationRef.current.y += 0.005;
-        rotationRef.current.x += 0.002;
+        rotationRef.current.y += 0.005 * speedFactor;
+        rotationRef.current.x += 0.002 * speedFactor;
       }
 
       // Sort particles by Z for basic depth
       particles.sort((a, b) => a.z - b.z);
 
       particles.forEach(p => {
-        p.update(time, rotationRef.current.x, rotationRef.current.y);
+        // Pass speed factor to update for wave effect
+        const wave = Math.sin(time * 0.002 * speedFactor + (p.baseX + p.baseY + p.baseZ) * 0.01) * 15 * (speedFactor > 1 ? 1.5 : 1);
+        const rFactor = (sphereRadius + wave) / sphereRadius;
+        
+        let tx = p.baseX * rFactor;
+        let ty = p.baseY * rFactor;
+        let tz = p.baseZ * rFactor;
+
+        // Rotation X
+        const cosX = Math.cos(rotationRef.current.x);
+        const sinX = Math.sin(rotationRef.current.x);
+        const y1 = ty * cosX - tz * sinX;
+        const z1 = ty * sinX + tz * cosX;
+        ty = y1;
+        tz = z1;
+
+        // Rotation Y
+        const cosY = Math.cos(rotationRef.current.y);
+        const sinY = Math.sin(rotationRef.current.y);
+        const x2 = tx * cosY + tz * sinY;
+        const z2 = -tx * sinY + tz * cosY;
+        tx = x2;
+        tz = z2;
+
+        p.x = tx;
+        p.y = ty;
+        p.z = tz;
+        
         p.draw(ctx, centerX, centerY);
       });
 

@@ -6,6 +6,8 @@ import { Footer } from '../../components/Footer';
 import { LandingSections } from '../../components/LandingSections';
 import { LocalAgentSphere } from '../../components/LocalAgentSphere';
 import { UnifiedAgent } from '../../components/UnifiedAgent';
+import { FoundersSanctuary } from '../../components/FoundersSanctuary';
+import { GlobalNodeMap } from '../../components/GlobalNodeMap';
 import { DesktopIntro } from '../desktop/DesktopIntro';
 import { MobileIntro } from '../mobile/MobileIntro';
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Zap, Shield, Cpu, Globe, Users, Database, Building2, ArrowRight, Layers, Sparkles, Network, Smartphone } from 'lucide-react';
+import { GlobalNodeMap } from './GlobalNodeMap';
 import { GlassCard, IconBox, FeatureItem } from './SharedUI';
 import { Button } from './ui/button';
 
@@ -231,6 +232,22 @@ export function LandingSections({ t, onNavigateToSolutions, onSelectDesktop, onS
             </div>
           </motion.div>
         </div>
+      </section>
+
+      {/* Global Node Map Section */}
+      <section className="space-y-12">
+        <div className="flex justify-between items-end">
+           <div className="space-y-2">
+             <h2 className="text-3xl font-black italic tracking-tighter uppercase">Global <span className="text-celestial-saturn">Neural</span> Mesh</h2>
+             <p className="text-white/30 text-sm italic">Real-time status of the distributed sharding nodes across the planet.</p>
+           </div>
+           <div className="text-right hidden sm:block">
+              <span className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black text-white/40 uppercase tracking-widest">
+                Nodes Synced: 42,901
+              </span>
+           </div>
+        </div>
+        <GlobalNodeMap />
       </section>
 
       {/* Multi-platform Ecosystem Section */}

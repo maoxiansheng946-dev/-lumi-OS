@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
+import { HardcoreBootSequence } from './HardcoreBootSequence';
+import { GlobalNodeMap } from './GlobalNodeMap';
+import { sounds } from '../services/soundService';
 import { 
   Rocket, 
   MessageSquare, 
@@ -40,6 +43,7 @@ import {
 } from 'lucide-react';
 import { GlassCard } from './SharedUI';
 import { LocalAgentSphere } from './LocalAgentSphere';
+import { NeuralFileManager } from './NeuralFileManager';
 
 // Define the shape of the native API
 interface NativeFile {
@@ -73,34 +77,44 @@ interface WindowProps {
   onClose: (id: string) => void;
   isActive: boolean;
   onFocus: (id: string) => void;
+  onMinimize: (id: string) => void;
+  isMinimized: boolean;
   colorClass?: string;
 }
 
-function OSWindow({ id, title, icon, children, onClose, isActive, onFocus, colorClass = 'from-celestial-mars to-celestial-saturn' }: WindowProps) {
+function OSWindow({ id, title, icon, children, onClose, isActive, onFocus, onMinimize, isMinimized, colorClass = 'from-celestial-mars to-celestial-saturn' }: WindowProps) {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [snapZone, setSnapZone] = useState<'none' | 'left' | 'right'>('none');
   const constraintsRef = React.useRef(null);
+
+  if (isMinimized) return null;
 
   return (
     <motion.div
       drag={!isMaximized}
       dragMomentum={false}
       dragConstraints={{ top: 40, left: 0, right: 0, bottom: 0 }}
+      onDragEnd={(e, info) => {
+        if (info.point.x < 100) setSnapZone('left');
+        else if (info.point.x > window.innerWidth - 100) setSnapZone('right');
+        else setSnapZone('none');
+      }}
       initial={{ opacity: 0, scale: 0.9, y: 20 }}
       animate={{ 
         opacity: 1, 
         scale: 1, 
         y: 0,
-        width: isMaximized ? '100%' : 'auto',
-        height: isMaximized ? 'calc(100% - 40px)' : 'auto',
-        top: isMaximized ? '40px' : 'auto',
-        left: isMaximized ? '0' : 'auto',
-        right: isMaximized ? '0' : 'auto',
-        bottom: isMaximized ? '0' : 'auto',
+        width: isMaximized ? '100%' : snapZone !== 'none' ? '50%' : 'auto',
+        height: isMaximized ? 'calc(100% - 40px)' : snapZone !== 'none' ? 'calc(100% - 40px)' : 'auto',
+        top: isMaximized || snapZone !== 'none' ? '40px' : 'auto',
+        left: isMaximized ? '0' : snapZone === 'left' ? '0' : snapZone === 'right' ? '50%' : 'auto',
+        right: isMaximized ? '0' : snapZone === 'right' ? '0' : 'auto',
+        bottom: isMaximized || snapZone !== 'none' ? '0' : 'auto',
       }}
       exit={{ opacity: 0, scale: 0.9, y: 20 }}
       style={{ 
         zIndex: isActive ? 50 : 10,
-        position: isMaximized ? 'fixed' : 'absolute' 
+        position: isMaximized || snapZone !== 'none' ? 'fixed' : 'absolute' 
       }}
       onClick={() => onFocus(id)}
       className={`os-window overflow-hidden ${isMaximized ? 'rounded-none' : 'inset-4 md:inset-10 lg:inset-20'}`}
@@ -122,6 +136,10 @@ function OSWindow({ id, title, icon, children, onClose, isActive, onFocus, color
         </div>
         <div className="flex gap-3">
           <div className="h-6 w-px bg-white/5 mr-2" />
+          <button 
+            onClick={() => onMinimize(id)}
+            className="w-3 h-3 rounded-full bg-blue-500/20 border border-blue-500/40 hover:bg-blue-500/60 transition-colors" 
+          />
           <button 
             onClick={() => setIsMaximized(!isMaximized)}
             className="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/60 transition-colors" 
@@ -177,13 +195,13 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
           <div className="flex gap-3">
              <button 
                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${theme === 'cyber' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40'}`}
-               onClick={() => setTheme('cyber')}
+               onClick={() => { setTheme('cyber'); sounds.playPulse(); }}
              >
                <Rocket size={18} />
              </button>
              <button 
                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${theme === 'nebula' ? 'bg-indigo-500 text-white' : 'bg-white/10 text-white/40'}`}
-               onClick={() => setTheme('nebula')}
+               onClick={() => { setTheme('nebula'); sounds.playPulse(); }}
              >
                <Moon size={18} />
              </button>
@@ -232,7 +250,7 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
             {themes.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setTheme(t.id)}
+                onClick={() => { setTheme(t.id); sounds.playPulse(); }}
                 className={`flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all ${
                   theme === t.id 
                     ? 'bg-white/10 border-white/20' 
@@ -506,6 +524,7 @@ export function DesktopUI({
   const worldScale = useTransform(cameraZ, [0, -1000], [2, 1]);
 
   const [openWindows, setOpenWindows] = useState<string[]>(activeTab !== 'home' ? [activeTab] : []);
+  const [minimizedWindows, setMinimizedWindows] = useState<string[]>([]);
   const [focusedWindow, setFocusedWindow] = useState<string | null>(activeTab !== 'home' ? activeTab : null);
   const [theme, setTheme] = useState<string>('celestial');
   const [nativeFiles, setNativeFiles] = useState<NativeFile[]>([]);
@@ -532,48 +551,10 @@ export function DesktopUI({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-  const [showBootScreen, setShowBootScreen] = useState(!!window.lumiElectron || navigator.userAgent.toLowerCase().includes('electron'));
-  const [bootProgress, setBootProgress] = useState(0);
-  const [bootText, setBootText] = useState('INIT_CORE_KERNEL...');
+  const [showBootScreen, setShowBootScreen] = useState(true);
   const [bootVisible, setBootVisible] = useState(true);
 
-  useEffect(() => {
-    if (showBootScreen) {
-      const texts = [
-        'INIT_CORE_KERNEL...',
-        'MAP_NEURAL_MESH_NODES...',
-        'VERIFY_KINETIC_DRIVERS...',
-        'SYNC_DISTRIBUTED_MEMORY...',
-        'LUMI_OS_V2.0_LOADED'
-      ];
-      
-      const interval = setInterval(() => {
-        setBootProgress(prev => {
-          if (prev >= 100) return 100;
-          const step = Math.random() * 8 + 2; // Slightly faster boot
-          const next = Math.min(prev + step, 100);
-          
-          const textIdx = Math.floor((next / 100) * texts.length);
-          if (textIdx < texts.length) setBootText(texts[textIdx]);
-          
-          return next;
-        });
-      }, 60);
-
-      return () => clearInterval(interval);
-    } else {
-      setBootVisible(false);
-    }
-  }, [showBootScreen]);
-
-  useEffect(() => {
-    if (bootProgress >= 100 && bootVisible) {
-      const timer = setTimeout(() => {
-        setBootVisible(false);
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [bootProgress, bootVisible]);
+  // Remove the old interval-based boot logic since HardcoreBootSequence handles it
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -592,8 +573,15 @@ export function DesktopUI({
       setTerminalOutput(prev => [...prev, 'LUMI_WORLD_READY: The universe is decentralized. Every node is a heartbeat.']);
       return;
     }
-    if (cmd === 'protocol --status') {
-      setTerminalOutput(prev => [...prev, 'DECRYPTING: Fragment P-44 (THE VOID) remains at 82% synchronicity.']);
+    if (cmd === 'node --status') {
+      setTerminalOutput(prev => [...prev, 'SCANNING_MESH_NODES...', 'ACTIVE: 42,901', 'ORPHAN_NODES: 0', 'HEALTH: 100%']);
+      sounds.playSuccess();
+      return;
+    }
+    if (cmd === 'shard --rebuild') {
+      setTerminalOutput(prev => [...prev, 'INITIATING_REBUILD_SEQUENCE...', 'PARSING_LOCAL_ENTROPY...', 'RE-BUILDING_SHARDS_0-4096...', 'SYNCHRONIZATION_COMPLETE.']);
+      sounds.playPulse();
+      // Visual feedback: toggle a state or trigger animation?
       return;
     }
 
@@ -622,6 +610,7 @@ export function DesktopUI({
   }, []);
 
   const toggleWindow = (tab: string) => {
+    sounds.playClick();
     if (tab === 'home') {
       setOpenWindows([]);
       setFocusedWindow(null);
@@ -630,6 +619,9 @@ export function DesktopUI({
     }
 
     if (openWindows.includes(tab)) {
+      if (minimizedWindows.includes(tab)) {
+        setMinimizedWindows(prev => prev.filter(w => w !== tab));
+      }
       setFocusedWindow(tab);
     } else {
       setOpenWindows([...openWindows, tab]);
@@ -639,6 +631,7 @@ export function DesktopUI({
   };
 
   const closeWindow = (tab: string) => {
+    sounds.playClick();
     const nextWindows = openWindows.filter(w => w !== tab);
     setOpenWindows(nextWindows);
     if (focusedWindow === tab) {
@@ -649,6 +642,7 @@ export function DesktopUI({
 
   const appIcons = [
     { id: 'home', label: 'Neural Core', icon: <Sparkles size={24} />, color: 'from-celestial-saturn to-yellow-600' },
+    { id: 'fs', label: 'Neural FS', icon: <Folder size={24} />, color: 'from-blue-400 to-indigo-500' },
     { id: 'kernel', label: 'Kernel Monitor', icon: <Activity size={24} />, color: 'from-orange-500 to-red-600' },
     { id: 'protocols', label: 'Lost Protocols', icon: <Disc size={24} />, color: 'from-purple-500 to-indigo-600' },
     { id: 'terminal', label: 'Neural Terminal', icon: <Rocket size={24} />, color: 'from-blue-600 to-cyan-400' },
@@ -683,6 +677,11 @@ export function DesktopUI({
     bg: 'bg-celestial-saturn/40'
   };
 
+  const sphereSentiment = 
+    openWindows.includes('kernel') ? 'excited' : 
+    openWindows.includes('terminal') ? 'focused' :
+    openWindows.includes('music') ? 'zen' : 'default';
+
   return (
     <div className={`fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none transition-all duration-1000 ${
       theme === 'celestial' ? 'bg-[#010103]' : 
@@ -693,56 +692,10 @@ export function DesktopUI({
       {/* CRT Scanline / Noise Overlay */}
       <div className="fixed inset-0 z-[1000] pointer-events-none opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%] select-none" />
       
-      {/* Boot Screen Overlay */}
+      {/* Hardcore Boot Screen Overlay */}
       <AnimatePresence>
         {bootVisible && (
-          <motion.div 
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1 }}
-            className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center space-y-8"
-          >
-            <div className="relative">
-              <motion.div 
-                animate={{ 
-                  scale: [1, 1.1, 1],
-                  rotate: [0, 180, 360],
-                  opacity: [0.5, 1, 0.5]
-                }}
-                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                className="w-32 h-32 border-2 border-celestial-saturn/20 rounded-full"
-              />
-              <motion.div 
-                animate={{ 
-                  scale: [1, 1.2, 1],
-                  rotate: [360, 180, 0],
-                }}
-                transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 border-t-2 border-celestial-saturn rounded-full"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <BrainCircuit size={40} className="text-celestial-saturn" />
-              </div>
-            </div>
-
-            <div className="w-64 space-y-2">
-              <div className="flex justify-between text-[10px] font-black tracking-widest text-white/40 uppercase">
-                <span>{bootText}</span>
-                <span>{Math.floor(bootProgress)}%</span>
-              </div>
-              <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-celestial-saturn shadow-[0_0_10px_rgba(255,200,80,0.5)]"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${bootProgress}%` }}
-                />
-              </div>
-            </div>
-            
-            <div className="absolute bottom-12 font-mono text-[8px] text-white/10 uppercase tracking-[0.5em]">
-              Neural Core / Secure Boot / Lumi Distributed Systems
-            </div>
-          </motion.div>
+          <HardcoreBootSequence onComplete={() => setBootVisible(false)} />
         )}
       </AnimatePresence>
 
@@ -765,6 +718,11 @@ export function DesktopUI({
               theme === 'nebula' ? 'bg-purple-900' : theme === 'cyber' ? 'bg-emerald-900' : 'bg-white'
             }`}
           />
+
+          {/* Global Node Map Background */}
+          <div className="absolute inset-0 z-0 pointer-events-none">
+             <GlobalNodeMap variant="subtle" />
+          </div>
 
           {/* World/Nexus Layer - Deep Background */}
           <motion.div 
@@ -1106,7 +1064,7 @@ export function DesktopUI({
                 onClick={() => toggleWindow(app.id)}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group relative ${
                   openWindows.includes(app.id) 
-                    ? `bg-gradient-to-br ${app.id === focusedWindow ? app.color : 'from-white/10 to-white/5'} text-white shadow-lg` 
+                    ? `bg-gradient-to-br ${app.id === focusedWindow ? app.color : 'from-white/10 to-white/5'} text-white shadow-lg ${minimizedWindows.includes(app.id) ? 'opacity-40 translate-y-2' : ''}` 
                     : 'bg-white/5 text-white/40 hover:bg-white/10'
                 }`}
               >
@@ -1114,8 +1072,18 @@ export function DesktopUI({
                 {openWindows.includes(app.id) && (
                   <motion.div 
                     layoutId={`indicator-${app.id}`}
-                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" 
+                    className={`absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full ${minimizedWindows.includes(app.id) ? 'w-3 h-0.5 bg-white/40' : 'w-1 h-1 bg-white'}`} 
                   />
+                )}
+                {/* Taskbar Preview Tooltip Logic Mockup */}
+                {openWindows.includes(app.id) && !minimizedWindows.includes(app.id) && (
+                   <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-32 h-20 bg-black/80 border border-white/10 rounded-xl overflow-hidden opacity-0 group-hover:opacity-100 transition-all pointer-events-none p-1 shadow-2xl">
+                      <div className="w-full h-full bg-white/5 rounded-lg flex items-center justify-center overflow-hidden">
+                         <div className="scale-[0.2] origin-center opacity-40">
+                           {app.icon}
+                         </div>
+                      </div>
+                   </div>
                 )}
                 <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/80 rounded-lg text-[8px] font-black uppercase text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                   {app.label}
@@ -1243,7 +1211,10 @@ export function DesktopUI({
           className="relative pointer-events-auto scale-75 opacity-90 transition-all"
         >
           {/* Central glow removed to stop flashing */}
-          <LocalAgentSphere t={t} onMessage={(text) => {
+          <LocalAgentSphere 
+            t={t} 
+            sentiment={sphereSentiment}
+            onMessage={(text) => {
             setTerminalOutput(prev => [...prev, `[Voice Input]: ${text}`]);
             if (window.lumiElectron) {
               window.lumiElectron.runCommand(text).then(res => {
@@ -1389,12 +1360,16 @@ export function DesktopUI({
                 title={appIcons.find(a => a.id === windowId)?.label || windowId}
                 icon={appIcons.find(a => a.id === windowId)?.icon}
                 isActive={focusedWindow === windowId}
+                isMinimized={minimizedWindows.includes(windowId)}
                 onFocus={(id) => setFocusedWindow(id)}
+                onMinimize={(id) => setMinimizedWindows(prev => [...prev, id])}
                 onClose={() => closeWindow(windowId)}
                 colorClass={appIcons.find(a => a.id === windowId)?.color}
               >
                 <div className="p-8 h-full">
-                  {windowId === 'kernel' ? (
+                  {windowId === 'fs' ? (
+                    <NeuralFileManager />
+                  ) : windowId === 'kernel' ? (
                     <KernelMonitorApp />
                   ) : windowId === 'music' ? (
                     <div className="flex flex-col items-center justify-center h-full text-center space-y-12 animate-in zoom-in-95 duration-500">
