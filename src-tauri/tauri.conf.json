@@ -19,13 +19,13 @@
         "minWidth": 960,
         "minHeight": 640,
         "fullscreen": false,
-        "transparent": false,
-        "decorations": true,
+        "transparent": true,
+        "decorations": false,
         "resizable": true,
         "center": true,
         "alwaysOnBottom": false,
         "skipTaskbar": false,
-        "shadow": true
+        "shadow": false
       }
     ],
     "security": {

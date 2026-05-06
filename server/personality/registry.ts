@@ -62,7 +62,7 @@ class PersonalityRegistry {
       },
       toolPolicy: { allowedTools: ['*'], requireConfirmation: ['desktop_run_command'], forbiddenTools: [], maxIterations: 5 },
       memoryPolicy: { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact', 'habit', 'knowledge'], autoExtract: true },
-      defaultModel: 'qwen-turbo',
+      defaultModel: 'qwen-plus',
       fallbackModel: 'gemini-1.5-flash',
     };
     this.personalities.set('lumi', lumi);

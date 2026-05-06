@@ -20,12 +20,16 @@ export function createStream(
 ): DeepgramStreamSession {
   const apiKey = getApiKey();
   const params = new URLSearchParams({
-    encoding: 'opus',
-    sample_rate: '48000',
+    encoding: 'linear16',
+    sample_rate: '16000',
     channels: '1',
+    model: 'nova-2',
     language,
     interim_results: String(interimResults),
     punctuate: 'true',
+    smart_format: 'true',
+    endpointing: '300',
+    utterance_end_ms: '1000',
   });
 
   const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
@@ -52,10 +56,12 @@ export function createStream(
       const { type, channel } = msg;
 
       if (type === 'Results') {
-        const { alternatives, is_final } = channel || msg;
+        const alternatives = channel?.alternatives || msg?.channel?.alternatives;
+        const is_final = msg.is_final ?? true;
+        logger.info(`[Deepgram] Result: is_final=${msg.is_final} speech_final=${msg.speech_final} text="${alternatives?.[0]?.transcript || ''}"`);
         if (alternatives && alternatives.length > 0) {
           const text = alternatives[0].transcript || '';
-          const result: STTResult = { text, isFinal: is_final ?? true };
+          const result: STTResult = { text, isFinal: Boolean(is_final) };
           resultCallbacks.forEach(cb => cb(result));
         }
       }
@@ -64,12 +70,13 @@ export function createStream(
     }
   };
 
-  ws.onerror = () => {
+  ws.onerror = (event: Event) => {
+    logger.error('[Deepgram] WebSocket error:', (event as any).message || event.type || 'unknown');
     errorCallbacks.forEach(cb => cb(new Error('Deepgram WebSocket error')));
   };
 
-  ws.onclose = () => {
-    logger.info('[Deepgram] Streaming session closed');
+  ws.onclose = (event: CloseEvent) => {
+    logger.info(`[Deepgram] Streaming session closed (code=${event.code}, reason=${event.reason || 'none'})`);
   };
 
   return {

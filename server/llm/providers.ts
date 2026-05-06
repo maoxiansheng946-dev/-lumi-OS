@@ -24,12 +24,14 @@ export function formatDeepSeekRequest(params: {
   messages: NormalizedMessage[];
   toolDeclarations: ToolDeclaration[];
   maxTokens?: number;
+  userId?: string;
 }): {
   model: string;
   messages: Array<{ role: string; content: string | null; tool_calls?: any; tool_call_id?: string }>;
   tools?: ToolDeclaration[];
   tool_choice?: string;
   max_tokens?: number;
+  user?: string;
 } {
   const openaiMessages = params.messages.map(m => {
     const entry: any = { role: m.role === 'assistant' ? 'assistant' : m.role === 'tool' ? 'tool' : m.role === 'system' ? 'system' : 'user' };
@@ -53,6 +55,7 @@ export function formatDeepSeekRequest(params: {
     messages: openaiMessages,
     ...(hasTools ? { tools: params.toolDeclarations, tool_choice: 'auto' } : {}),
     ...(params.maxTokens ? { max_tokens: params.maxTokens } : {}),
+    ...(params.userId ? { user: params.userId.replace(/[^a-zA-Z0-9_-]/g, '_') } : {}),
   };
 }
 
@@ -206,8 +209,44 @@ export const parseOpenAIResponse = parseDeepSeekResponse;
 
 // ── Qwen / DashScope (OpenAI-compatible API) ──
 
-export const formatQwenRequest = formatDeepSeekRequest;
-export const parseQwenResponse = parseDeepSeekResponse;
+export function formatQwenRequest(params: {
+  model: string;
+  messages: NormalizedMessage[];
+  toolDeclarations: ToolDeclaration[];
+  maxTokens?: number;
+  userId?: string;
+}): {
+  model: string;
+  messages: Array<{ role: string; content: string | null; tool_calls?: any; tool_call_id?: string }>;
+  tools?: ToolDeclaration[];
+  tool_choice?: string;
+  max_tokens?: number;
+} {
+  const openaiMessages = params.messages.map(m => {
+    const entry: any = { role: m.role === 'assistant' ? 'assistant' : m.role === 'tool' ? 'tool' : m.role === 'system' ? 'system' : 'user' };
+    if (m.content !== null) entry.content = m.content;
+    if (m.toolCalls) {
+      entry.tool_calls = m.toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+      }));
+    }
+    if (m.toolCallId) entry.tool_call_id = m.toolCallId;
+    if (m.name) entry.name = m.name;
+    return entry;
+  });
+
+  const hasTools = params.toolDeclarations.length > 0;
+
+  return {
+    model: params.model,
+    messages: openaiMessages,
+    ...(hasTools ? { tools: params.toolDeclarations, tool_choice: 'auto' } : {}),
+    ...(params.maxTokens ? { max_tokens: params.maxTokens } : {}),
+    // DashScope does not support the OpenAI `user` parameter — omit it
+  };
+}
 
 // ── Anthropic ──
 
@@ -296,7 +335,7 @@ export function parseAnthropicResponse(rawResponse: any): NormalizedLLMResponse 
 export async function makeLLMCall(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string },
   getDeepSeek: () => any,
   getGemini: () => any,
   getOpenAI?: () => any,
@@ -307,11 +346,13 @@ export async function makeLLMCall(
     const client = config.provider === 'deepseek' ? getDeepSeek() : getQwen?.();
     if (!client) throw new Error(`${config.provider} not configured (API key missing)`);
 
-    const params = formatDeepSeekRequest({
+    const formatFn = config.provider === 'qwen' ? formatQwenRequest : formatDeepSeekRequest;
+    const params = formatFn({
       model: config.model,
       messages,
       toolDeclarations,
       maxTokens: config.maxTokens,
+      userId: config.userId,
     });
 
     const response = await client.chat.completions.create(params);
@@ -343,6 +384,7 @@ export async function makeLLMCall(
       messages,
       toolDeclarations,
       maxTokens: config.maxTokens,
+      userId: config.userId,
     });
 
     const response = await client.chat.completions.create(params);
@@ -374,7 +416,7 @@ export type StreamCallback = (chunk: string) => void;
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string },
   onChunk: StreamCallback,
   getDeepSeek: () => any,
   getGemini: () => any,
@@ -389,11 +431,13 @@ export async function makeLLMCallStreaming(
       : getQwen?.();
     if (!client) throw new Error(`${config.provider} not configured`);
 
-    const params: any = formatDeepSeekRequest({
+    const formatFn = config.provider === 'qwen' ? formatQwenRequest : formatDeepSeekRequest;
+    const params: any = formatFn({
       model: config.model,
       messages,
       toolDeclarations,
       maxTokens: config.maxTokens,
+      userId: config.userId,
     });
     params.stream = true;
 

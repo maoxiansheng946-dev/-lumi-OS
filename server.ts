@@ -16,8 +16,9 @@ import http from "http";
 import { readDB, writeDB, ensureDatabaseInitialized } from "./db_layer";
 import { logger } from "./logger";
 import { createStreamingSession, getActiveSTTProvider } from "./server/stt/adapter";
+
 import { synthesizeSpeech, getActiveProvider as getTTSProvider } from "./server/tts/adapter";
-import { makeLLMCall, NormalizedMessage } from "./server/llm/providers";
+import { makeLLMCall, makeLLMCallStreaming, NormalizedMessage } from "./server/llm/providers";
 import { runWithTools } from "./server/llm/adapter";
 import { toolRegistry } from "./server/tools/registry";
 import { registerAllTools } from "./server/tools/definitions/index";
@@ -149,6 +150,15 @@ app.use("/api", apiRouter);
 
 const JWT_SECRET = process.env.JWT_SECRET || "lumi_secret_key_2026";
 
+// Cookies: sameSite "none" permits cross-origin (Tauri webview → localhost).
+// secure: true requires HTTPS in general, but Chromium allows it on localhost/127.0.0.1.
+const getCookieOptions = (): { httpOnly: true; secure: boolean; sameSite: "none"; maxAge: number } => ({
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  maxAge: 24 * 60 * 60 * 1000,
+});
+
 // 0. Personality list
 apiRouter.get("/personalities", (_req, res) => {
   const list = personalityRegistry.list().map(p => ({
@@ -181,7 +191,7 @@ apiRouter.post("/personalities", (req, res) => {
   } catch {}
 
   const existing = configs.findIndex((c: any) => c.id === id);
-  const newConfig = { id, name, version: version || '1.0', coreMotivation: coreMotivation || '', behavioralBoundaries: behavioralBoundaries || [], expressionStyle: expressionStyle || { persona: '', tone: 'neutral', verbosity: 'balanced', languages: ['en'] }, toolPolicy: toolPolicy || { allowedTools: ['*'], requireConfirmation: [], maxIterations: 3 }, memoryPolicy: memoryPolicy || { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact'], autoExtract: true }, defaultModel: defaultModel || 'qwen-turbo', fallbackModel: fallbackModel || 'gemini-1.5-flash' };
+  const newConfig = { id, name, version: version || '1.0', coreMotivation: coreMotivation || '', behavioralBoundaries: behavioralBoundaries || [], expressionStyle: expressionStyle || { persona: '', tone: 'neutral', verbosity: 'balanced', languages: ['en'] }, toolPolicy: toolPolicy || { allowedTools: ['*'], requireConfirmation: [], maxIterations: 3 }, memoryPolicy: memoryPolicy || { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact'], autoExtract: true }, defaultModel: defaultModel || 'qwen-plus', fallbackModel: fallbackModel || 'gemini-1.5-flash' };
 
   if (existing >= 0) {
     configs[existing] = newConfig;
@@ -213,6 +223,60 @@ apiRouter.delete("/personalities/:id", (req, res) => {
   res.json({ success: true });
 });
 
+// Personality stats — aggregated memory & behavior analytics
+apiRouter.get("/personality/stats", (req, res) => {
+  try {
+    const token = req.cookies.token;
+    let uid = 'anonymous';
+    if (token) {
+      try { const decoded: any = jwt.verify(token, JWT_SECRET); uid = decoded.uid; } catch {}
+    }
+
+    const db = readDB();
+    const memories: any[] = (db.memories || []).filter((m: any) => m.userId === uid);
+
+    const totalMemories = memories.length;
+    const byType: Record<string, number> = {};
+    const byConfidence: Record<string, number[]> = {};
+    for (const m of memories) {
+      byType[m.type] = (byType[m.type] || 0) + 1;
+      (byConfidence[m.type] ||= []).push(m.confidence || 0);
+    }
+
+    const avgConfidence: Record<string, number> = {};
+    for (const [type, vals] of Object.entries(byConfidence)) {
+      avgConfidence[type] = vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) : 0;
+    }
+
+    // Monthly trend: count memories created per month (last 6 months)
+    const monthlyTrend: { month: string; count: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const count = memories.filter((m: any) => m.createdAt && m.createdAt.startsWith(key)).length;
+      monthlyTrend.push({ month: key, count });
+    }
+
+    // Unique interaction count
+    const interactionIds = new Set(memories.map((m: any) => m.sourceInteractionId).filter(Boolean));
+
+    // Active personality
+    const personalityId = req.query.personalityId as string || 'lumi';
+
+    res.json({
+      totalMemories,
+      byType,
+      avgConfidence,
+      monthlyTrend,
+      totalInteractions: interactionIds.size,
+      personalityId,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 0.2. MCP management
 apiRouter.get("/mcp", (_req, res) => {
   const config = getMCPConfig();
@@ -242,6 +306,40 @@ apiRouter.post("/mcp/restart/:name", async (req, res) => {
   try {
     const tools = await mcpManager.restartServer(req.params.name);
     res.json({ tools });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GitHub MCP server search — proxy GitHub API for community MCP servers
+apiRouter.get("/mcp/github/search", async (req, res) => {
+  try {
+    const q = (req.query.q as string) || 'MCP server';
+    const response = await fetch(
+      `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}+topic:mcp&sort=stars&order=desc&per_page=20`,
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'LumiOS-MCP-Browser',
+          ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+        },
+      }
+    );
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `GitHub API error: ${response.statusText}` });
+    }
+    const data = await response.json();
+    const results = (data.items || []).map((item: any) => ({
+      id: item.id,
+      name: item.full_name,
+      description: item.description,
+      stars: item.stargazers_count,
+      url: item.html_url,
+      topics: item.topics || [],
+      language: item.language,
+      updatedAt: item.updated_at,
+    }));
+    res.json({ results, total: data.total_count || 0 });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -307,9 +405,31 @@ apiRouter.get("/llm/providers", (_req, res) => {
       gemini: { available: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 0), model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' },
       openai: { available: !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 0), model: process.env.OPENAI_MODEL || 'gpt-4o' },
       anthropic: { available: !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 0), model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' },
-      qwen: { available: !!(process.env.QWEN_API_KEY && process.env.QWEN_API_KEY.length > 0), model: process.env.QWEN_MODEL || 'qwen-turbo' },
+      qwen: { available: !!(process.env.QWEN_API_KEY && process.env.QWEN_API_KEY.length > 0), model: process.env.QWEN_MODEL || 'qwen-plus' },
     },
   });
+});
+
+// 0.6 LLM connection test
+apiRouter.post("/llm/test", async (req, res) => {
+  const { provider } = req.body || {};
+  try {
+    // Quick availability check — just verify the API key is configured
+    const keyMap: Record<string, string | undefined> = {
+      deepseek: process.env.DEEPSEEK_API_KEY,
+      gemini: process.env.GEMINI_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      qwen: process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY,
+    };
+    const key = keyMap[provider];
+    if (!key) {
+      return res.status(400).json({ ok: false, error: `No API key configured for ${provider}. Set ${provider.toUpperCase()}_API_KEY in environment.` });
+    }
+    res.json({ ok: true, provider, message: 'API key configured' });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message?.slice(0, 200) || 'Connection check failed' });
+  }
 });
 
 // 1. AI Proxy Route
@@ -373,7 +493,7 @@ apiRouter.post("/ai/chat", async (req, res) => {
         : getQwen();
       if (!client) throw new Error("Qwen/DashScope API key not configured");
       const response = await client.chat.completions.create({
-        model: model || "qwen-turbo",
+        model: model || "qwen-plus",
         messages: messages || [{ role: "user", content: prompt }]
       });
       return res.json({ text: response.choices[0].message.content });
@@ -413,12 +533,7 @@ apiRouter.post("/auth/register", async (req, res) => {
   writeDB(db);
 
   const token = jwt.sign({ uid: newUser.uid, username, role: newUser.role }, JWT_SECRET, { expiresIn: "24h" });
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: 24 * 60 * 60 * 1000
-  });
+  res.cookie("token", token, getCookieOptions());
 
   const { password: _, ...userWithoutPassword } = newUser;
   return res.json({ success: true, user: userWithoutPassword });
@@ -465,11 +580,7 @@ apiRouter.get("/auth/me", (req, res) => {
 });
 
 apiRouter.post("/auth/logout", (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none"
-  });
+  res.clearCookie("token", getCookieOptions());
   res.json({ success: true });
 });
 
@@ -697,7 +808,7 @@ apiRouter.post("/memories", (req, res) => {
     }
 
     const memory = addMemory({
-      userId: decoded.uid,
+      userId: decoded.uid.replace(/[^a-zA-Z0-9_-]/g, '_'),
       type,
       content,
       keywords: keywords || [],
@@ -1080,7 +1191,7 @@ apiRouter.post("/marketplace/personalities/install", (req, res) => {
         expressionStyle: { persona: curated.description, tone: 'neutral', verbosity: 'balanced', languages: ['en'] },
         toolPolicy: { allowedTools: ['*'], requireConfirmation: [], forbiddenTools: [], maxIterations: 3 },
         memoryPolicy: { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact'], autoExtract: true },
-        defaultModel: 'qwen-turbo',
+        defaultModel: 'qwen-plus',
         fallbackModel: 'gemini-1.5-flash',
       };
       configs.push(newPersonality);
@@ -1190,7 +1301,7 @@ if (!isProduction) {
     ? path.join(process.cwd(), "dist")
     : path.join(process.cwd(), "..", "dist");
   app.use(express.static(distPath));
-  
+
   // 404 for API routes to prevent falling through to SPA fallback
   app.use("/api/*", (req, res) => {
     res.status(404).json({ error: "API route not found" });
@@ -1475,7 +1586,7 @@ io.on("connection", (socket) => {
       const result = await runWithTools(
         messages,
         toolRegistry,
-        { provider, model: personality.defaultModel },
+        { provider, model: personality.defaultModel, userId: uid },
         (record) => {
           socket.emit("agent:tool_call", {
             name: record.name,
@@ -1518,6 +1629,7 @@ io.on("connection", (socket) => {
           existingMemories: relevantMemories.map(m => m.content),
           provider,
           model: personality.defaultModel,
+          userId: uid,
         },
         getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
       ).then(extracted => {
@@ -1592,7 +1704,9 @@ io.on("connection", (socket) => {
       try {
         session.sttSession = createStreamingSession({ provider: 'deepgram', language: 'zh-CN', interimResults: true });
         session.sttSession.onResult(async (result) => {
+
           if (result.text && result.isFinal) {
+            logger.info(`[Audio] Final transcript: "${result.text}", triggering LLM...`);
             session.accumulatedText += result.text;
             if (session.accumulatedText.trim().length > 0 && !session.isSpeaking) {
               const userText = session.accumulatedText.trim();
@@ -1600,14 +1714,20 @@ io.on("connection", (socket) => {
               session.isSpeaking = true;
               socket.emit("audio:status", { status: "thinking" });
 
-              try {
-                const sensoryAudio = getSensory(socket.id);
-                const { config: personality, systemPrompt } = personalityRegistry.buildSystemPrompt(
+              const sensoryAudio = getSensory(socket.id);
+                const { config: personality } = personalityRegistry.buildSystemPrompt(
                   session.personalityId || 'lumi',
-                  { mode: 'chat', sensory: sensoryAudio },
+                  { mode: 'task', sensory: sensoryAudio },
                 );
+                const voiceSystemPrompt = `You are ${personality.name}, running on a desktop app with full tool access.
+- Reply in the same language as the user's question. For Chinese users, always respond in Chinese.
+- Reply in 1-2 short sentences. Under 20 words when possible.
+- When the user asks you to DO something (search, open file, run command, check system), ALWAYS call the relevant tool. You have real tools available — use them.
+- Never say "I cannot" or "in web mode" — you are NOT in a web sandbox. You are a native desktop agent.
+- Speak naturally, like a helpful assistant.`;
+
                 const messages = [
-                  { role: 'system', content: systemPrompt },
+                  { role: 'system', content: voiceSystemPrompt },
                   { role: 'user', content: userText },
                 ] as any[];
 
@@ -1617,53 +1737,71 @@ io.on("connection", (socket) => {
                   : personality.defaultModel.startsWith('qwen') ? 'qwen' as const
                   : 'gemini' as const;
 
+                const ttsProvider = getTTSProvider();
                 let responseText = '';
+                let toolResults: any[] = [];
+                let sentenceBuffer = '';
+                let sentenceIdx = 0;
+                const ttsPromises: Promise<void>[] = [];
+
+                const flushSentence = (sentence: string) => {
+                  if (!sentence.trim() || !ttsProvider || !session.currentVoiceId || !session.isActive) return;
+                  sentenceIdx++;
+                  const ttsPromise = synthesizeSpeech(sentence.trim(), {
+                    provider: ttsProvider,
+                    voiceId: session.currentVoiceId,
+                    signal: session.ttsAbortController?.signal,
+                  }).then(ttsResult => {
+                    if (session.isActive) {
+                      socket.emit("audio:status", { status: "speaking" });
+                      socket.emit("audio:response", ttsResult.audioBuffer);
+                    }
+                  }).catch((ttsErr: any) => {
+                    if (ttsErr?.name === 'AbortError') return;
+                    logger.error("[Audio TTS sentence Error]:", ttsErr);
+                  });
+                  ttsPromises.push(ttsPromise);
+                };
+
                 try {
-                  const result = await makeLLMCall(
-                    messages as NormalizedMessage[], [], { provider, model: personality.defaultModel },
+                  logger.info(`[Audio] Streaming LLM: provider=${provider} model=${personality.defaultModel}`);
+                  const toolDeclarations = toolRegistry.getToolDeclarations();
+
+                  // Phase 1: Stream LLM with real-time sentence detection → immediate TTS
+                  const streamResult = await makeLLMCallStreaming(
+                    messages as NormalizedMessage[],
+                    toolDeclarations,
+                    { provider, model: personality.defaultModel },
+                    (chunk: string) => {
+                      responseText += chunk;
+                      sentenceBuffer += chunk;
+                      // Detect complete sentences and TTS them immediately while LLM continues
+                      const match = sentenceBuffer.match(/^([\s\S]*?[。！？.!?\n])/);
+                      if (match) {
+                        const sentence = match[1];
+                        sentenceBuffer = sentenceBuffer.slice(match[1].length);
+                        flushSentence(sentence);
+                      }
+                    },
                     getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
                   );
-                  responseText = result.text || '';
-                } catch (llmErr: any) {
-                  if (llmErr.message?.includes('not configured')) {
-                    const fallback = await makeLLMCall(
-                      messages as NormalizedMessage[], [], { provider: 'gemini', model: personality.fallbackModel },
-                      getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
-                    );
-                    responseText = fallback.text || '';
-                  } else {
-                    throw llmErr;
-                  }
-                }
 
-                const ttsProvider = getTTSProvider();
-                const holoAudio = canOutputHolographic(sensoryAudio)
-                  ? textToHolographicOutput(responseText)
-                  : undefined;
-                if (ttsProvider && session.currentVoiceId) {
-                  try {
-                    socket.emit("audio:status", { status: "speaking" });
-                    session.ttsAbortController = new AbortController();
-                    const ttsResult = await synthesizeSpeech(responseText, {
-                      provider: ttsProvider,
-                      voiceId: session.currentVoiceId,
-                      signal: session.ttsAbortController.signal,
-                    });
-                    if (session.ttsAbortController) {
-                      session.ttsAbortController = null;
-                    }
-                    socket.emit("audio:response", ttsResult.audioBuffer);
-                  } catch (ttsErr: any) {
-                    if (ttsErr?.name === 'AbortError') {
-                      logger.info('[Audio] TTS aborted by user interrupt');
-                    } else {
-                      logger.error("[Audio TTS Error]:", ttsErr);
-                      socket.emit("agent:response", { text: responseText, agentName: personality.name, holographic: holoAudio });
-                    }
+                  // Extract tool calls if any
+                  if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
+                    toolResults = streamResult.toolCalls;
                   }
-                } else {
-                  socket.emit("agent:response", { text: responseText, agentName: personality.name, holographic: holoAudio });
-                }
+
+                  // TTS any remaining text that didn't end with a sentence terminator
+                  if (sentenceBuffer.trim()) {
+                    flushSentence(sentenceBuffer);
+                  }
+
+                  // Wait for all TTS requests to settle
+                  await Promise.allSettled(ttsPromises);
+
+                  if (responseText) {
+                    logger.info(`[Audio] Response: "${responseText.slice(0, 80)}" (${sentenceIdx} sentences, ${toolResults.length} tool calls)`);
+                  }
 
                 // Log interaction
                 const db = readDB();
@@ -1707,11 +1845,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  let chunkCount = 0;
   socket.on("audio:chunk", (data: Buffer) => {
     const session = getAudioSession();
     if (!session.isActive) return;
     if (session.sttSession) {
       session.sttSession.sendAudio(data);
+      chunkCount++;
+      if (chunkCount === 1 || chunkCount % 50 === 0) {
+        logger.info(`[Audio] Sent ${chunkCount} chunks (${data.length} bytes each)`);
+      }
     }
   });
 
@@ -1733,11 +1876,24 @@ io.on("connection", (socket) => {
     session.isActive = false;
     session.isSpeaking = false;
     session.accumulatedText = '';
+    if (session.ttsAbortController) {
+      session.ttsAbortController.abort();
+      session.ttsAbortController = null;
+    }
     if (session.sttSession) {
       session.sttSession.end();
       session.sttSession = null;
     }
     socket.emit("audio:status", { status: "idle" });
+  });
+
+  // Switch personality mid-call without restarting
+  socket.on("audio:switch-personality", (data: { personalityId: string }) => {
+    const session = getAudioSession();
+    if (session.isActive) {
+      session.personalityId = data.personalityId;
+      logger.info(`[Audio] Personality switched to ${data.personalityId} mid-call`);
+    }
   });
 
   socket.on("disconnect", () => {

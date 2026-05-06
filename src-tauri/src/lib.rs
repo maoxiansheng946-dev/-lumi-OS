@@ -9,6 +9,11 @@ struct BackendProcesses {
     python: Option<Child>,
 }
 
+/// Track whether wallpaper (click-through) mode is active
+struct WallpaperState {
+    enabled: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub platform: String,
@@ -72,12 +77,6 @@ fn list_home_files() -> Vec<NativeFile> {
             .collect(),
         Err(_) => vec![],
     }
-}
-
-#[tauri::command]
-async fn set_ignore_cursor_events(app: tauri::AppHandle, ignore: bool) -> Result<(), String> {
-    let window = app.get_webview_window("main").ok_or("no main window")?;
-    window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -181,6 +180,24 @@ fn normalize_unc(path: &Path) -> &Path {
     path
 }
 
+#[tauri::command]
+fn set_wallpaper_mode(
+    enabled: bool,
+    state: tauri::State<'_, Mutex<WallpaperState>>,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    let mut wallpaper = state.lock().map_err(|e| e.to_string())?;
+    wallpaper.enabled = enabled;
+
+    match window.set_ignore_cursor_events(enabled) {
+        Ok(_) => println!("[LumiOS] set_ignore_cursor_events({}) succeeded", enabled),
+        Err(e) => eprintln!("[LumiOS] set_ignore_cursor_events({}) FAILED: {}", enabled, e),
+    }
+
+    println!("[LumiOS] Wallpaper mode: {}", if enabled { "ON (click-through)" } else { "OFF" });
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -191,11 +208,12 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(BackendProcesses { node: None, python: None }))
+        .manage(Mutex::new(WallpaperState { enabled: false }))
         .invoke_handler(tauri::generate_handler![
             get_system_info,
             list_home_files,
             run_command,
-            set_ignore_cursor_events,
+            set_wallpaper_mode,
         ])
         .setup(|app| {
             let resource_dir = app
@@ -203,12 +221,33 @@ pub fn run() {
                 .resource_dir()
                 .unwrap_or_default();
 
-            // Ensure WebView2Loader.dll is alongside the EXE (Tauri v2 NSIS bundler puts it in resources)
+            // Position window on secondary monitor if available, otherwise use primary
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(monitors) = window.available_monitors() {
+                    if monitors.len() > 1 {
+                        let target = &monitors[1];
+                        let pos = target.position();
+                        let size = target.size();
+                        println!(
+                            "[LumiOS] Moving to monitor {} ({}x{} @ {},{}),",
+                            monitors.len(),
+                            size.width,
+                            size.height,
+                            pos.x,
+                            pos.y
+                        );
+                        let _ = window.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                        let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                    }
+                }
+                let _ = window.set_fullscreen(false);
+            }
+
+            // Ensure WebView2Loader.dll is alongside the EXE
             if let Ok(exe_path) = std::env::current_exe() {
                 if let Some(exe_dir) = exe_path.parent() {
                     let dll_dest = exe_dir.join("WebView2Loader.dll");
                     if !dll_dest.exists() {
-                        // resource_dir for NSIS already includes _up_, so just join desktop-resources
                         let dll_src = resource_dir
                             .join("desktop-resources")
                             .join("WebView2Loader.dll");
@@ -219,6 +258,12 @@ pub fn run() {
                     }
                 }
             }
+
+            // In dev mode, the backend is started by beforeDevCommand; skip spawning Node.js
+            if cfg!(debug_assertions) {
+                println!("[LumiOS] Dev mode — skipping bundled backend spawn");
+            } else {
+            // ... rest of spawn code unchanged
 
             // Spawn Node.js backend
             let dist_server = resolve_resource_dir(&resource_dir, "dist-server");
@@ -265,7 +310,6 @@ pub fn run() {
             let gpt_sovits_dir = resolve_resource_dir(&resource_dir, "gpt-sovits-src");
             let python_exe = gpt_sovits_dir.join("venv/Scripts/python.exe");
             let api_py = gpt_sovits_dir.join("api_v2.py");
-            // Also check development paths
             let dev_python = std::path::PathBuf::from("../gpt-sovits-src/venv/Scripts/python.exe");
             let dev_api = std::path::PathBuf::from("../gpt-sovits-src/api_v2.py");
 
@@ -285,8 +329,9 @@ pub fn run() {
                 let state = app.state::<Mutex<BackendProcesses>>();
                 state.lock().unwrap().python = Some(child);
             }
+            } // end else (release mode spawns backend)
 
-            // Register Alt+Space global shortcut
+            // Register Alt+Space global shortcut (hide/show window)
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             let window = app.get_webview_window("main").unwrap();
             let reg = app.global_shortcut();
@@ -297,6 +342,7 @@ pub fn run() {
                     let _ = window.show();
                 }
             });
+
             Ok(())
         })
         .build(tauri::generate_context!())

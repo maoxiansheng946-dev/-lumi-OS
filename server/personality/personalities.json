@@ -47,7 +47,7 @@
       ],
       "autoExtract": true
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   },
   {
@@ -91,7 +91,7 @@
       ],
       "autoExtract": true
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   },
   {
@@ -141,7 +141,7 @@
       ],
       "autoExtract": true
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   },
   {
@@ -186,7 +186,7 @@
       ],
       "autoExtract": true
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   },
   {
@@ -225,7 +225,7 @@
       ],
       "autoExtract": false
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   },
   {
@@ -259,7 +259,7 @@
       ],
       "autoExtract": true
     },
-    "defaultModel": "qwen-turbo",
+    "defaultModel": "qwen-plus",
     "fallbackModel": "gemini-1.5-flash"
   }
 ]

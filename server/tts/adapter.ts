@@ -53,8 +53,10 @@ export async function listVoices(provider: TTSProvider): Promise<VoiceListItem[]
 }
 
 export function getActiveProvider(): TTSProvider | null {
+  // Prefer CosyVoice (fast, DashScope), then GPT-SoVITS (local cloned voice), then cloud providers
   if (process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY) return 'cosyvoice';
+  if (process.env.GPTSOVITS_API_URL || process.env.GPTSOVITS_ENABLED === 'true') return 'gptsovits';
   if (process.env.FISHAUDIO_API_KEY) return 'fishaudio';
   if (process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
-  return 'gptsovits';
+  return 'cosyvoice';
 }

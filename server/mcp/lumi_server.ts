@@ -72,8 +72,9 @@ export function createLumiMcpServer(): McpServer {
           toolRegistry,
           {
             provider: 'qwen',
-            model: personality.defaultModel || 'qwen-turbo',
+            model: personality.defaultModel || 'qwen-plus',
             maxTokens: 2048,
+            userId: 'mcp_remote',
           },
           undefined, // onToolCall
           personality.toolPolicy.maxIterations || 3,
@@ -92,7 +93,8 @@ export function createLumiMcpServer(): McpServer {
                 assistantResponse: response.text,
                 existingMemories: memories.map(m => m.content),
                 provider: 'qwen',
-                model: 'qwen-turbo',
+                model: 'qwen-plus',
+                userId: 'mcp_remote',
               },
               () => null, () => null, () => null, () => null, () => null,
             );

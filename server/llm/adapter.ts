@@ -6,6 +6,7 @@ export interface LLMConfig {
   provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen';
   model: string;
   maxTokens?: number;
+  userId?: string;
 }
 
 export interface LLMResult {
