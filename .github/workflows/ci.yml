@@ -40,6 +40,22 @@ jobs:
           touch desktop-resources/gpt-sovits-src/.gitkeep
           touch desktop-resources/data/voice_training/.gitkeep
           touch desktop-resources/WebView2Loader.dll
+          # Generate minimal icon.png for Linux build (Tauri requires it)
+          python3 -c "
+          import struct, zlib
+          w,h=2,2
+          raw=b''
+          for y in range(h):
+              raw+=b'\x00'
+              for x in range(w):
+                  raw+=b'\x88\x88\x88\xff'
+          compressed=zlib.compress(raw)
+          def chunk(ctype,data):
+              c=ctype+data
+              return struct.pack('>I',len(data))+c+struct.pack('>I',zlib.crc32(c)&0xffffffff)
+          png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,6,0,0,0))+chunk(b'IDAT',compressed)+chunk(b'IEND',b'')
+          open('src-tauri/icons/icon.png','wb').write(png)
+          "
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Tauri system deps
         run: |
