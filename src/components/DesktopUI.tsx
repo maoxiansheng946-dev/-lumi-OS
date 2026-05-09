@@ -122,13 +122,16 @@ function OSWindow({
 }: WindowProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [snapZone, setSnapZone] = useState<'none' | 'left' | 'right'>('none');
+  const [isDragging, setIsDragging] = useState(false);
 
   return (
     <motion.div
       drag={!isMaximized && !isMinimized}
       dragMomentum={false}
       dragConstraints={{ top: 40, left: 0, right: 0, bottom: 0 }}
+      onDragStart={() => setIsDragging(true)}
       onDragEnd={(_e, info) => {
+        setIsDragging(false);
         if (info.point.x < 100) setSnapZone('left');
         else if (info.point.x > window.innerWidth - 100) setSnapZone('right');
         else setSnapZone('none');
@@ -157,7 +160,7 @@ function OSWindow({
         position: isMaximized || snapZone !== 'none' ? 'fixed' : 'absolute'
       }}
       onClick={() => !isMinimized && onFocus(id)}
-      className={`os-window pointer-events-auto overflow-hidden ${isMaximized ? 'rounded-none' : 'rounded-[2.5rem]'} ${isMinimized ? 'pointer-events-none' : ''}`}
+      className={`os-window pointer-events-auto overflow-hidden ${isMaximized ? 'rounded-none' : 'rounded-[2.5rem]'} ${isMinimized ? 'pointer-events-none' : ''} ${isDragging ? 'is-dragging' : ''}`}
     >
       <div
         className="os-window-header cursor-default px-6"
@@ -703,8 +706,6 @@ export function DesktopUI({
   const [theme, setTheme] = useState<string>('celestial');
   const [nativeFiles, setNativeFiles] = useState<NativeFile[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
-  const [terminalInput, setTerminalInput] = useState('');
-  const [terminalOutput, setTerminalOutput] = useState<string[]>(['Lumi Virtual Node OS [Version 2.0.4]', '(c) Lumi Artificial Intelligence. All rights mesh nodes.']);
   const [isControlCenterOpen, setIsControlCenterOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('general');
@@ -728,14 +729,6 @@ export function DesktopUI({
   const socket = useSocket();
   const { callState, audioLevel, startCall, endCall, error: callError, transcript, interrupt, toggleMute } = useVoiceCall({
     socket,
-    onTranscript: (text, isFinal) => {
-      if (isFinal) {
-        setTerminalOutput(prev => [...prev, `[You]: ${text}`]);
-      }
-    },
-    onResponse: (text) => {
-      setTerminalOutput(prev => [...prev, `[Lumi]: ${text}`]);
-    }
   });
 
   useEffect(() => {
@@ -788,50 +781,6 @@ export function DesktopUI({
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const handleTerminalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!terminalInput.trim()) return;
-    
-    const cmd = terminalInput.toLowerCase().trim();
-    setTerminalOutput(prev => [...prev, `> ${terminalInput}`]);
-    setTerminalInput('');
-
-    if (cmd === 'lumi --vision') {
-      try {
-        const res = await fetch('/api/founder/vision');
-        const data = await res.json();
-        setTerminalOutput(prev => [...prev, `FOUNDER_VISION: ${data.vision || '(not set)'}`]);
-      } catch {
-        setTerminalOutput(prev => [...prev, 'ERROR: Could not fetch founder vision.']);
-      }
-      return;
-    }
-    if (cmd === 'node --status') {
-      try {
-        const res = await fetch('/api/devices');
-        const data = await res.json();
-        const count = data.devices?.length || 0;
-        const online = data.devices?.filter((d: any) => d.status === 'online').length || 0;
-        setTerminalOutput(prev => [...prev, `SCANNING_MESH...`, `ONLINE: ${online}`, `TOTAL: ${count}`, `HEALTH: ${online > 0 ? 'OK' : 'NO_DEVICES'}`]);
-      } catch {
-        setTerminalOutput(prev => [...prev, 'SCANNING_MESH...', 'ERROR: Device API unavailable']);
-      }
-      sounds.playSuccess();
-      return;
-    }
-    if (cmd === 'shard --rebuild') {
-      setTerminalOutput(prev => [...prev, 'REBUILD requires desktop app (Tauri) for local file system access.', 'On web, use the File Manager to manage uploads.']);
-      return;
-    }
-
-    const result = await systemService.runCommand(cmd);
-    if (result.error) {
-      setTerminalOutput(prev => [...prev, `ERROR: ${result.error}`]);
-    } else {
-      setTerminalOutput(prev => [...prev, result.output]);
-    }
-  };
 
   useEffect(() => {
     const fetchNativeData = async () => {
@@ -1419,12 +1368,7 @@ export function DesktopUI({
               onEndCall={endCall}
               onInterrupt={interrupt}
               onToggleMute={toggleMute}
-              onMessage={(text) => {
-                setTerminalOutput(prev => [...prev, `[Voice Input]: ${text}`]);
-                systemService.runCommand(text).then(res => {
-                  setTerminalOutput(prev => [...prev, res.output]);
-                });
-              }} 
+              onMessage={() => {}}
             />
 
             <div className={`flex flex-col items-center gap-4 mt-8 transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 blur-sm pointer-events-none' : 'opacity-100'}`}>
@@ -1655,30 +1599,6 @@ export function DesktopUI({
                 </GlassCard>
               )}
 
-              <GlassCard className="p-6 rounded-[2.5rem] space-y-4 border-white/5 bg-black/40">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 flex items-center gap-2">
-                    <Cpu size={12} /> {t.rootTerminal || 'Root Terminal'}
-                  </h4>
-                  <button className="text-[10px] text-celestial-saturn hover:underline" onClick={() => setTerminalOutput([t.sessionReset || 'Session Reset...'])}>{t.clear || 'Clear'}</button>
-                </div>
-                <div className="bg-black/60 rounded-2xl p-4 font-mono text-[10px] h-48 overflow-y-auto custom-scrollbar space-y-1.5 border border-white/5 shadow-inner">
-                  {terminalOutput.map((line, i) => (
-                    <div key={i} className="text-white/60 leading-relaxed">
-                      {line.startsWith('>') ? <span className="text-celestial-saturn font-bold mr-2">{line}</span> : line}
-                    </div>
-                  ))}
-                </div>
-                <form onSubmit={handleTerminalSubmit} className="relative mt-2">
-                  <input 
-                    type="text"
-                    value={terminalInput}
-                    onChange={(e) => setTerminalInput(e.target.value)}
-                    placeholder={t.typeCommand || "Type a command..."}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[11px] font-mono text-celestial-saturn focus:outline-none focus:border-celestial-saturn/50 transition-all placeholder:text-white/10"
-                  />
-                </form>
-              </GlassCard>
             </div>
         </div>
       </div>

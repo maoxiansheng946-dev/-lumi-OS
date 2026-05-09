@@ -688,8 +688,6 @@ export const translations: any = {
     recent: "Recent",
     unread: "unread",
     nativeVaultEntry: "Native Vault Entry",
-    rootTerminal: "Root Terminal",
-    typeCommand: "Type a command...",
     chatPanelTitle: "Lumi Chat",
     chatPanelEmpty: "Type a message or use voice to start",
     newConversation: "New Conversation",
@@ -724,7 +722,6 @@ export const translations: any = {
     schedulerNotReporting: "Scheduler not reporting yet",
     nodeReady: "NODE_READY",
     // Terminal
-    sessionReset: "Session Reset...",
     // Nexus View
     nexusTitle: "Nexus",
     distributedOSCore: "Distributed OS Core",
@@ -1589,8 +1586,6 @@ export const translations: any = {
     recent: "最近",
     unread: "未读",
     nativeVaultEntry: "本地库入口",
-    rootTerminal: "根终端",
-    typeCommand: "输入命令...",
     chatPanelTitle: "Lumi 聊天",
     chatPanelEmpty: "输入消息或使用语音开始",
     newConversation: "新建对话",
@@ -1624,8 +1619,6 @@ export const translations: any = {
     activeLabel: "个活跃",
     schedulerNotReporting: "调度器暂无报告",
     nodeReady: "节点就绪",
-    // Terminal
-    sessionReset: "会话已重置...",
     // Nexus View
     nexusTitle: "中枢",
     distributedOSCore: "分布式 OS 核心",
