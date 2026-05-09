@@ -427,13 +427,19 @@ apiRouter.post("/devices/pair", (req, res) => {
 
 apiRouter.get("/devices", (req, res) => {
   const token = req.cookies.token;
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  let userId = '';
   try {
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    const devices = deviceRegistry.getUserDevices(decoded.uid);
-    const sensory = deviceRegistry.getSensoryContext(decoded.uid);
-    res.json({ devices, sensoryContext: sensory });
-  } catch { res.status(401).json({ error: "Invalid token" }); }
+    if (token) {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      userId = decoded.uid;
+    }
+  } catch { /* token invalid, continue without auth */ }
+
+  const userDevices = userId ? deviceRegistry.getUserDevices(userId) : [];
+  const mcpDevices = deviceRegistry.getMcpDevices();
+  const devices = [...userDevices, ...mcpDevices];
+  const sensory = userId ? deviceRegistry.getSensoryContext(userId) : { hasAudio: false, hasVideo: false, hasSpatial: false, hasHaptic: false, hasHolographic: false, activeDeviceTypes: [], deviceCount: mcpDevices.length };
+  res.json({ devices, sensoryContext: sensory });
 });
 
 // 0.4. Health Check
@@ -1156,7 +1162,24 @@ const mcpConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'server', 'mcp
 if (mcpConfig.remoteDevices) {
   for (const [name, url] of Object.entries(mcpConfig.remoteDevices)) {
     console.log(`[MCP Server] Connecting to remote device: ${name}`);
-    connectMcpServerToRemote(url as string, lumiMcp);
+    connectMcpServerToRemote(
+      url as string,
+      lumiMcp,
+      name as string,
+      (sessionId) => {
+        // Register as a device so it shows up in Device Center
+        deviceRegistry.registerMcpDevice(name as string, 'mcp_remote', {
+          audio: true,
+          video: false,
+          spatial: false,
+          haptic: false,
+          holographic: false,
+        });
+      },
+      () => {
+        deviceRegistry.unregisterMcpDevice(name as string);
+      },
+    );
   }
 }
 

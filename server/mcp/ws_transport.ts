@@ -65,27 +65,33 @@ export class WebSocketServerTransport implements Transport {
 export function connectMcpServerToRemote(
   url: string,
   mcpServer: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+  deviceName?: string,
+  onConnect?: (sessionId: string) => void,
+  onDisconnect?: () => void,
 ): void {
-  console.log(`[MCP Server] Connecting to remote device: ${url}`);
+  const name = deviceName || new URL(url).hostname;
+  console.log(`[MCP Server] Connecting to remote device "${name}": ${url}`);
 
   const ws = new WebSocket(url, 'mcp');
 
   ws.on('open', () => {
     const transport = new WebSocketServerTransport(ws);
     mcpServer.connect(transport).then(() => {
-      console.log(`[MCP Server] Remote device connected: ${transport.sessionId}`);
+      console.log(`[MCP Server] Remote device "${name}" connected: ${transport.sessionId}`);
+      onConnect?.(transport.sessionId);
     }).catch((err) => {
-      console.error(`[MCP Server] Remote connect error:`, err.message);
+      console.error(`[MCP Server] Remote connect error for "${name}":`, err.message);
     });
   });
 
   ws.on('error', (err) => {
-    console.error(`[MCP Server] Remote WebSocket error:`, err.message);
+    console.error(`[MCP Server] Remote WebSocket error for "${name}":`, err.message);
   });
 
   ws.on('close', () => {
-    console.log('[MCP Server] Remote device disconnected, reconnecting in 5s...');
-    setTimeout(() => connectMcpServerToRemote(url, mcpServer), 5000);
+    console.log(`[MCP Server] Remote device "${name}" disconnected, reconnecting in 5s...`);
+    onDisconnect?.();
+    setTimeout(() => connectMcpServerToRemote(url, mcpServer, deviceName, onConnect, onDisconnect), 5000);
   });
 }
 

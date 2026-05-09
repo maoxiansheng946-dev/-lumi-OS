@@ -101,6 +101,61 @@ class DeviceRegistry {
       deviceCount: active.length,
     };
   }
+
+  /** Register a remote MCP device (not tied to a socket.io connection) */
+  registerMcpDevice(name: string, userId: string, capabilities: Partial<DeviceCapabilities>): DeviceInfo {
+    const id = `mcp_${name}`;
+    const now = new Date().toISOString();
+    const existing = this.devices.get(id);
+    if (existing) {
+      existing.status = 'online';
+      existing.lastSeen = now;
+      this.broadcastCb?.('devices:update', existing);
+      return existing;
+    }
+
+    const device: DeviceInfo = {
+      id,
+      userId,
+      name,
+      type: 'web',
+      status: 'online',
+      capabilities: {
+        audio: capabilities.audio ?? true,
+        video: capabilities.video ?? false,
+        spatial: capabilities.spatial ?? false,
+        haptic: capabilities.haptic ?? false,
+        holographic: capabilities.holographic ?? false,
+      },
+      socketId: null,
+      ipAddress: null,
+      osInfo: 'MCP Remote',
+      firstSeen: now,
+      lastSeen: now,
+    };
+
+    this.devices.set(id, device);
+    this.broadcastCb?.('devices:update', device);
+    console.log(`[Devices] MCP device registered: ${name}`);
+    return device;
+  }
+
+  /** Mark an MCP device as offline */
+  unregisterMcpDevice(name: string): void {
+    const id = `mcp_${name}`;
+    const device = this.devices.get(id);
+    if (device) {
+      device.status = 'offline';
+      device.lastSeen = new Date().toISOString();
+      this.broadcastCb?.('devices:update', device);
+      console.log(`[Devices] MCP device offline: ${name}`);
+    }
+  }
+
+  /** Get MCP devices (visible to all users) */
+  getMcpDevices(): DeviceInfo[] {
+    return Array.from(this.devices.values()).filter(d => d.id.startsWith('mcp_'));
+  }
 }
 
 export const deviceRegistry = new DeviceRegistry();
