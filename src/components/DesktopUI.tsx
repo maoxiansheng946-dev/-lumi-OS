@@ -13,7 +13,6 @@ import {
   X,
   User as UserIcon,
   Search,
-  Handshake,
   Folder,
   FileText,
   Activity,
@@ -56,6 +55,7 @@ import { AgentChatPage } from './AgentChatPage';
 import { useSocket } from '@/hooks/useSocket';
 import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useApp } from '@/contexts/AppContext';
+import { NexusGlobe } from './NexusGlobe/NexusGlobe';
 
 import { NeuralFileManager } from './NeuralFileManager';
 import { MemoryExplorer } from './MemoryExplorer';
@@ -700,6 +700,7 @@ export function DesktopUI({
   }, [viewMode]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (viewMode === 'world') return; // Let OrbitControls handle mouse
     const { clientX, clientY } = e;
     const moveX = (clientX - window.innerWidth / 2) / 50;
     const moveY = (clientY - window.innerHeight / 2) / 50;
@@ -709,8 +710,6 @@ export function DesktopUI({
 
   const personalScale = useTransform(cameraZ, [0, -1000], [1, 0.4]);
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
-  const worldOpacity = useTransform(cameraZ, [0, -1000], [0.1, 1]);
-  const worldScale = useTransform(cameraZ, [0, -1000], [2, 1]);
   const { isTauri } = usePlatform();
   const { personalityId, selectedVoiceId, unreadCount, notifications } = useApp();
 
@@ -860,32 +859,6 @@ export function DesktopUI({
     { id: 'settings', label: t.settings || 'OS Integrity', icon: <SettingsIcon size={24} />, color: 'from-gray-400 to-slate-600' },
   ];
 
-  const themeConfig = {
-    celestial: { 
-      accent: 'celestial-saturn', 
-      hex: '#ffcc00', 
-      glow: 'shadow-[0_0_20px_rgba(255,200,80,0.3)]',
-      bg: 'bg-celestial-saturn/40'
-    },
-    nebula: { 
-      accent: 'purple-500', 
-      hex: '#a855f7', 
-      glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]',
-      bg: 'bg-purple-500/40'
-    },
-    cyber: { 
-      accent: 'emerald-500', 
-      hex: '#10b981', 
-      glow: 'shadow-[0_0_20px_rgba(16,185,129,0.3)]',
-      bg: 'bg-emerald-500/40'
-    },
-  }[theme as 'celestial' | 'nebula' | 'cyber'] || {
-    accent: 'celestial-saturn',
-    hex: '#ffcc00',
-    glow: 'shadow-[0_0_20px_rgba(255,200,80,0.3)]',
-    bg: 'bg-celestial-saturn/40'
-  };
-
   const sphereSentiment = 
     openWindows.includes('kernel') ? 'excited' : 
     openWindows.includes('chat') ? 'focused' :
@@ -967,132 +940,7 @@ export function DesktopUI({
              <GlobalNodeMap variant="subtle" />
           </div>
 
-          {/* World/Nexus Layer - Deep Background */}
-          <motion.div 
-            style={{ 
-              opacity: worldOpacity,
-              scale: worldScale,
-              z: -1200
-            }}
-            className="absolute inset-0 flex items-center justify-center preserve-3d"
-          >
-            <div className="absolute inset-0 preserve-3d">
-              <div className={`absolute inset-0 opacity-40 transition-colors duration-1000 ${
-                theme === 'celestial' ? 'bg-[radial-gradient(circle_at_center,rgba(255,200,80,0.05)_0%,transparent_70%)]' :
-                theme === 'nebula' ? 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.05)_0%,transparent_70%)]' :
-                'bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0%,transparent_70%)]'
-              }`} />
-              <div className="star-field opacity-60" />
-
-              {/* 3D Tunnel Grids (Floor/Ceiling) */}
-              <div className="absolute inset-0 preserve-3d">
-                <motion.div 
-                  animate={{ z: viewMode === 'world' ? [-400, -300] : -400 }}
-                  className={`absolute inset-x-0 top-0 h-[800px] border-t transition-all duration-1000 [mask-image:radial-gradient(rgba(0,0,0,1),transparent_80%)] [transform:rotateX(90deg)_translateZ(-400px)] ${
-                    theme === 'celestial' ? 'bg-[linear-gradient(to_bottom,transparent,rgba(255,200,80,0.1)_50%)] border-celestial-saturn/20' :
-                    theme === 'nebula' ? 'bg-[linear-gradient(to_bottom,transparent,rgba(168,85,247,0.1)_50%)] border-purple-500/20' :
-                    'bg-[linear-gradient(to_bottom,transparent,rgba(16,185,129,0.1)_50%)] border-emerald-500/20'
-                  }`}
-                  style={{ 
-                    backgroundSize: '60px 60px', 
-                    backgroundImage: `linear-gradient(to right, ${themeConfig.hex}0d 1px, transparent 1px), linear-gradient(to bottom, ${themeConfig.hex}0d 1px, transparent 1px)` 
-                  }} 
-                />
-                <motion.div 
-                  animate={{ z: viewMode === 'world' ? [-400, -300] : -400 }}
-                  className={`absolute inset-x-0 bottom-0 h-[800px] border-b transition-all duration-1000 [mask-image:radial-gradient(rgba(0,0,0,1),transparent_80%)] [transform:rotateX(-90deg)_translateZ(-400px)] ${
-                    theme === 'celestial' ? 'bg-[linear-gradient(to_top,transparent,rgba(255,200,80,0.1)_50%)] border-celestial-saturn/20' :
-                    theme === 'nebula' ? 'bg-[linear-gradient(to_top,transparent,rgba(168,85,247,0.1)_50%)] border-purple-500/20' :
-                    'bg-[linear-gradient(to_top,transparent,rgba(16,185,129,0.1)_50%)] border-emerald-500/20'
-                  }`}
-                  style={{ 
-                    backgroundSize: '60px 60px', 
-                    backgroundImage: `linear-gradient(to right, ${themeConfig.hex}0d 1px, transparent 1px), linear-gradient(to bottom, ${themeConfig.hex}0d 1px, transparent 1px)` 
-                  }} 
-                />
-              </div>
-              
-              {/* Dynamic Neural Particles */}
-              {[...Array(60)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ z: -3000, opacity: 0, x: (Math.random() - 0.5) * 2000, y: (Math.random() - 0.5) * 2000 }}
-                  animate={{ z: 1200, opacity: [0, 1, 0.5, 0] }}
-                  transition={{ duration: (4 + Math.random() * 6) / syncRate, repeat: Infinity, delay: i * 0.1, ease: "linear" }}
-                  className={`absolute rounded-full transition-all duration-1000 ${themeConfig.glow} ${i % 5 === 0 ? themeConfig.bg : 'bg-white/10'} ${i % 5 === 0 ? 'w-4 h-4' : 'w-1 h-1'}`}
-                  style={{ transformStyle: 'preserve-3d' }}
-                />
-              ))}
-
-              {/* Emergency Assistance Requests */}
-              {[...Array(4)].map((_, i) => (
-                <motion.div
-                   key={`emergency-${i}`}
-                   initial={{ z: -1500, opacity: 0, x: (Math.random() - 0.5) * 1200, y: (Math.random() - 0.5) * 1000 }}
-                   animate={{ z: 300, opacity: [0, 1, 0.5, 1, 0], scale: [1, 1.2, 1] }}
-                   transition={{ duration: 8 / syncRate, repeat: Infinity, delay: i * 2, ease: "linear" }}
-                   className="absolute pointer-events-auto group/sos"
-                   style={{ transformStyle: 'preserve-3d' }}
-                >
-                  <div className="flex flex-col items-center">
-                    <div className="w-6 h-6 rounded-full bg-orange-600/20 border border-orange-500 animate-ping absolute" />
-                    <div className="w-6 h-6 rounded-full bg-orange-600/40 border-2 border-orange-400 flex items-center justify-center relative shadow-[0_0_20px_#ff4400]">
-                      <Handshake size={14} className="text-white" />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-
-              {/* Neural Residents */}
-              {[...Array(8)].map((_, i) => (
-                <motion.div
-                  key={`resident-${i}`}
-                  style={{ transformStyle: 'preserve-3d' }}
-                  initial={{ opacity: 0, z: -1800, x: (Math.random() - 0.5) * 1400, y: (Math.random() - 0.5) * 1200 }}
-                  animate={{ z: 400, opacity: [0, 1, 0.8, 0] }}
-                  transition={{ duration: 12 + Math.random() * 8, repeat: Infinity, delay: i * 1.5, ease: "linear" }}
-                  className="absolute pointer-events-none"
-                >
-                  <div className="flex flex-col items-center gap-2 pointer-events-auto group/resident">
-                    <div className="w-8 h-8 rounded-full border border-celestial-saturn/30 bg-black/40 backdrop-blur-xl flex items-center justify-center">
-                      <Sparkles size={12} className="text-celestial-saturn" />
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-
-              {/* Vertical Data Beams */}
-              {[...Array(8)].map((_, i) => (
-                <motion.div
-                  key={`beam-${i}`}
-                  initial={{ z: -2500, x: (Math.random() - 0.5) * 1600, opacity: 0 }}
-                  animate={{ z: 500, opacity: [0, 0.3, 0] }}
-                  transition={{ duration: 8 / syncRate, repeat: Infinity, delay: i * 1.2 }}
-                  className="absolute inset-y-0 w-px bg-gradient-to-b from-transparent via-celestial-saturn/40 to-transparent"
-                  style={{ transformStyle: 'preserve-3d' }}
-                />
-              ))}
-
-              {/* Fragmented Lore Shards (Floating in deep space) */}
-              {[...Array(4)].map((_, i) => (
-                <motion.div
-                   key={`shard-${i}`}
-                   initial={{ opacity: 0, z: -2000, x: (Math.random() - 0.5) * 2000, y: (Math.random() - 0.5) * 1500 }}
-                   animate={{ z: 500, opacity: [0, 0.2, 0] }}
-                   transition={{ duration: 20 / syncRate, repeat: Infinity, delay: i * 5, ease: "linear" }}
-                   className="absolute font-mono text-[8px] text-celestial-saturn/30 whitespace-nowrap"
-                   style={{ transformStyle: 'preserve-3d' }}
-                >
-                   {["MUTUAL_AID_REQUIRED", "DISTRIBUTED_NODE_404", "VOID_SYNC_INIT", "LUMI_CORE_V2"][i]}
-                </motion.div>
-              ))}
-
-              {/* Residents and Nodes would go here, kept for brevity in this architectural change */}
-              <div className="absolute inset-0 bg-[conic-gradient(from_0deg_at_50%_50%,transparent_0deg,rgba(255,200,80,0.02)_180deg,transparent_360deg)] animate-[spin_20s_linear_infinite]" />
-            </div>
-          </motion.div>
-
-          {/* Personal Desktop Wallpaper Layer - Sits on top of Nexus */}
+          {/* Personal Desktop Wallpaper Layer */}
           <motion.div
             style={{
               scale: personalScale,
@@ -1153,6 +1001,21 @@ export function DesktopUI({
           style={{ backgroundColor: 'black', opacity: (100 - brightness) / 100 * 0.7 }} 
         />
       </div>
+
+      {/* Nexus Globe — WebGL 3D Earth with constellation + globe + neural layers */}
+      <AnimatePresence>
+        {viewMode === 'world' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2 }}
+            className="fixed inset-0 z-0"
+          >
+            <NexusGlobe theme={theme as 'celestial' | 'nebula' | 'cyber'} syncRate={syncRate} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Nexus View HUD (Floating Content that only shows in Nexus mode) */}
       <AnimatePresence>
