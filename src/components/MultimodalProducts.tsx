@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Watch, Headphones, Cpu, Zap, Shield, Globe, ShoppingCart, Eye, Mic, Code, Monitor, Lamp as LampIcon, Database, Glasses, Circle, Car, Home, Gem, Rabbit, Smile, Gamepad2, AlertTriangle } from 'lucide-react';
+import { Watch, Headphones, Cpu, Zap, Shield, Globe, ShoppingCart, Eye, Mic, Code, Monitor, Lamp as LampIcon, Database, Glasses, Circle, Car, Home, Gem, Rabbit, Smile, Gamepad2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useModuleData } from '@/hooks/useModuleData';
 import { LoadingSpinner, GlassCard, IconBox, FeatureItem } from './SharedUI';
@@ -26,7 +26,7 @@ const iconMap: { [key: string]: React.ReactNode } = {
 };
 
 export function MultimodalProducts({ t, onSelectProduct }: { t: any; onSelectProduct: (product: any) => void }) {
-  const { data: products, loading, error } = useModuleData<any[]>('/api/modules/products', []);
+  const { data: products, loading } = useModuleData<any[]>('/api/modules/products', []);
   const sectionRefs = React.useRef<{ [key: string]: HTMLElement | null }>({});
 
   React.useEffect(() => {
@@ -49,16 +49,6 @@ export function MultimodalProducts({ t, onSelectProduct }: { t: any; onSelectPro
   }, []);
 
   if (loading) return <LoadingSpinner />;
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-white/40 gap-3">
-        <AlertTriangle size={32} />
-        <p className="text-sm font-medium">{t.failedToLoadProducts || 'Failed to load products'}</p>
-        <p className="text-xs text-white/20">{error.message}</p>
-      </div>
-    );
-  }
 
   const categories = [t.coreDevices, t.smartWearables, t.aiCompanionToys, t.partnershipZone];
 

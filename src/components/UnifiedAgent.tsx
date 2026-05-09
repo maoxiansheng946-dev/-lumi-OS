@@ -51,7 +51,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
   });
 
   const { speak, stop, isSpeaking } = useTTS();
-  const { data: agents, error: agentsError } = useModuleData<any[]>('/api/modules/agents');
+  const { data: agents, error: agentsError } = useModuleData<any[]>('/api/agents');
   const agentConfig = agents?.[0];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -328,7 +328,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
       <section className="relative">
         <div className="text-center space-y-4 mb-8">
           <h2 className="text-4xl font-bold tracking-tighter glow-text">
-            {agentConfig?.name || t.holographicEntrance}
+Lumi Core Agent
           </h2>
           <p className="text-white/40 max-w-xl mx-auto italic">
             "{t.holographicEntranceDesc}"

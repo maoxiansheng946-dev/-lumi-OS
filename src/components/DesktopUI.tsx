@@ -1764,6 +1764,33 @@ export function DesktopUI({
                     <NotificationCenter />
                   ) : windowId === 'devices' ? (
                     <DeviceSyncCenter t={t} />
+                  ) : windowId === 'terminal' ? (
+                    <div className="p-8 h-full">
+                      <GlassCard className="p-6 rounded-[2.5rem] space-y-4 border-white/5 bg-black/40">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 flex items-center gap-2">
+                            <Cpu size={12} /> {t.rootTerminal || 'Root Terminal'}
+                          </h4>
+                          <button className="text-[10px] text-celestial-saturn hover:underline" onClick={() => setTerminalOutput(['Session Reset...'])}>{t.clear || 'Clear'}</button>
+                        </div>
+                        <div className="bg-black/60 rounded-2xl p-4 font-mono text-[10px] h-64 overflow-y-auto custom-scrollbar space-y-1.5 border border-white/5 shadow-inner">
+                          {terminalOutput.map((line, i) => (
+                            <div key={i} className="text-white/60 leading-relaxed">
+                              {line.startsWith('>') ? <span className="text-celestial-saturn font-bold mr-2">{line}</span> : line}
+                            </div>
+                          ))}
+                        </div>
+                        <form onSubmit={handleTerminalSubmit} className="relative mt-2">
+                          <input
+                            type="text"
+                            value={terminalInput}
+                            onChange={(e) => setTerminalInput(e.target.value)}
+                            placeholder={t.typeCommand || "Type a command..."}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-xs text-white/80 placeholder:text-white/20 focus:outline-none focus:border-celestial-saturn/50 font-mono"
+                          />
+                        </form>
+                      </GlassCard>
+                    </div>
                   ) : renderTabContent(windowId)}
                 </div>
               </OSWindow>

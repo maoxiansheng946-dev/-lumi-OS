@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Rocket, MessageSquare, Cpu, Globe, Users, User as UserIcon, BookOpen, Zap, ChevronDown, Database, Shield, Layout, ShoppingBag, Cloud, Network, Smartphone, Laptop, Handshake, Building2, Smile, Settings as SettingsIcon } from 'lucide-react';
+import { Rocket, MessageSquare, Globe, Users, User as UserIcon, BookOpen, Zap, ChevronDown, Database, ShoppingBag, Cloud, Network, Smartphone, Laptop, Handshake, Building2, Smile, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -16,7 +16,6 @@ interface NavbarProps {
 
 export function Navbar({ user, onLogin, onLogout, activeTab, setActiveTab, lang, setLang, t }: NavbarProps) {
   const [isProductsOpen, setIsProductsOpen] = useState(false);
-  const [isGenOpen, setIsGenOpen] = useState(false);
   const [isEcoOpen, setIsEcoOpen] = useState(false);
 
   const productCategories = [
@@ -24,12 +23,6 @@ export function Navbar({ user, onLogin, onLogout, activeTab, setActiveTab, lang,
     { id: 'wearables', label: t.smartWearables, desc: t.smartWearablesDesc, icon: <Smartphone size={16} /> },
     { id: 'companions', label: t.aiCompanionToys, desc: t.aiCompanionToysDesc, icon: <Smile size={16} /> },
     { id: 'partnership', label: t.partnershipZone, desc: t.partnershipZoneDesc, icon: <Handshake size={16} /> }
-  ];
-
-  const genCategories = [
-    { id: 'identity', label: t.identityData, desc: t.identityDataDesc, icon: <Shield size={16} /> },
-    { id: 'templates', label: t.neuralTemplates, desc: t.neuralTemplatesDesc, icon: <Layout size={16} /> },
-    { id: 'agents', label: t.generatedAgents, desc: t.generatedAgentsDesc, icon: <Users size={16} /> }
   ];
 
   const ecoCategories = [
@@ -93,31 +86,6 @@ export function Navbar({ user, onLogin, onLogout, activeTab, setActiveTab, lang,
         <div className="hidden lg:flex items-center gap-8">
           <NavItem active={activeTab === 'home'} onClick={() => setActiveTab('home')} icon={<Rocket size={18} />} label={t.interact} />
           
-          {/* Generation Dropdown */}
-          <div 
-            className="relative group"
-            onMouseEnter={() => setIsGenOpen(true)}
-            onMouseLeave={() => setIsGenOpen(false)}
-          >
-            <NavItem 
-              active={activeTab === 'generate'} 
-              onClick={() => setActiveTab('generate')} 
-              icon={<Cpu size={18} />} 
-              label={t.generate} 
-              hasDropdown
-            />
-            <Dropdown 
-              items={genCategories} 
-              isOpen={isGenOpen} 
-              active={activeTab === 'generate'}
-              onSelect={(id, label) => {
-                setActiveTab('generate');
-                dispatchAfterTabChange('scroll-to-gen', label);
-                setIsGenOpen(false);
-              }}
-            />
-          </div>
-
           {/* Ecosystem Dropdown */}
           <div 
             className="relative group"
@@ -183,10 +151,6 @@ export function Navbar({ user, onLogin, onLogout, activeTab, setActiveTab, lang,
                 const catLabel = val.split(':')[1];
                 setActiveTab('multimodal');
                 dispatchAfterTabChange('scroll-to-category', catLabel);
-              } else if (val.startsWith('generate:')) {
-                const catLabel = val.split(':')[1];
-                setActiveTab('generate');
-                dispatchAfterTabChange('scroll-to-gen', catLabel);
               } else if (val.startsWith('ecosystem:')) {
                 const catLabel = val.split(':')[1];
                 setActiveTab('ecosystem');
@@ -199,15 +163,6 @@ export function Navbar({ user, onLogin, onLogout, activeTab, setActiveTab, lang,
           >
             <option value="home" className="bg-celestial-deep">{t.interact}</option>
             
-            <optgroup label={t.generate} className="bg-celestial-deep">
-              <option value="generate" className="bg-celestial-deep">{t.generate}</option>
-              {genCategories.map(cat => (
-                <option key={cat.id} value={`generate:${cat.label}`} className="bg-celestial-deep pl-4">
-                  -- {cat.label}
-                </option>
-              ))}
-            </optgroup>
-
             <optgroup label={t.ecosystem} className="bg-celestial-deep">
               <option value="ecosystem" className="bg-celestial-deep">{t.ecosystem}</option>
               {ecoCategories.map(cat => (

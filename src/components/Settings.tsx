@@ -31,6 +31,7 @@ import { DeviceSyncCenter } from './DeviceSyncCenter';
 import { useApp } from '@/contexts/AppContext';
 import { VoiceForge } from './VoiceForge';
 import { MCPSettings } from './MCPSettings';
+import { RemoteMCPSettings } from './RemoteMCPSettings';
 import { MemoryExplorer } from './MemoryExplorer';
 import { PersonalityEditor } from './PersonalityEditor';
 import { PersonalityMarketplace } from './PersonalityMarketplace';
@@ -74,6 +75,7 @@ function buildSidebarGroups(t: any) {
         { id: 'security', label: t.settings || 'Security', icon: <Shield size={16} /> },
         { id: 'hardware', label: t.settingsHardware || 'Hardware', icon: <Camera size={16} /> },
         { id: 'mcp', label: t.settingsMCP || 'MCP', icon: <Cpu size={16} /> },
+        { id: 'remote-mcp', label: 'Remote MCP', icon: <Globe size={16} /> },
       ],
     },
   ];
@@ -374,6 +376,8 @@ export function Settings({
         return <MemoryExplorer t={t} />;
       case 'mcp':
         return <MCPSettings t={t} />;
+      case 'remote-mcp':
+        return <RemoteMCPSettings t={t} />;
       default:
         return null;
     }

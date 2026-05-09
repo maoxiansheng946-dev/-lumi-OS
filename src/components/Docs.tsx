@@ -1,26 +1,16 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Book, Code, Terminal, Shield, Globe, Zap, Search, Sparkles, Layers, AlertTriangle } from 'lucide-react';
+import { Book, Code, Terminal, Shield, Globe, Zap, Search, Sparkles, Layers } from 'lucide-react';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { useModuleData } from '@/hooks/useModuleData';
 import { LoadingSpinner, GlassCard, IconBox } from './SharedUI';
 
 export function Docs({ t }: { t: any }) {
-  const { data, loading, error } = useModuleData<any>('/api/modules/docs');
+  const { data, loading } = useModuleData<any>('/api/modules/docs');
   const [activeTab, setActiveTab] = React.useState('philosophy');
 
   if (loading) return <LoadingSpinner />;
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-white/40 gap-3">
-        <AlertTriangle size={32} />
-        <p className="text-sm font-medium">Failed to load documentation</p>
-        <p className="text-xs text-white/20">{error.message}</p>
-      </div>
-    );
-  }
 
   const tabs = [
     { id: 'philosophy', title: t.corePhilosophy, icon: <Sparkles size={18} /> },

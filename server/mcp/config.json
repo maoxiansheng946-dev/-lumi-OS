@@ -27,5 +27,8 @@
       ],
       "enabled": true
     }
+  },
+  "remoteDevices": {
+    "xiaozhi": "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjg1NjUyNSwiYWdlbnRJZCI6MTU2NjkyNCwiZW5kcG9pbnRJZCI6ImFnZW50XzE1NjY5MjQiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzc4MzEzMjY1LCJleHAiOjE4MDk4NzA4NjV9.Fb5O3tW48BY7l5PyziNVdhqD1BGpki1luSsjmLpcD9yZc1hmA3tZeVMd-16Hggi0FOnwotFOxZ3JdmL0OlyvrA"
   }
 }
