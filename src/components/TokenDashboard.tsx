@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
-import { BarChart3, RefreshCw, Zap, TrendingUp, Clock } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Zap, TrendingUp, Clock, Layers, RefreshCw } from 'lucide-react';
 
 interface ProviderStats {
   promptTokens: number;
@@ -26,14 +26,14 @@ interface UsageData {
 
 const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
-  qwen: 'Qwen / DashScope',
+  qwen: 'Qwen',
   openai: 'OpenAI',
   gemini: 'Gemini',
   anthropic: 'Anthropic',
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
-  deepseek: '#4f46e5',
+  deepseek: '#6366f1',
   qwen: '#06b6d4',
   openai: '#10b981',
   gemini: '#8b5cf6',
@@ -42,7 +42,7 @@ const PROVIDER_COLORS: Record<string, string> = {
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return String(n);
 }
 
@@ -61,155 +61,167 @@ export const TokenDashboard: React.FC = () => {
       const res = await resp.json();
       setData(res);
     } catch (err: any) {
-      setError(err.message || 'Failed to load usage data');
+      setError(err.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
   }, [days]);
 
-  useEffect(() => {
-    fetchUsage();
-  }, [fetchUsage]);
-
-  const maxDaily = data?.daily
-    ? Math.max(...data.daily.map(d => d.totalTokens), 1)
-    : 1;
+  useEffect(() => { fetchUsage(); }, [fetchUsage]);
 
   const providers = data?.byProvider ? Object.entries(data.byProvider) : [];
+  const maxDaily = data?.daily?.length ? Math.max(...data.daily.map(d => d.totalTokens), 1) : 1;
+
+  // Donut ring data
+  const total = providers.reduce((sum, [, s]) => sum + s.totalTokens, 0);
+  let cumulative = 0;
+  const segments = providers.map(([p, s]) => {
+    const start = cumulative;
+    const frac = total > 0 ? s.totalTokens / total : 0;
+    cumulative += frac;
+    return { provider: p, stats: s, start, frac, color: PROVIDER_COLORS[p] || '#888' };
+  });
+  const circumference = 2 * Math.PI * 36;
 
   return (
     <div className="h-full flex flex-col text-white">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-celestial-glow/10 border border-celestial-glow/20 flex items-center justify-center">
-            <Zap size={20} className="text-celestial-glow" />
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <Zap size={16} className="text-amber-400" />
           </div>
           <div>
-            <h2 className="text-lg font-black tracking-tight">Token Usage</h2>
-            <p className="text-[10px] text-white/30 font-medium">API consumption across all LLM providers</p>
+            <h2 className="text-base font-black tracking-tight">Token Usage</h2>
+            <p className="text-[10px] text-white/25 font-medium">LLM API consumption</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 bg-white/5 rounded-xl p-1">
           {[7, 30, 90].map(d => (
             <button
               key={d}
               onClick={() => setDays(d)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
-                days === d
-                  ? 'bg-white/15 text-white border border-white/10'
-                  : 'text-white/30 hover:text-white/60 border border-transparent'
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                days === d ? 'bg-white/15 text-white' : 'text-white/30 hover:text-white/50'
               }`}
             >
               {d}d
             </button>
           ))}
-          <button
-            onClick={fetchUsage}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"
-            title="Refresh"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <button onClick={fetchUsage} className="p-1.5 rounded-lg hover:bg-white/5 text-white/30 hover:text-white/60 transition-all">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {/* Content */}
       {loading && !data ? (
         <div className="flex-1 flex items-center justify-center">
-          <RefreshCw size={24} className="text-white/20 animate-spin" />
+          <RefreshCw size={20} className="text-white/20 animate-spin" />
         </div>
       ) : error && !data ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-red-400 text-sm">{error}</p>
+          <p className="text-red-400 text-xs">{error}</p>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col gap-4 overflow-auto custom-scrollbar pr-1">
-          {/* Grand total card */}
-          <div className="glass rounded-2xl p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <TrendingUp size={18} className="text-celestial-saturn" />
-              <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Total Consumption</span>
+        <div className="flex-1 flex flex-col gap-3 overflow-auto custom-scrollbar pr-1">
+          {/* Grand total */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl bg-white/5 border border-white/5 p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2.5">
+              <TrendingUp size={16} className="text-amber-400/70" />
+              <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total</span>
             </div>
             <div className="text-right">
-              <span className="text-2xl font-black tracking-tight">{formatTokens(data?.grandTotal || 0)}</span>
-              <p className="text-[10px] text-white/20">{data?.recordCount || 0} API calls</p>
+              <span className="text-xl font-black tracking-tight">{formatTokens(data?.grandTotal || 0)}</span>
+              <span className="text-[10px] text-white/20 ml-1">{data?.recordCount || 0} calls</span>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Per-provider breakdown */}
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <BarChart3 size={12} />
-              By Provider
+          {/* Provider breakdown */}
+          <div className="rounded-2xl bg-white/5 border border-white/5 p-4">
+            <h3 className="text-[10px] font-bold text-white/25 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Layers size={10} /> Providers
             </h3>
             {providers.length === 0 ? (
-              <p className="text-white/20 text-xs">No usage data yet. Start chatting to see token consumption.</p>
+              <p className="text-white/20 text-xs py-4 text-center">No usage data yet.</p>
             ) : (
-              <div className="space-y-3">
-                {providers.map(([provider, stats]) => {
-                  const maxPct = providers.length > 0
-                    ? (stats.totalTokens / Math.max(...providers.map(([, s]) => s.totalTokens), 1)) * 100
-                    : 0;
-                  return (
-                    <div key={provider}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold">{PROVIDER_LABELS[provider] || provider}</span>
-                        <span className="text-[10px] text-white/40 font-mono">
-                          {formatTokens(stats.totalTokens)} tokens ({stats.calls} calls)
-                        </span>
+              <div className="flex items-center gap-4">
+                {/* Ring chart */}
+                <svg width="90" height="90" viewBox="0 0 90 90" className="shrink-0">
+                  {segments.map(seg => {
+                    const dashArray = seg.frac * circumference;
+                    const dashOffset = -seg.start * circumference;
+                    return (
+                      <circle
+                        key={seg.provider}
+                        r="36" cx="45" cy="45"
+                        fill="none"
+                        stroke={seg.color}
+                        strokeWidth="10"
+                        strokeDasharray={`${dashArray} ${circumference - dashArray}`}
+                        strokeDashoffset={dashOffset}
+                        strokeLinecap="round"
+                        className="opacity-80"
+                        transform="rotate(-90 45 45)"
+                      />
+                    );
+                  })}
+                  <text x="45" y="43" textAnchor="middle" className="text-[14px] font-black" fill="white">
+                    {formatTokens(total)}
+                  </text>
+                  <text x="45" y="56" textAnchor="middle" className="text-[8px] font-bold" fill="rgba(255,255,255,0.25)">
+                    TOTAL
+                  </text>
+                </svg>
+
+                {/* Legend */}
+                <div className="flex-1 space-y-1.5 min-w-0">
+                  {providers.map(([provider, stats]) => (
+                    <div key={provider} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PROVIDER_COLORS[provider] || '#888' }} />
+                        <span className="text-[10px] font-bold text-white/60 truncate">{PROVIDER_LABELS[provider] || provider}</span>
                       </div>
-                      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${maxPct}%` }}
-                          className="h-full rounded-full"
-                          style={{ backgroundColor: PROVIDER_COLORS[provider] || '#888' }}
-                        />
-                      </div>
-                      <div className="flex gap-3 mt-1 text-[9px] text-white/20 font-mono">
-                        <span>In: {formatTokens(stats.promptTokens)}</span>
-                        <span>Out: {formatTokens(stats.completionTokens)}</span>
-                      </div>
+                      <span className="text-[10px] text-white/30 font-mono shrink-0">
+                        {formatTokens(stats.totalTokens)} / {stats.calls}
+                      </span>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Daily chart */}
-          <div className="glass rounded-2xl p-5 flex-1">
-            <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Clock size={12} />
-              Daily Trend
+          {/* Daily trend */}
+          <div className="flex-1 rounded-2xl bg-white/5 border border-white/5 p-4">
+            <h3 className="text-[10px] font-bold text-white/25 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Clock size={10} /> Daily
             </h3>
             {!data?.daily || data.daily.length === 0 ? (
-              <p className="text-white/20 text-xs">No daily data available.</p>
+              <p className="text-white/20 text-xs py-4 text-center">No daily data.</p>
             ) : (
-              <div className="flex items-end gap-1 h-32">
-                {data.daily.map(d => {
-                  const h = (d.totalTokens / maxDaily) * 100;
-                  return (
-                    <div
-                      key={d.date}
-                      className="flex-1 flex flex-col items-center gap-1 group relative"
-                    >
+              <div className="flex items-end gap-0.5 h-28">
+                <AnimatePresence>
+                  {data.daily.map((d, i) => {
+                    const h = (d.totalTokens / maxDaily) * 100;
+                    return (
                       <motion.div
+                        key={d.date}
                         initial={{ height: 0 }}
                         animate={{ height: `${Math.max(h, 1)}%` }}
-                        className="w-full rounded-t-sm bg-celestial-glow/30 hover:bg-celestial-glow/60 transition-colors min-h-[2px]"
-                      />
-                      <span className="text-[7px] text-white/10 group-hover:text-white/40 font-mono transition-colors">
-                        {d.date.slice(5)}
-                      </span>
-                      {/* Tooltip */}
-                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/90 rounded text-[9px] font-mono text-white opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity">
-                        {formatTokens(d.totalTokens)} tokens
-                      </div>
-                    </div>
-                  );
-                })}
+                        transition={{ delay: i * 0.01, type: 'spring', stiffness: 300, damping: 20 }}
+                        className="flex-1 rounded-t-[2px] bg-amber-500/25 hover:bg-amber-400/50 transition-colors min-h-[2px] relative group"
+                      >
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-black/90 rounded text-[9px] font-mono text-white/60 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-10">
+                          {formatTokens(d.totalTokens)}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
               </div>
             )}
           </div>

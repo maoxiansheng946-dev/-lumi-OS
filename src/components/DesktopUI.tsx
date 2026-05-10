@@ -137,8 +137,8 @@ function OSWindow({
       <div ref={constrainRef} className="fixed inset-0 pointer-events-none z-0" />
       <motion.div
         drag={!isMaximized && !isMinimized}
-        dragMomentum
-        dragElastic={0.05}
+        dragElastic={0.1}
+        dragTransition={{ bounceStiffness: 400, bounceDamping: 25 }}
         dragConstraints={constrainRef}
         onDragStart={() => setIsDragging(true)}
         onDragEnd={(_e, info) => {
@@ -147,25 +147,25 @@ function OSWindow({
           else if (info.point.x > window.innerWidth - 80) setSnapZone('right');
           else setSnapZone('none');
         }}
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.85, y: 20 }}
         animate={isMinimized
-          ? { opacity: 0, scale: 0.3, transition: { duration: 0.3, ease: 'easeIn' } }
+          ? { opacity: 0, scale: 0.3, y: 40, transition: { duration: 0.25, ease: [0.4, 0, 1, 1] } }
           : {
               opacity: 1,
               scale: 1,
+              y: 0,
               width: isMaximized ? '100vw' : snapZone !== 'none' ? '50vw' : width,
               height: isMaximized ? 'calc(100vh - 40px)' : snapZone !== 'none' ? 'calc(100vh - 40px)' : height,
               top: isSnapped ? '40px' : undefined,
               left: isMaximized ? '0' : snapZone === 'left' ? '0' : snapZone === 'right' ? '50%' : undefined,
               x: 0,
-              y: 0,
-              transition: { duration: 0.35, ease: 'easeOut' },
+              transition: { type: 'spring', stiffness: 350, damping: 28, mass: 0.8 },
             }
         }
         onAnimationComplete={() => {
           if (isMinimized) onMinimizeComplete(id);
         }}
-        exit={{ opacity: 0, scale: 0.3, transition: { duration: 0.2 } }}
+        exit={{ opacity: 0, scale: 0.85, y: 20, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } }}
         style={{
           zIndex: isMinimized ? zIndex - 100 : zIndex,
           position: isSnapped ? 'fixed' : 'absolute',
