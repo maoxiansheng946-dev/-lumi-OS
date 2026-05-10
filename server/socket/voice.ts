@@ -110,11 +110,8 @@ SAFETY:
     { role: 'user', content: userText },
   ];
 
-  const provider = personality.defaultModel.startsWith('deepseek') ? 'deepseek' as const
-    : personality.defaultModel.startsWith('gpt') ? 'openai' as const
-    : personality.defaultModel.startsWith('claude') ? 'anthropic' as const
-    : personality.defaultModel.startsWith('qwen') ? 'qwen' as const
-    : 'gemini' as const;
+  const provider = 'qwen' as const;
+  const voiceModel = 'qwen-plus';
 
   const maxIterations = personality.toolPolicy.maxIterations || 5;
 
@@ -182,13 +179,13 @@ SAFETY:
     for (let iter = 0; iter < maxIterations; iter++) {
       if (!session.isActive) break;
 
-      logger.info(`[Audio] LLM iteration ${iter + 1}/${maxIterations}: provider=${provider} model=${personality.defaultModel}`);
+      logger.info(`[Audio] LLM iteration ${iter + 1}/${maxIterations}: provider=${provider} model=${voiceModel}`);
       const toolDeclarations = toolRegistry.getToolDeclarations();
 
       const streamResult = await makeLLMCallStreaming(
         messages as NormalizedMessage[],
         toolDeclarations,
-        { provider, model: personality.defaultModel },
+        { provider, model: voiceModel },
         (chunk: string) => {
           responseText += chunk;
           sentenceBuffer += chunk;

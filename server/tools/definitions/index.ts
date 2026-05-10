@@ -8,6 +8,7 @@ import { registerDesktopTools } from './desktop_tools';
 import { registerGitTools } from './git_tools';
 import { registerVerifyTools } from './verify_tools';
 import { registerSkillTools, setSkillLLMGetters } from './skill_tools';
+import { registerOfficeTools } from './office_tools';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -28,6 +29,7 @@ export function registerAllTools(
   registerGitTools(registry);
   registerVerifyTools(registry);
   registerSkillTools(registry);
+  registerOfficeTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

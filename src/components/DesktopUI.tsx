@@ -58,6 +58,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useApp } from '@/contexts/AppContext';
 import { NexusGlobe } from './NexusGlobe/NexusGlobe';
+import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 
 import { NeuralFileManager } from './NeuralFileManager';
 import { MemoryExplorer } from './MemoryExplorer';
@@ -736,6 +737,14 @@ export function DesktopUI({
     return localStorage.getItem('lumi_onboarding_seen') !== 'true';
   });
   const [personaStats, setPersonaStats] = useState<{ totalMemories: number; totalInteractions: number; avgConfidence: number } | null>(null);
+  const [mcpActivities, setMcpActivities] = useState<Array<{
+    id: string; device: string; action: string; status: string;
+    message?: string; title?: string; path?: string; slidesCount?: number; toolCalls?: number; error?: string;
+    time: number;
+  }>>([]);
+  const [showMcpPanel, setShowMcpPanel] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'executing' | 'done' | 'error'>('idle');
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
 
   useEffect(() => {
     fetch(`/api/personality/stats?personalityId=${personalityId}`)
@@ -774,6 +783,129 @@ export function DesktopUI({
       icon: nextMode ? <Sparkles className="text-celestial-saturn" /> : <Box className="text-white/40" />
     });
   };
+
+  // MCP Live Activity socket listener
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      const activity = { ...data, id: Date.now().toString(), time: Date.now() };
+      setMcpActivities(prev => [activity, ...prev].slice(0, 20));
+      setShowMcpPanel(true);
+      setTimeout(() => {
+        setMcpActivities(prev => {
+          if (prev.length === 0 || Date.now() - prev[0].time > 8000) setShowMcpPanel(false);
+          return prev;
+        });
+      }, 8000);
+    };
+    socket.on('mcp:activity', handler);
+    return () => { socket.off('mcp:activity', handler); };
+  }, [socket]);
+
+  // Workflow status listener — agent:status, agent:tool_call, agent:response, agent:error
+  useEffect(() => {
+    if (!socket) return;
+
+    const onStatus = (data: { status: string; agentName?: string }) => {
+      if (data.status === 'thinking') {
+        setAgentStatus('thinking');
+        setWorkflowSteps(prev => [...prev, {
+          id: `thinking-${Date.now()}`,
+          type: 'thinking',
+          text: 'Analyzing your request...',
+          time: Date.now(),
+        }]);
+      } else if (data.status === 'idle') {
+        setAgentStatus('done');
+        setWorkflowSteps(prev => [...prev, {
+          id: `done-${Date.now()}`,
+          type: 'response',
+          text: 'Completed',
+          time: Date.now(),
+        }]);
+        setTimeout(() => {
+          setAgentStatus('idle');
+          setWorkflowSteps([]);
+        }, 5000);
+      } else if (data.status === 'error') {
+        setAgentStatus('error');
+        setTimeout(() => {
+          setAgentStatus('idle');
+          setWorkflowSteps([]);
+        }, 5000);
+      }
+    };
+
+    const onToolCall = (data: { correlationId?: string; name: string; arguments?: any; result?: string; error?: string }) => {
+      if (data.result !== undefined) {
+        setAgentStatus('executing');
+        setWorkflowSteps(prev => [...prev, {
+          id: `tool-ok-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          type: 'tool_result',
+          text: `${data.name} done`,
+          detail: data.result?.slice(0, 100),
+          time: Date.now(),
+        }]);
+      } else if (data.error !== undefined) {
+        setAgentStatus('executing');
+        setWorkflowSteps(prev => [...prev, {
+          id: `tool-err-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          type: 'error',
+          text: `${data.name} failed`,
+          detail: data.error?.slice(0, 100),
+          time: Date.now(),
+        }]);
+      } else {
+        setAgentStatus('executing');
+        const argsSummary = data.arguments
+          ? Object.entries(data.arguments).map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 30) : String(v).slice(0, 30)}`).join(', ')
+          : '';
+        setWorkflowSteps(prev => [...prev, {
+          id: `tool-start-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          type: 'tool_start',
+          text: `Calling ${data.name}`,
+          detail: argsSummary || undefined,
+          time: Date.now(),
+        }]);
+      }
+    };
+
+    const onResponse = (data: { text: string; agentName?: string }) => {
+      setWorkflowSteps(prev => [...prev, {
+        id: `resp-${Date.now()}`,
+        type: 'response',
+        text: 'Response ready',
+        detail: data.text?.slice(0, 100),
+        time: Date.now(),
+      }]);
+    };
+
+    const onError = (data: { message: string }) => {
+      setAgentStatus('error');
+      setWorkflowSteps(prev => [...prev, {
+        id: `err-${Date.now()}`,
+        type: 'error',
+        text: 'Processing failed',
+        detail: data.message,
+        time: Date.now(),
+      }]);
+      setTimeout(() => {
+        setAgentStatus('idle');
+        setWorkflowSteps([]);
+      }, 5000);
+    };
+
+    socket.on('agent:status', onStatus);
+    socket.on('agent:tool_call', onToolCall);
+    socket.on('agent:response', onResponse);
+    socket.on('agent:error', onError);
+    return () => {
+      socket.off('agent:status', onStatus);
+      socket.off('agent:tool_call', onToolCall);
+      socket.off('agent:response', onResponse);
+      socket.off('agent:error', onError);
+    };
+  }, [socket]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1501,6 +1633,48 @@ export function DesktopUI({
             </div>
         </div>
       </div>
+
+      {/* MCP Live Activity — xiaozhi ⇄ Lumi */}
+      <AnimatePresence>
+        {showMcpPanel && mcpActivities.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-28 right-6 z-[60] w-72 pointer-events-auto"
+          >
+            <GlassCard className="p-4 rounded-2xl border-white/10 bg-black/70 backdrop-blur-2xl space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Live · xiaozhi ⇄ Lumi</span>
+              </div>
+              <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                {mcpActivities.slice(0, 5).map((act) => (
+                  <div key={act.id} className="text-[9px] text-white/60 border-l-2 border-white/10 pl-2">
+                    <span className="text-white/80 font-bold">{act.action === 'create_ppt' ? 'PPT' : act.action === 'chat' ? 'Chat' : act.action}</span>
+                    {' · '}
+                    <span className={act.status === 'completed' ? 'text-green-400' : act.status === 'failed' ? 'text-red-400' : 'text-celestial-saturn'}>
+                      {act.status}
+                    </span>
+                    {act.message && <div className="text-white/30 truncate">{act.message.slice(0, 60)}</div>}
+                    {act.title && <div className="text-white/50">{act.title} ({act.slidesCount} slides)</div>}
+                    {act.path && <div className="text-green-400/60 truncate">Saved: {act.path.split('\\').pop()}</div>}
+                    {act.toolCalls !== undefined && act.toolCalls > 0 && <div className="text-celestial-saturn/60">Used {act.toolCalls} tool(s)</div>}
+                    {act.error && <div className="text-red-400/60 truncate">{act.error.slice(0, 80)}</div>}
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Workflow Status Panel — breathing lights + step log */}
+      <WorkflowPanel
+        visible={isWallpaperMode && (agentStatus !== 'idle' || workflowSteps.length > 0)}
+        agentStatus={agentStatus}
+        steps={workflowSteps}
+      />
 
       <div className="absolute inset-0 z-[20] pointer-events-none">
         <DesktopOnboarding 

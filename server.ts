@@ -1376,7 +1376,7 @@ if (feishuCfg.appId && feishuCfg.appSecret) {
 }
 
 // MCP Server — exposes Lumi as an MCP server for remote devices
-const lumiMcp = createLumiMcpServer({ getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen }, toolRegistry);
+const lumiMcp = createLumiMcpServer({ getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen }, toolRegistry, (event, data) => io.emit(event, data));
 app.get('/mcp/sse', (req, res) => handleMcpSSE(lumiMcp, req, res));
 app.post('/mcp/message', (req, res) => handleMcpMessage(req, res));
 

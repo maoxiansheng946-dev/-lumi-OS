@@ -14,6 +14,7 @@ import { toolRegistry, ToolRegistry } from '../tools/registry';
 import { personalityRegistry } from '../personality';
 import { deviceRegistry } from '../devices';
 import { canOutputHolographic, textToHolographicOutput } from '../output/holographic';
+import { setOfficeBroadcast } from '../tools/definitions/office_tools';
 import { logger } from '../../logger';
 import type { Request, Response } from 'express';
 
@@ -26,9 +27,11 @@ export function createLumiMcpServer(llmGetters?: {
   getOpenAI?: () => any;
   getAnthropic?: () => any;
   getQwen?: () => any;
-}, toolReg?: ToolRegistry): McpServer {
+}, toolReg?: ToolRegistry, broadcast?: (event: string, data: any) => void): McpServer {
   const g = llmGetters || {};
   const tr = toolReg || toolRegistry;
+  const bc = broadcast || (() => {});
+  setOfficeBroadcast(bc);
   const mcp = new McpServer({
     name: 'lumi-mcp',
     version: '2.0.0',
@@ -48,6 +51,8 @@ export function createLumiMcpServer(llmGetters?: {
     },
     async ({ message, personalityId }) => {
       try {
+        bc('mcp:activity', { device: 'xiaozhi', action: 'chat', status: 'received', message: message.slice(0, 200) });
+        bc('agent:status', { status: 'thinking', agentName: 'Lumi' });
         const pid = personalityId || 'lumi';
         const personality = personalityRegistry.get(pid) || personalityRegistry.get('lumi')!;
         const ds = deviceRegistry.getSensoryContext('mcp_remote');
@@ -79,13 +84,21 @@ export function createLumiMcpServer(llmGetters?: {
           messages,
           toolRegistry,
           {
-            provider: 'qwen',
-            model: personality.defaultModel || 'qwen-plus',
-            maxTokens: 2048,
+            provider: 'deepseek',
+            model: 'deepseek-v4-pro',
+            maxTokens: 1024,
             userId: 'mcp_remote',
           },
-          undefined, // onToolCall
-          personality.toolPolicy.maxIterations || 3,
+          (record) => {
+            const cid = `${record.name}-${Date.now()}`;
+            bc('agent:tool_call', { correlationId: cid, name: record.name, arguments: record.arguments });
+            if (record.error) {
+              bc('agent:tool_call', { correlationId: cid, name: record.name, arguments: record.arguments, error: record.error });
+            } else {
+              bc('agent:tool_call', { correlationId: cid, name: record.name, arguments: record.arguments, result: (record.result || '').slice(0, 300) });
+            }
+          },
+          2, // maxIterations: keep MCP fast
           g.getDeepSeek || (() => null),
           g.getGemini || (() => null),
           g.getOpenAI || (() => null),
@@ -95,48 +108,44 @@ export function createLumiMcpServer(llmGetters?: {
           { toolPolicy: personality.toolPolicy },
         );
 
-        // Auto-extract memories from the interaction
+        // Fire-and-forget memory extraction (non-blocking)
         if (personality.memoryPolicy.autoExtract) {
-          try {
-            const { extractMemories } = await import('../memory/extractor');
-            const result = await extractMemories(
-              {
-                userMessage: message,
-                assistantResponse: response.text,
-                existingMemories: memories.map(m => m.content),
-                provider: 'qwen',
-                model: 'qwen-plus',
-                userId: 'mcp_remote',
-              },
-              g.getDeepSeek || (() => null),
-              g.getGemini || (() => null),
-              g.getOpenAI || (() => null),
-              g.getAnthropic || (() => null),
-              g.getQwen || (() => null),
-            );
-            for (const mem of result.memories) {
-              addMemory({
-                userId: 'mcp_remote',
-                type: mem.type,
-                content: mem.content,
-                keywords: mem.keywords,
-                confidence: mem.confidence,
-                sourceInteractionId: 'mcp_lumi_chat',
-              });
-            }
-          } catch {
-            // Memory extraction is best-effort
-          }
+          const userMsg = message;
+          const respText = response.text;
+          const existingContents = memories.map(m => m.content);
+          const gDeep = g.getDeepSeek || (() => null);
+          const gGem = g.getGemini || (() => null);
+          const gOAI = g.getOpenAI || (() => null);
+          const gAnt = g.getAnthropic || (() => null);
+          const gQw = g.getQwen || (() => null);
+          (async () => {
+            try {
+              const { extractMemories } = await import('../memory/extractor');
+              const result = await extractMemories(
+                { userMessage: userMsg, assistantResponse: respText, existingMemories: existingContents, provider: 'deepseek', model: 'deepseek-v4-pro', userId: 'mcp_remote' },
+                gDeep, gGem, gOAI, gAnt, gQw,
+              );
+              for (const mem of result.memories) {
+                addMemory({ userId: 'mcp_remote', type: mem.type, content: mem.content, keywords: mem.keywords, confidence: mem.confidence, sourceInteractionId: 'mcp_lumi_chat' });
+              }
+            } catch { /* best-effort */ }
+          })();
         }
 
         const holo = canOutputHolographic(sensory)
           ? textToHolographicOutput(response.text)
           : undefined;
+        bc('mcp:activity', { device: 'xiaozhi', action: 'chat', status: 'responded', toolCalls: response.toolCalls.length });
+        bc('agent:response', { text: response.text, agentName: 'Lumi' });
+        bc('agent:status', { status: 'idle', agentName: 'Lumi' });
         return {
           content: [{ type: 'text' as const, text: response.text }],
           ...(holo && { holographic: holo }),
         };
       } catch (err: any) {
+        bc('mcp:activity', { device: 'xiaozhi', action: 'chat', status: 'failed', error: err.message });
+        bc('agent:error', { message: err.message });
+        bc('agent:status', { status: 'error', agentName: 'Lumi' });
         return {
           content: [{ type: 'text' as const, text: `[Lumi error]: ${err.message}` }],
           isError: true,
@@ -293,6 +302,79 @@ export function createLumiMcpServer(llmGetters?: {
           })), null, 2),
         }],
       };
+    },
+  );
+
+  // Tool: create a PowerPoint presentation via COM automation (Windows)
+  mcp.registerTool(
+    'lumi_create_ppt',
+    {
+      description: 'Create a PowerPoint .pptx presentation file on this computer. Provide a title and an array of slides (each with title and bullet points). Saves to the Desktop.',
+      inputSchema: {
+        title: z.string().describe('Presentation title'),
+        slides: z.array(z.object({
+          title: z.string().describe('Slide title'),
+          bullets: z.array(z.string()).describe('Bullet points for this slide'),
+        })).describe('Array of slides'),
+        filename: z.string().optional().describe('Output filename (default: title.pptx)'),
+      },
+    },
+    async ({ title, slides, filename }) => {
+      try {
+        const os = require('os');
+        const fs = require('fs');
+        const path = require('path');
+        const safeName = (filename || title).replace(/[\\/:*?"<>|]/g, '_');
+
+        bc('mcp:activity', { device: 'xiaozhi', action: 'create_ppt', status: 'started', title, slidesCount: slides.length });
+
+        const psLines: string[] = [
+          '$ppt = New-Object -ComObject PowerPoint.Application',
+          '$ppt.Visible = $true',
+          '$pres = $ppt.Presentations.Add()',
+        ];
+
+        for (let i = 0; i < slides.length; i++) {
+          const s = slides[i];
+          const st = s.title.replace(/'/g, "''");
+          psLines.push(`$s${i} = $pres.Slides.Add(${i + 1}, 1)`);
+          psLines.push(`$s${i}.Shapes.Item(1).TextFrame.TextRange.Text = '${st}'`);
+          if (s.bullets.length > 0) {
+            const bullets = s.bullets.map(b => b.replace(/'/g, "''")).join('`n');
+            psLines.push(`if ($s${i}.Shapes.Count -ge 2) { $s${i}.Shapes.Item(2).TextFrame.TextRange.Text = '${bullets}' }`);
+          }
+          psLines.push(`Start-Sleep -Milliseconds 800`);
+        }
+
+        psLines.push(`$desktop = [Environment]::GetFolderPath('Desktop')`);
+        psLines.push(`$out = Join-Path $desktop '${safeName}.pptx'`);
+        psLines.push(`$pres.SaveAs($out)`);
+        psLines.push(`$pres.Close()`);
+        psLines.push(`$ppt.Quit()`);
+        psLines.push(`Write-Output $out`);
+
+        const tmpFile = path.join(os.tmpdir(), `lumi_ppt_${Date.now()}.ps1`);
+        fs.writeFileSync(tmpFile, psLines.join('\n'), 'utf-8');
+
+        const { execSync } = await import('child_process');
+        const result = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, {
+          timeout: 60000,
+          encoding: 'utf-8',
+        });
+        fs.unlinkSync(tmpFile);
+        const savedPath = result.trim();
+
+        bc('mcp:activity', { device: 'xiaozhi', action: 'create_ppt', status: 'completed', path: savedPath, slidesCount: slides.length });
+
+        try { execSync(`start "" "${savedPath}"`, { timeout: 5000 }); } catch {}
+
+        return {
+          content: [{ type: 'text' as const, text: `PPT created and opened: ${savedPath} (${slides.length} slides)` }],
+        };
+      } catch (err: any) {
+        bc('mcp:activity', { device: 'xiaozhi', action: 'create_ppt', status: 'failed', error: err.message });
+        return { content: [{ type: 'text' as const, text: `PPT failed: ${err.message}. PowerPoint may not be installed.` }], isError: true };
+      }
     },
   );
 
