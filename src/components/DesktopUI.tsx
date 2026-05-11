@@ -33,7 +33,8 @@ import {
   Box,
   Wrench,
   MessageSquare,
-  Crown
+  Crown,
+  Mic
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from './SharedUI';
@@ -1038,25 +1039,79 @@ export function DesktopUI({
     return { w: '900px', h: '700px' };
   };
 
-  // Mini mode — show just the orb
+  // Mini mode — floating orb
   if (isMiniMode) {
+    const isActive = callState !== 'idle';
     return (
       <div
-        className="fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none bg-transparent flex items-center justify-center"
+        className="fixed inset-0 h-screen w-screen overflow-hidden bg-transparent flex items-center justify-center"
         onDoubleClick={toggleMiniMode}
-        title="Double-click to expand"
+        title="Double-click to restore"
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.15)_0%,transparent_70%)]" />
-        <LocalAgentSphere
-          t={t}
-          callState={callState}
-          audioLevel={audioLevel}
-          isWallpaperMode={false}
-          onStartCall={() => startCall(selectedVoiceId, personalityId, personalityId)}
-          onEndCall={endCall}
-          onInterrupt={interrupt}
-          onToggleMute={toggleMute}
+        {/* Outer glow ring */}
+        <motion.div
+          animate={{
+            scale: isActive ? [1, 1.15, 1] : 1,
+            opacity: isActive ? [0.3, 0.6, 0.3] : 0.2,
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          className={`absolute w-24 h-24 rounded-full blur-xl ${
+            callState === 'listening' ? 'bg-celestial-saturn' :
+            callState === 'thinking' ? 'bg-purple-500' :
+            callState === 'speaking' ? 'bg-emerald-400' :
+            'bg-white/10'
+          }`}
         />
+
+        {/* Central orb */}
+        <motion.button
+          onClick={toggleMiniMode}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+          className={`relative w-16 h-16 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
+            isActive
+              ? 'bg-celestial-saturn/20 border-celestial-saturn shadow-[0_0_30px_rgba(255,200,80,0.3)]'
+              : 'bg-white/5 border-white/10 hover:border-white/20'
+          }`}
+        >
+          {/* Audio level rings */}
+          {isActive && (
+            <>
+              {[1, 2, 3].map((i) => (
+                <motion.div
+                  key={i}
+                  className="absolute inset-0 rounded-full border border-celestial-saturn/30"
+                  animate={{
+                    scale: [1, 1 + audioLevel * 0.3 + i * 0.1, 1],
+                    opacity: [0.3, 0, 0.3],
+                  }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Icon */}
+          {callState === 'listening' ? (
+            <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+              <Mic size={22} className="text-celestial-saturn" />
+            </motion.div>
+          ) : callState === 'speaking' ? (
+            <Volume2 size={22} className="text-emerald-400" />
+          ) : callState === 'thinking' ? (
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+              <Sparkles size={22} className="text-purple-400" />
+            </motion.div>
+          ) : (
+            <Sparkles size={22} className="text-white/30" />
+          )}
+        </motion.button>
+
+        {/* Click hint */}
+        <div className="absolute bottom-4 text-[8px] font-mono text-white/20 uppercase tracking-widest">
+          double-click
+        </div>
+
         <VoiceSubtitle
           transcript={transcript}
           responseText={responseText}
@@ -1464,7 +1519,7 @@ export function DesktopUI({
                     }`}
                   >
                     <Box size={14} className={isMiniMode ? 'animate-pulse' : ''} />
-                    {isMiniMode ? 'Mini' : 'Mini'}
+                    {isMiniMode ? 'Expand' : 'Mini'}
                   </button>
                 </div>
               </div>
