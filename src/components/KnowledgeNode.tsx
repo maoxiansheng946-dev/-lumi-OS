@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { File, BrainCircuit, Folder, Shield } from 'lucide-react';
 
 export interface KnowledgeNodeData {

@@ -46,6 +46,12 @@ export function ParticleCanvas({ nodePositions = [], highlightedNodeIds = new Se
   const rafRef = useRef<number>(0);
   const dimsRef = useRef({ w: 0, h: 0 });
   const nodeGlowsRef = useRef<NodeGlow[]>([]);
+  const nodePositionsRef = useRef(nodePositions);
+  const highlightedIdsRef = useRef(highlightedNodeIds);
+
+  // Keep refs in sync without restarting animation loop
+  useEffect(() => { nodePositionsRef.current = nodePositions; }, [nodePositions]);
+  useEffect(() => { highlightedIdsRef.current = highlightedNodeIds; }, [highlightedNodeIds]);
 
   // Initialize particles
   const initParticles = useCallback((w: number, h: number) => {
@@ -124,14 +130,16 @@ export function ParticleCanvas({ nodePositions = [], highlightedNodeIds = new Se
       ctx.clearRect(0, 0, w, h);
 
       const mouse = mouseRef.current;
+      const positions = nodePositionsRef.current;
+      const highlighted = highlightedIdsRef.current;
 
       // Update node glows based on highlights
-      const glows: NodeGlow[] = nodePositions
-        .filter(n => highlightedNodeIds.size === 0 || highlightedNodeIds.has(n.id))
+      const glows: NodeGlow[] = positions
+        .filter(n => highlighted.size === 0 || highlighted.has(n.id))
         .map(n => ({
           x: n.x * w,
           y: n.y * h,
-          radius: highlightedNodeIds.has(n.id) ? 80 : 40,
+          radius: highlighted.has(n.id) ? 80 : 40,
           hue: n.hue ?? 210,
         }));
       nodeGlowsRef.current = glows;
@@ -293,7 +301,7 @@ export function ParticleCanvas({ nodePositions = [], highlightedNodeIds = new Se
       canvas.removeEventListener('touchmove', handleTouch);
       canvas.removeEventListener('touchend', handleLeave);
     };
-  }, [nodePositions, highlightedNodeIds, initParticles]);
+  }, [initParticles]);
 
   return (
     <canvas

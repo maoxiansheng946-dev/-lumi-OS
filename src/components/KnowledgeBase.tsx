@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, Upload, Network, GitMerge, Sparkles, TrendingUp, Loader2, File, BrainCircuit, Layers, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Search, Upload, Network, GitMerge, Sparkles, TrendingUp, Loader2, File, BrainCircuit, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
 import { ParticleCanvas } from './ParticleCanvas';
@@ -549,8 +549,8 @@ export function KnowledgeBase({ t }: { t?: any }) {
               <Layers size={12} /> {totalBranches} branches
             </span>
             <span className="w-px h-3 bg-white/[0.08]" />
-            <button onClick={() => { setOrganizing(true); setReflecting(true); }} className="flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-white/5 text-[10px] font-bold text-white/25 hover:text-white/50 transition-colors">
-              <Sparkles size={11} /> Reflect
+            <button onClick={handleSelfReflect} disabled={reflecting} className="flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-white/5 text-[10px] font-bold text-white/25 hover:text-white/50 transition-colors">
+              <Sparkles size={11} className={reflecting ? 'animate-pulse' : ''} /> Reflect
             </button>
             <button onClick={handleAnalyze} disabled={analyzing} className="flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-white/5 text-[10px] font-bold text-white/25 hover:text-white/50 transition-colors">
               <TrendingUp size={11} className={analyzing ? 'animate-pulse' : ''} /> Patterns
