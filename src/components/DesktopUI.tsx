@@ -800,11 +800,9 @@ export function DesktopUI({
 
   const toggleMiniMode = async () => {
     const next = !isMiniMode;
-    const ok = await systemService.setMiniMode(next);
-    if (ok || !(window as any).__TAURI_INTERNALS__) {
-      setIsMiniMode(next);
-      if (next) sounds.playPulse();
-    }
+    setIsMiniMode(next);
+    if (next) sounds.playPulse();
+    systemService.setMiniMode(next).catch(() => {});
   };
 
   // MCP Live Activity socket listener
