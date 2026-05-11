@@ -59,6 +59,18 @@ class SoundService {
   playNeural() {
     this.playTone(1200, 'triangle', 0.05, 0.03);
   }
+
+  // Wake word detection chime — ascending two-tone with sparkle
+  playWakeChime() {
+    this.playTone(880, 'sine', 0.15, 0.08);
+    setTimeout(() => this.playTone(1320, 'sine', 0.2, 0.06), 100);
+  }
+
+  // Error alert — low buzz
+  playError() {
+    this.playTone(200, 'sawtooth', 0.3, 0.06);
+    setTimeout(() => this.playTone(160, 'sawtooth', 0.2, 0.05), 150);
+  }
 }
 
 export const sounds = new SoundService();

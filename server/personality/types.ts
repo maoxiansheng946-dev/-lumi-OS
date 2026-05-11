@@ -63,6 +63,12 @@ export interface PersonalityConfig {
   /** Fallback model if the default is unavailable */
   fallbackModel: string;
 
+  /** TTS voice ID for voice mode — maps to CosyVoice/GPT-SoVITS voice */
+  ttsVoiceId?: string;
+
+  /** Custom voice instructions injected into the voice system prompt */
+  voiceInstructions?: string;
+
   /** Per-context overrides — e.g. 'floating-window' can be more concise than 'full-screen' */
   contextOverrides?: Record<string, Partial<{
     expressionStyle: Partial<ExpressionStyle>;

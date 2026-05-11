@@ -66,6 +66,8 @@ class PersonalityRegistry {
       memoryPolicy: { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact', 'habit', 'knowledge'], autoExtract: true },
       defaultModel: 'deepseek-chat',
       fallbackModel: 'qwen-plus',
+      ttsVoiceId: 'longxiaochun',
+      voiceInstructions: 'Speak warmly and proactively. Be the user\'s trusted desktop companion.',
     };
     this.personalities.set('lumi', lumi);
     console.log('[Personality] Loaded built-in fallback personality');

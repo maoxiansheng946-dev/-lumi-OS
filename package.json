@@ -38,6 +38,7 @@
     "@picovoice/porcupine-web": "^4.0.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.1.14",
     "@tauri-apps/api": "^2.11.0",
     "@vitejs/plugin-react": "^5.0.4",

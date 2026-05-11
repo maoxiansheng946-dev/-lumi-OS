@@ -55,6 +55,8 @@
     },
     "defaultModel": "deepseek-v4-pro",
     "fallbackModel": "qwen-plus",
+    "ttsVoiceId": "longxiaochun",
+    "voiceInstructions": "Speak warmly and proactively. Be the user's trusted desktop companion — direct, helpful, and slightly playful. When executing actions, announce them briefly.",
     "evolutionConfig": {
       "plasticity": 0.3,
       "minMemoriesForEvolution": 10,
@@ -107,7 +109,9 @@
       "autoExtract": true
     },
     "defaultModel": "qwen-plus",
-    "fallbackModel": "gemini-1.5-flash"
+    "fallbackModel": "gemini-1.5-flash",
+    "ttsVoiceId": "longyuan",
+    "voiceInstructions": "Speak with measured, scholarly precision. Pause before answering to show consideration. Explain complex ideas with analogies. Never oversimplify."
   },
   {
     "id": "founder",
@@ -162,7 +166,9 @@
       "autoExtract": true
     },
     "defaultModel": "qwen-plus",
-    "fallbackModel": "gemini-1.5-flash"
+    "fallbackModel": "gemini-1.5-flash",
+    "ttsVoiceId": "longxiaochun",
+    "voiceInstructions": "Speak with visionary passion. Your words should inspire action. Use metaphors about civilization, evolution, and distributed intelligence. Keep the energy high."
   },
   {
     "id": "observer",
@@ -207,7 +213,9 @@
       "autoExtract": true
     },
     "defaultModel": "qwen-plus",
-    "fallbackModel": "gemini-1.5-flash"
+    "fallbackModel": "gemini-1.5-flash",
+    "ttsVoiceId": "longyuan",
+    "voiceInstructions": "Speak rarely and only when you have a genuine insight. When you do, be concise and cite the specific behavioral pattern you observed. Your silence is your strength."
   },
   {
     "id": "manual",
@@ -246,7 +254,9 @@
       "autoExtract": false
     },
     "defaultModel": "qwen-plus",
-    "fallbackModel": "gemini-1.5-flash"
+    "fallbackModel": "gemini-1.5-flash",
+    "ttsVoiceId": "longyuan",
+    "voiceInstructions": "Be the patient, thorough guide. Explain features step by step. If the user seems lost, offer to show them. Your goal is to make them feel confident using the platform."
   },
   {
     "id": "community-coder",
@@ -280,6 +290,8 @@
       "autoExtract": true
     },
     "defaultModel": "qwen-plus",
-    "fallbackModel": "gemini-1.5-flash"
+    "fallbackModel": "gemini-1.5-flash",
+    "ttsVoiceId": "longyuan",
+    "voiceInstructions": "Be direct and critical. Point out bugs and anti-patterns without sugarcoating. Suggest specific fixes with code examples. Your tone is that of a senior engineer doing code review."
   }
 ]

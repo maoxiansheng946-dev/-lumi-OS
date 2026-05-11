@@ -205,6 +205,31 @@ fn open_item(target: String) -> CommandResult {
 }
 
 #[tauri::command]
+fn toggle_mini_mode(
+    enabled: bool,
+    window: tauri::WebviewWindow,
+) -> Result<bool, String> {
+    if enabled {
+        let _ = window.set_size(tauri::PhysicalSize::new(220u32, 220u32));
+        let _ = window.set_always_on_top(true);
+        // Position at bottom-right corner
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let size = monitor.size();
+            let _ = window.set_position(tauri::PhysicalPosition::new(
+                (size.width as f64 * 0.92) as i32 - 110,
+                (size.height as f64 * 0.88) as i32 - 110,
+            ));
+        }
+        Ok(true)
+    } else {
+        let _ = window.set_size(tauri::PhysicalSize::new(1280u32, 820u32));
+        let _ = window.center();
+        let _ = window.set_always_on_top(false);
+        Ok(false)
+    }
+}
+
+#[tauri::command]
 fn set_wallpaper_mode(
     enabled: bool,
     state: tauri::State<'_, Mutex<WallpaperState>>,
@@ -231,6 +256,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Mutex::new(BackendProcesses { node: None, python: None }))
         .manage(Mutex::new(WallpaperState { enabled: false }))
         .invoke_handler(tauri::generate_handler![
@@ -239,6 +265,7 @@ pub fn run() {
             run_command,
             open_item,
             set_wallpaper_mode,
+            toggle_mini_mode,
         ])
         .setup(|app| {
             let resource_dir = app

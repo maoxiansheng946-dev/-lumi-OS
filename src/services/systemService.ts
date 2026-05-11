@@ -44,6 +44,21 @@ class SystemService {
       error: 'System commands require the desktop app (Tauri). Browser mode has no shell access.',
     };
   }
+  /**
+   * Toggle mini floating mode — shrinks window to 220x220 orb at bottom-right
+   */
+  async setMiniMode(enabled: boolean): Promise<boolean> {
+    if (this.isTauri) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<boolean>('toggle_mini_mode', { enabled });
+      } catch (err) {
+        console.error('Failed to toggle mini mode:', err);
+        return false;
+      }
+    }
+    return false;
+  }
 
   /**
    * Toggle wallpaper visual mode + OS-level click-through (Win32 WS_EX_TRANSPARENT)

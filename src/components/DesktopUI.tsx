@@ -60,6 +60,8 @@ import { useApp } from '@/contexts/AppContext';
 import { NexusGlobe } from './NexusGlobe/NexusGlobe';
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
+import { VoiceSubtitle } from './VoiceSubtitle';
+import { ErrorBoundary } from './ErrorBoundary';
 
 import { NeuralFileManager } from './NeuralFileManager';
 import { MemoryExplorer } from './MemoryExplorer';
@@ -733,6 +735,7 @@ export function DesktopUI({
   const [volume, setVolume] = useState(60);
   const [time, setTime] = useState(new Date());
   const [isWallpaperMode, setIsWallpaperMode] = useState(false);
+  const [isMiniMode, setIsMiniMode] = useState(false);
   const [isTrainingOpen, setIsTrainingOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('lumi_onboarding_seen') !== 'true';
@@ -755,7 +758,7 @@ export function DesktopUI({
   }, [personalityId]);
 
   const socket = useSocket();
-  const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, interrupt, toggleMute } = useVoiceCall({
+  const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, responseText, interrupt, toggleMute } = useVoiceCall({
     socket,
   });
 
@@ -766,6 +769,7 @@ export function DesktopUI({
     personalityId,
     agentId: personalityId,
     keyword: 'Computer',
+    onDetection: () => sounds.playWakeChime(),
   });
 
   useEffect(() => {
@@ -792,6 +796,15 @@ export function DesktopUI({
     toast(nextMode ? (t.wallpaperFusionActive || 'Wallpaper Fusion Active') : (t.standardFocusMode || 'Standard Focus Mode'), {
       icon: nextMode ? <Sparkles className="text-celestial-saturn" /> : <Box className="text-white/40" />
     });
+  };
+
+  const toggleMiniMode = async () => {
+    const next = !isMiniMode;
+    const ok = await systemService.setMiniMode(next);
+    if (ok || !(window as any).__TAURI_INTERNALS__) {
+      setIsMiniMode(next);
+      if (next) sounds.playPulse();
+    }
   };
 
   // MCP Live Activity socket listener
@@ -1026,6 +1039,35 @@ export function DesktopUI({
     if (windowId === 'subscription') return { w: '850px', h: '640px' };
     return { w: '900px', h: '700px' };
   };
+
+  // Mini mode — show just the orb
+  if (isMiniMode) {
+    return (
+      <div
+        className="fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none bg-transparent flex items-center justify-center"
+        onDoubleClick={toggleMiniMode}
+        title="Double-click to expand"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.15)_0%,transparent_70%)]" />
+        <LocalAgentSphere
+          t={t}
+          callState={callState}
+          audioLevel={audioLevel}
+          isWallpaperMode={false}
+          onStartCall={() => startCall(selectedVoiceId, personalityId, personalityId)}
+          onEndCall={endCall}
+          onInterrupt={interrupt}
+          onToggleMute={toggleMute}
+        />
+        <VoiceSubtitle
+          transcript={transcript}
+          responseText={responseText}
+          callState={callState}
+          audioLevel={audioLevel}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={`fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none transition-all duration-1000 ${
@@ -1415,7 +1457,17 @@ export function DesktopUI({
                     <Zap size={14} className={isWallpaperMode ? 'animate-pulse' : ''} />
                     {isWallpaperMode ? (t.fusionActive || 'Fusion Active') : (t.wallpaperMode || 'Wallpaper Mode')}
                   </button>
-                  
+                  <button
+                    onClick={toggleMiniMode}
+                    className={`h-10 px-4 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-xl ${
+                      isMiniMode
+                        ? 'bg-purple-500 text-white border-purple-500'
+                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Box size={14} className={isMiniMode ? 'animate-pulse' : ''} />
+                    {isMiniMode ? 'Mini' : 'Mini'}
+                  </button>
                 </div>
               </div>
 
@@ -1684,6 +1736,14 @@ export function DesktopUI({
         visible={isWallpaperMode && (agentStatus !== 'idle' || workflowSteps.length > 0)}
         agentStatus={agentStatus}
         steps={workflowSteps}
+      />
+
+      {/* Voice Subtitle Overlay — shows real-time transcript & AI response */}
+      <VoiceSubtitle
+        transcript={transcript}
+        responseText={responseText}
+        callState={callState}
+        audioLevel={audioLevel}
       />
 
       <div className="absolute inset-0 z-[20] pointer-events-none">

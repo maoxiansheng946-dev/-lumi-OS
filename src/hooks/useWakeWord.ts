@@ -17,6 +17,8 @@ interface UseWakeWordOptions {
   personalityId?: string;
   /** Agent ID to pass to startCall */
   agentId?: string;
+  /** Called when wake word is detected (before startCall) */
+  onDetection?: () => void;
 }
 
 interface UseWakeWordReturn {
@@ -39,6 +41,7 @@ export function useWakeWord({
   voiceId,
   personalityId,
   agentId,
+  onDetection,
 }: UseWakeWordOptions): UseWakeWordReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
@@ -107,6 +110,7 @@ export function useWakeWord({
         (_detection) => {
           // Wake word detected!
           setLastDetection(new Date().toISOString());
+          onDetection?.();
           startCallRef.current?.(voiceId, personalityId, agentId);
         },
         { publicPath: '/porcupine_params.pv' },

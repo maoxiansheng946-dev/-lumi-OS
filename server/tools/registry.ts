@@ -123,7 +123,16 @@ export class ToolRegistry {
       console.log(`[Tool] Executing confirmation-level tool: ${name}`);
     }
 
-    return tool.handler(args, context);
+    // Wrap with 30s timeout to prevent hanging
+    const timeoutMs = 30000;
+    const result = await Promise.race([
+      tool.handler(args, context),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error(`Tool "${name}" timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+      ),
+    ]);
+
+    return result;
   }
 }
 

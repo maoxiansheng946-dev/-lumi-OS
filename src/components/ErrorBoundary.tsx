@@ -1,49 +1,74 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React from 'react';
+import { motion } from 'motion/react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
-interface Props {
-  children: ReactNode;
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null
-  };
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
-  public static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ErrorBoundary]', error.message, errorInfo.componentStack?.slice(0, 300));
   }
 
-  public render() {
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
     if (this.state.hasError) {
+      if (this.props.fallback) return this.props.fallback;
+
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-celestial-deep p-6 text-center">
-          <div className="w-20 h-20 bg-celestial-mars/20 text-celestial-mars rounded-full flex items-center justify-center mb-6">
-            <span className="text-4xl font-bold">!</span>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex items-center justify-center min-h-[60vh]"
+        >
+          <div className="glass-dark rounded-[2.5rem] p-8 border border-white/10 max-w-sm text-center space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
+              <AlertTriangle size={28} className="text-red-400" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black uppercase tracking-widest text-white/60">Signal Interrupted</h3>
+              <p className="text-[10px] text-white/20 font-mono uppercase tracking-widest">Component render failure</p>
+            </div>
+            <p className="text-xs text-white/40 font-mono bg-white/5 rounded-xl p-3 max-h-20 overflow-auto">
+              {this.state.error?.message?.slice(0, 120) || 'Unknown error'}
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={this.handleRetry}
+                className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-5 py-2.5 rounded-xl bg-celestial-saturn/10 border border-celestial-saturn/20 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-celestial-saturn hover:bg-celestial-saturn/20 transition-colors"
+              >
+                <Home size={12} />
+                Reload
+              </button>
+            </div>
           </div>
-          <h2 className="text-3xl font-bold mb-4">Celestial Signal Interrupted</h2>
-          <p className="text-white/60 mb-8 max-w-md">
-            We've encountered a cosmic anomaly. Our explorers are working to restore the connection.
-          </p>
-          <pre className="bg-black/40 p-4 rounded-xl text-xs text-left overflow-auto max-w-full mb-8 border border-white/10">
-            {this.state.error?.message}
-          </pre>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-8 py-3 bg-celestial-saturn text-black font-bold rounded-full hover:scale-105 transition-transform"
-          >
-            Reconnect to Lumi
-          </button>
-        </div>
+        </motion.div>
       );
     }
 

@@ -77,7 +77,12 @@ async function processVoiceInput(
     { mode: 'task', sensory: sensoryAudio },
   );
 
+  const personalityVoiceInstr = personality.voiceInstructions
+    ? `\nPERSONALITY VOICE STYLE: ${personality.voiceInstructions}\n`
+    : '';
+
   const voiceSystemPrompt = `You are ${personality.name}, a native desktop AI agent with FULL system access — like having an operator at the keyboard.
+${personalityVoiceInstr}
 
 CAPABILITIES:
 - desktop_open: Open ANY app, file, folder, or URL. Examples: "notepad.exe", "calc.exe", "explorer C:\\Users", "control", "mspaint.exe", "https://github.com"
@@ -361,7 +366,9 @@ export function registerVoiceHandlers(
     session.inputQueue = [];
     session.userId = getUserId(socket);
     session.agentId = data.agentId || '';
-    session.currentVoiceId = data.voiceId || null;
+    const personalityCfg = personalityRegistry.get(data.personalityId || 'lumi');
+    // Use explicit voiceId, then personality's TTS voice, then null (TTS provider default)
+    session.currentVoiceId = data.voiceId || personalityCfg?.ttsVoiceId || null;
     session.personalityId = data.personalityId || 'lumi';
 
     const sttProvider = getActiveSTTProvider();

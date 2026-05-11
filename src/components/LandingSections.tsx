@@ -349,6 +349,42 @@ export function LandingSections({ t, onNavigateToSolutions, onSelectDesktop, onS
         </div>
       </section>
 
+      {/* Download CTA */}
+      <section className="text-center space-y-8 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="glass-dark rounded-[3rem] p-12 border border-white/10 space-y-6"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-celestial-saturn/20 border border-celestial-saturn/30 rounded-full text-[10px] font-bold uppercase tracking-widest text-celestial-saturn">
+            <Smartphone size={12} />
+            Desktop App Available
+          </div>
+          <h2 className="text-4xl font-black tracking-tighter">{t.downloadTitle || 'Ready to go native?'}</h2>
+          <p className="text-white/40 max-w-xl mx-auto">
+            {t.downloadDesc || 'Download the Lumi OS desktop app for full system access — open apps, manage files, search the web, and control your desktop with AI. Available for Windows, with macOS and Linux coming soon.'}
+          </p>
+          <div className="flex gap-4 justify-center flex-wrap">
+            <a
+              href="https://releases.lumiai.asia/lumi-os/latest/download"
+              className="px-8 py-4 bg-celestial-saturn text-black font-black rounded-2xl hover:scale-105 active:scale-95 transition-all inline-flex items-center gap-2 shadow-xl"
+            >
+              <Smartphone size={18} />
+              Download for Windows
+            </a>
+            <button
+              onClick={onSelectDesktop}
+              className="px-8 py-4 bg-white/5 border border-white/10 text-white font-black rounded-2xl hover:bg-white/10 transition-all inline-flex items-center gap-2"
+            >
+              <Globe size={18} />
+              Launch Web App
+            </button>
+          </div>
+          <p className="text-[10px] text-white/20 font-mono">v2.0.4 · Windows 10+ · 120MB · Free</p>
+        </motion.div>
+      </section>
+
       {/* Stats */}
       <GlassCard className="p-12 rounded-[3rem]" hoverEffect={false}>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-12 text-center">

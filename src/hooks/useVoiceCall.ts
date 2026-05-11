@@ -13,6 +13,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>('');
+  const [responseText, setResponseText] = useState<string>('');
   const [isMuted, setIsMuted] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [connectionQuality, setConnectionQuality] = useState<'good' | 'fair' | 'poor'>('good');
@@ -27,6 +28,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
   const audioQueueContext = useRef<AudioContext | null>(null);
   const callStartTime = useRef<number>(0);
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
 
   const updateAudioLevel = useCallback(() => {
     if (!analyser.current) return;
@@ -200,6 +202,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
 
     socket.on('agent:response', (data: { text: string }) => {
       setTranscript(''); // Clear user transcript when AI starts responding
+      setResponseText(data.text);
       onResponse?.(data.text);
     });
 
@@ -283,8 +286,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       scriptProcessor.connect(zeroGain);
       zeroGain.connect(audioContext.current.destination);
 
-      // Store for cleanup
-      (scriptProcessor as any)._lumiScriptProc = scriptProcessor;
+      scriptProcessorRef.current = scriptProcessor;
 
       isCallActive.current = true;
       callStartTime.current = Date.now();
@@ -328,6 +330,10 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       streamRef.current = null;
     }
 
+    if (scriptProcessorRef.current) {
+      scriptProcessorRef.current.disconnect();
+      scriptProcessorRef.current = null;
+    }
     if (audioContext.current) {
       audioContext.current.close();
       audioContext.current = null;
@@ -385,6 +391,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     audioLevel,
     error,
     transcript,
+    responseText,
     isMuted,
     elapsedSeconds,
     connectionQuality,
