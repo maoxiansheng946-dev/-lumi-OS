@@ -173,11 +173,11 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Serialize personality file writes to prevent concurrent overwrites
 let personalityFileLock: Promise<void> = Promise.resolve();
 
-// Cookies: sameSite "none" permits cross-origin (Tauri webview → localhost).
-// secure: true requires HTTPS in general, but Chromium allows it on localhost/127.0.0.1.
-const getCookieOptions = (): { httpOnly: true; secure: boolean; sameSite: "none"; maxAge: number } => ({
+// SameSite=None requires Secure (Chromium silently rejects otherwise).
+// Chromium allows Secure cookies on localhost/127.0.0.1, so safe to always enable.
+const getCookieOptions = (): { httpOnly: true; secure: true; sameSite: "none"; maxAge: number } => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: true,
   sameSite: "none",
   maxAge: 24 * 60 * 60 * 1000,
 });

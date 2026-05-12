@@ -70,7 +70,12 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
   });
 
   router.get("/auth/me", (req, res) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+    // Fallback: WebView2 may not send httpOnly cookies, check Authorization header
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) token = authHeader.slice(7);
+    }
     if (!token) return res.status(401).json({ error: "Not authenticated" });
     try {
       const decoded: any = jwt.verify(token, jwtSecret);

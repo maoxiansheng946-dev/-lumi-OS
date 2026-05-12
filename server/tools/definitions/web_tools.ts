@@ -3,9 +3,9 @@ import { ToolRegistry } from '../registry';
 async function tryBingSearch(query: string, maxResults: number): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const response = await fetch(
-      `https://cn.bing.com/search?q=${encodeURIComponent(query)}&count=${maxResults}`,
+      `https://cn.bing.com/search?q=${encodeURIComponent(query)}&count=${maxResults}&mkt=zh-CN`,
       {
         signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -15,20 +15,30 @@ async function tryBingSearch(query: string, maxResults: number): Promise<string 
     if (!response.ok) return null;
 
     const html = await response.text();
-    // Extract search result snippets from Bing HTML
     const results: string[] = [];
+
+    // Bing 2024+ HTML: <li class="b_algo"> blocks
     const blockRe = /<li class="b_algo"[^>]*>([\s\S]*?)<\/li>/gi;
     let blockMatch;
     while ((blockMatch = blockRe.exec(html)) !== null && results.length < maxResults) {
       const block = blockMatch[1];
       const urlMatch = block.match(/<a[^>]*href="(https?:\/\/[^"]*)"[^>]*>/i);
-      const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-      const snippetMatch = block.match(/<p class="b_lineclamp\d*"[^>]*>([\s\S]*?)<\/p>/i);
-      if (urlMatch && titleMatch) {
-        const url = urlMatch[1];
-        const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
-        const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-        results.push(`${title}\n${snippet}\n${url}`);
+      const h2Match = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+      const title = h2Match ? h2Match[1].replace(/<[^>]+>/g, '').trim() : (urlMatch ? urlMatch[1] : '');
+      const snippetMatch = block.match(/<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i)
+        || block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+      const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+      if (urlMatch) {
+        results.push(`${title}\n${snippet}\n${urlMatch[1]}`);
+      }
+    }
+
+    // Fallback: broader extraction if b_algo blocks not found
+    if (results.length === 0) {
+      const broadRe = /<a[^>]*href="(https?:\/\/[^"]*)"[^>]*>\s*<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
+      let m;
+      while ((m = broadRe.exec(html)) !== null && results.length < maxResults) {
+        results.push(`${m[2].replace(/<[^>]+>/g, '').trim()}\n${m[1]}`);
       }
     }
     return results.length > 0 ? results.join('\n\n') : null;
@@ -43,11 +53,15 @@ async function webSearchHandler(args: Record<string, any>): Promise<string> {
 
   const maxResults = Math.min(Math.max(Number(args.maxResults) || 5, 1), 10);
 
-  // Try DuckDuckGo JSON API first
+  // Bing first — works in China, returns real search results
+  const bingResults = await tryBingSearch(query, maxResults);
+  if (bingResults) return bingResults;
+
+  // Fallback: DuckDuckGo Instant Answers (useful for definitions/facts)
   try {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
@@ -57,7 +71,7 @@ async function webSearchHandler(args: Record<string, any>): Promise<string> {
       const results: string[] = [];
 
       if (data.AbstractText) {
-        results.push(`Abstract: ${data.AbstractText}${data.AbstractURL ? ` (${data.AbstractURL})` : ''}`);
+        results.push(`${data.AbstractText}${data.AbstractURL ? ` (${data.AbstractURL})` : ''}`);
       }
 
       if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
@@ -79,14 +93,10 @@ async function webSearchHandler(args: Record<string, any>): Promise<string> {
       if (results.length > 0) return results.join('\n\n');
     }
   } catch {
-    // DuckDuckGo failed, try fallback
+    // DDG unavailable
   }
 
-  // Fallback: Bing search (accessible in China)
-  const bingResults = await tryBingSearch(query, maxResults);
-  if (bingResults) return bingResults;
-
-  return `No search results found for "${query}". DuckDuckGo and Bing are both unavailable from this network.`;
+  return `No search results found for "${query}". Try different search terms or use url_fetch on a known news site.`;
 }
 
 async function urlFetchHandler(args: Record<string, any>): Promise<string> {
@@ -140,7 +150,7 @@ async function urlFetchHandler(args: Record<string, any>): Promise<string> {
 export function registerWebOpsTools(registry: ToolRegistry): void {
   registry.register({
     name: 'web_search',
-    description: 'Search the web using DuckDuckGo Instant Answers. Returns formatted results with titles and URLs.',
+    description: 'Search the web via Bing (cn.bing.com). Returns formatted results with titles, snippets, and URLs. For Chinese news, use specific terms like "AI 人工智能 最新进展 2025". If results are poor, try url_fetch on known news sites like techcrunch.com, theverge.com, or 36kr.com.',
     parameters: {
       type: 'object',
       properties: {

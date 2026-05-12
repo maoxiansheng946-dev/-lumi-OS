@@ -691,6 +691,15 @@ export const translations: any = {
     mcpFailedToAddServer: "Failed to add server",
     mcpInstallFailed: "Install failed",
     mcpSearchFailed: "GitHub search failed",
+    // MCP — Desktop & Device Tools
+    mcpScreenCaptured: "Screenshot captured",
+    mcpScreenDescribed: "Screen analyzed",
+    mcpClipboardRead: "Clipboard read",
+    mcpClipboardWritten: "Text copied to clipboard",
+    mcpWindowListed: "Window list retrieved",
+    mcpWindowFocused: "Window focused",
+    mcpSpeechSynthesized: "Speech synthesized",
+    mcpProactivePushed: "Proactive message sent",
     // Settings — Voice Services
     settingsVoiceServices: "Voice Services",
     settingsHardware: "Hardware",
@@ -1712,6 +1721,15 @@ export const translations: any = {
     mcpFailedToAddServer: "添加服务失败",
     mcpInstallFailed: "安装失败",
     mcpSearchFailed: "GitHub 搜索失败",
+    // MCP — Desktop & Device Tools
+    mcpScreenCaptured: "已截屏",
+    mcpScreenDescribed: "屏幕已分析",
+    mcpClipboardRead: "已读取剪贴板",
+    mcpClipboardWritten: "已复制到剪贴板",
+    mcpWindowListed: "已获取窗口列表",
+    mcpWindowFocused: "已切换窗口",
+    mcpSpeechSynthesized: "语音已合成",
+    mcpProactivePushed: "主动消息已推送",
     // Settings — Voice Services
     settingsVoiceServices: "语音服务",
     settingsHardware: "硬件",
