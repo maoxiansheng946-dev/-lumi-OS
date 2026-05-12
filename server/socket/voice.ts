@@ -30,6 +30,8 @@ interface AudioSession {
   pipelineAbortController: AbortController | null;
   /** Queue of pending utterances while isProcessing=true */
   inputQueue: string[];
+  /** Timestamp of last audio chunk for STT latency measurement */
+  lastChunkTime: number;
 }
 
 function getAudioSession(socket: Socket): AudioSession {
@@ -45,6 +47,7 @@ function getAudioSession(socket: Socket): AudioSession {
       isProcessing: false,
       pipelineAbortController: null,
       inputQueue: [],
+      lastChunkTime: 0,
       userId: '',
       agentId: '',
     };
@@ -201,6 +204,7 @@ SAFETY:
       logger.info(`[Audio] LLM iteration ${iter + 1}/${maxIterations}: provider=${provider} model=${voiceModel}`);
       const toolDeclarations = toolRegistry.getToolDeclarations();
 
+      const llmStart = Date.now();
       const streamResult = await makeLLMCallStreaming(
         messages as NormalizedMessage[],
         toolDeclarations,
@@ -218,6 +222,7 @@ SAFETY:
         },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
       );
+      recordLatency('llm', Date.now() - llmStart);
 
       // Append assistant message to conversation
       messages.push({
@@ -368,6 +373,7 @@ export function registerVoiceHandlers(
     session.isSpeaking = false;
     session.isProcessing = false;
     session.inputQueue = [];
+    session.lastChunkTime = 0;
     session.userId = getUserId(socket);
     session.agentId = data.agentId || '';
     const personalityCfg = personalityRegistry.get(data.personalityId || 'lumi');
@@ -383,6 +389,9 @@ export function registerVoiceHandlers(
 
         session.sttSession.onResult(async (result) => {
           if (result.text && result.isFinal) {
+            if (session.lastChunkTime > 0) {
+              recordLatency('stt', Date.now() - session.lastChunkTime);
+            }
             logger.info(`[Audio] Final transcript: "${result.text}"`);
             session.accumulatedText += result.text;
             const text = session.accumulatedText.trim();
@@ -432,6 +441,7 @@ export function registerVoiceHandlers(
   socket.on("audio:chunk", (data: Buffer) => {
     const session = getAudioSession(socket);
     if (!session.isActive) return;
+    session.lastChunkTime = Date.now();
     if (session.sttSession) {
       session.sttSession.sendAudio(data);
       chunkCount++;

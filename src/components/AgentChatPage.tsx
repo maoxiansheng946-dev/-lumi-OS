@@ -340,11 +340,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user) return;
+    const text = newMessage.trim();
+    if (!text || !user) return;
 
     const userMsg = {
       id: Date.now().toString(),
-      text: newMessage,
+      text,
       userName: user.displayName || user.username || 'User',
       timestamp: new Date().toISOString(),
       type: 'user'
@@ -355,18 +356,38 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
     stop();
     setIsTyping(true);
 
+    // Safety timeout: reset typing state if no response within 30s
+    const safetyTimer = setTimeout(() => {
+      setIsTyping(false);
+      streamingMsgId.current = null;
+    }, 30000);
+
     if (socket?.connected) {
       socket.emit("agent:chat", {
-        text: newMessage,
+        text,
         history: messages.map(m => ({ role: m.type === 'agent' ? 'assistant' : 'user', content: m.text })),
         personalityId: personalityId || 'lumi',
         category: agentCategory,
         agentId,
       });
+
+      // Clear safety timer when response arrives
+      const onResponse = () => { clearTimeout(safetyTimer); setIsTyping(false); };
+      const onError = () => { clearTimeout(safetyTimer); setIsTyping(false); };
+      const onStatus = (data: { status: string }) => {
+        if (data.status === 'idle' || data.status === 'error') {
+          clearTimeout(safetyTimer);
+          setIsTyping(false);
+        }
+      };
+      socket.once('agent:response', onResponse);
+      socket.once('agent:error', onError);
+      socket.once('agent:status', onStatus);
     } else {
+      clearTimeout(safetyTimer);
       // Fallback to REST if socket not connected
       try {
-        const response = await runAgentLogic(newMessage, { platform, aiConfig });
+        const response = await runAgentLogic(text, { platform, aiConfig });
         setAgentMetadata(response);
         setMessages(prev => [...prev, {
           id: Date.now().toString(),

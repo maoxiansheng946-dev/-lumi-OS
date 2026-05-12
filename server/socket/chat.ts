@@ -77,19 +77,41 @@ export function registerChatHandler(
     try {
       socket.emit("agent:status", { status: "thinking", agentName: personality.name });
 
-      const provider = personality.defaultModel.startsWith('deepseek') ? 'deepseek' as const
-        : personality.defaultModel.startsWith('qwen') ? 'qwen' as const
+      const resolveProvider = (model: string) =>
+        model.startsWith('deepseek') ? 'deepseek' as const
+        : model.startsWith('qwen') ? 'qwen' as const
         : 'gemini' as const;
 
-      // ── Subscription enforcement ──
-      const access = checkLLMAccess({ userId: uid, provider, model: personality.defaultModel });
+      let provider = resolveProvider(personality.defaultModel);
+      let activeModel = personality.defaultModel;
+
+      // ── Subscription enforcement (with fallback) ──
+      const access = checkLLMAccess({ userId: uid, provider, model: activeModel });
       if (!access.allowed) {
-        socket.emit("agent:error", {
-          message: access.reason,
-          code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
-        });
-        socket.emit("agent:status", { status: "error" });
-        return;
+        const fallbackModel = personality.fallbackModel || 'qwen-plus';
+        const fallbackProvider = resolveProvider(fallbackModel);
+        if (fallbackProvider !== provider && personality.fallbackModel) {
+          const fallbackAccess = checkLLMAccess({ userId: uid, provider: fallbackProvider, model: fallbackModel });
+          if (fallbackAccess.allowed) {
+            provider = fallbackProvider;
+            activeModel = fallbackModel;
+            console.log(`[Chat] Subscription fallback: ${personality.defaultModel} → ${fallbackModel} for user ${uid}`);
+          } else {
+            socket.emit("agent:error", {
+              message: access.reason,
+              code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
+            });
+            socket.emit("agent:status", { status: "error" });
+            return;
+          }
+        } else {
+          socket.emit("agent:error", {
+            message: access.reason,
+            code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
+          });
+          socket.emit("agent:status", { status: "error" });
+          return;
+        }
       }
 
       // ── Lumi Cognitive Engine: classify intent BEFORE calling any LLM ──
@@ -99,7 +121,7 @@ export function registerChatHandler(
         personalityId: personality.id,
         personalityName: personality.name,
         llmProvider: provider,
-        llmModel: personality.defaultModel,
+        llmModel: activeModel,
         isLLMAvailable: true,
       };
       const cognition = await processInput(text, cognitiveCtx);
@@ -149,7 +171,7 @@ export function registerChatHandler(
           const result = await runWithTools(
             messages,
             toolRegistry,
-            { provider, model: personality.defaultModel, userId: uid },
+            { provider, model: activeModel, userId: uid },
             (record) => {
               socket.emit("agent:tool", { name: record.name, args: record.arguments, result: record.result?.slice(0, 200), error: record.error });
             },
@@ -167,7 +189,7 @@ export function registerChatHandler(
           const tokens = estimateTokens(text + ' ' + responseText);
           recordUsage(uid, tokens);
         } catch (llmErr: any) {
-          console.error(`[Cognition] LLM '${provider}/${personality.defaultModel}' failed: ${llmErr.message}`);
+          console.error(`[Cognition] LLM '${provider}/${activeModel}' failed: ${llmErr.message}`);
           // Try fallback provider
           if (llmErr.message?.includes('not configured') && provider !== 'gemini') {
             try {
@@ -223,7 +245,7 @@ export function registerChatHandler(
       const branchNodes = queryMemories({ userId: uid, nodeType: 'branch', limit: 50 });
       const treeBranches = branchNodes.map(b => b.content);
       extractMemories(
-        { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider, model: personality.defaultModel, treeBranches },
+        { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider, model: activeModel, treeBranches },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
       ).then(extracted => {
         for (const mem of extracted.memories) {

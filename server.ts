@@ -38,6 +38,7 @@ import { lapRoutes } from "./server/lap/routes";
 import { createMessagingRoutes } from "./server/messaging";
 import { generateSkill, autoGenerateSkill } from "./server/skills/generator";
 import { getRecentWorkflows, clearWorkflows } from "./server/skills/worklog";
+import { getMarketplaceSkills, getSkillById, searchSkills, getCategories, recordInstall, publishSkill, rateSkill, getSkillRatings } from "./server/marketplace/registry";
 import { scheduler, registerScheduledTasks } from "./server/scheduler";
 import { deviceRegistry } from "./server/devices";
 import { fuseContext, formatContextForPrompt, type RawModalityInput } from "./server/context/fusion";
@@ -1036,6 +1037,7 @@ apiRouter.post("/skills/generate", asyncHandler(async (req, res) => {
       } catch (e) {
         console.warn('[SkillGen] Failed to save to knowledge base:', e);
       }
+      io.emit('skill:updated', { name: result.skillName });
       res.json(result);
     } else {
       res.status(400).json(result);
@@ -1080,6 +1082,7 @@ apiRouter.post("/skills/install", async (req, res) => {
 apiRouter.delete("/skills/:name", async (req, res) => {
   try {
     mcpManager.uninstallSkill(req.params.name);
+    io.emit('skill:uninstalled', { name: req.params.name });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1120,100 +1123,41 @@ apiRouter.get("/skills/workflows", (req, res) => {
 
 // ── Marketplace Routes ──
 
-// Discoverable community skills
-apiRouter.get("/marketplace/skills", (_req, res) => {
-  const communitySkills = [
-    {
-      id: "skill-weather",
-      name: "Weather",
-      description: "Real-time weather lookup for any city worldwide. Temperature, humidity, wind, and forecast.",
-      author: "Lumi Official",
-      downloads: 4231,
-      rating: 4.8,
-      category: "Productivity",
-      icon: "CloudSun",
-      installSource: "bundled" as const,
-      installPath: path.join(__dirname, 'server', 'skills', 'bundled', 'weather'),
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'weather')),
-    },
-    {
-      id: "skill-translator",
-      name: "Multi-Lang Translator",
-      description: "Real-time translation across 50+ languages via Google Translate. Auto-detects source language.",
-      author: "Lumi Official",
-      downloads: 6673,
-      rating: 4.6,
-      category: "Language",
-      icon: "Languages",
-      installSource: "bundled" as const,
-      installPath: path.join(__dirname, 'server', 'skills', 'bundled', 'translator'),
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'translator')),
-    },
-    {
-      id: "skill-calculator",
-      name: "Smart Calculator",
-      description: "Advanced math: evaluate expressions and convert between units (length, weight, temperature).",
-      author: "Lumi Official",
-      downloads: 3810,
-      rating: 4.9,
-      category: "Productivity",
-      icon: "Calculator",
-      installSource: "bundled" as const,
-      installPath: path.join(__dirname, 'server', 'skills', 'bundled', 'calculator'),
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'calculator')),
-    },
-    {
-      id: "skill-notes",
-      name: "Quick Notes",
-      description: "Create, read, list, and delete markdown notes stored locally. Never lose a thought.",
-      author: "Lumi Official",
-      downloads: 2156,
-      rating: 4.5,
-      category: "Productivity",
-      icon: "StickyNote",
-      installSource: "bundled" as const,
-      installPath: path.join(__dirname, 'server', 'skills', 'bundled', 'notes'),
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'notes')),
-    },
-    {
-      id: "skill-timer",
-      name: "Timer & Alarm",
-      description: "Set countdown timers, list active timers, and cancel them. In-memory with second precision.",
-      author: "Lumi Official",
-      downloads: 1892,
-      rating: 4.4,
-      category: "Productivity",
-      icon: "Timer",
-      installSource: "bundled" as const,
-      installPath: path.join(__dirname, 'server', 'skills', 'bundled', 'timer'),
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'timer')),
-    },
-    {
-      id: "skill-web-scraper",
-      name: "Web Scraper",
-      description: "Smart web scraping with CSS selector support. Extract structured data from any website.",
-      author: "Lumi Community",
-      downloads: 2847,
-      rating: 4.7,
-      category: "Web",
-      icon: "Globe",
-      installSource: "community" as const,
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'web-scraper')),
-    },
-    {
-      id: "skill-email-assistant",
-      name: "Email Assistant",
-      description: "Read, compose, and organize emails. Supports Gmail and Outlook via IMAP/SMTP.",
-      author: "Lumi Labs",
-      downloads: 1834,
-      rating: 4.3,
-      category: "Productivity",
-      icon: "Mail",
-      installSource: "community" as const,
-      installed: fs.existsSync(path.join(SKILLS_DIR, 'email-assistant')),
-    },
-  ];
-  res.json(communitySkills);
+// Discoverable marketplace skills (dynamic from registry)
+apiRouter.get("/marketplace/skills", (req, res) => {
+  try {
+    const q = req.query.q as string | undefined;
+    const skills = q ? searchSkills(q) : getMarketplaceSkills();
+    res.json(skills);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Single skill detail
+apiRouter.get("/marketplace/skills/:id", (req, res) => {
+  try {
+    const skill = getSkillById(req.params.id);
+    if (!skill) return res.status(404).json({ error: 'Skill not found' });
+    const ratings = getSkillRatings(req.params.id);
+    res.json({ ...skill, ratings });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marketplace categories
+apiRouter.get("/marketplace/categories", (_req, res) => {
+  try {
+    const categories = getCategories();
+    const withCounts = categories.map(cat => {
+      const skills = getMarketplaceSkills().filter(s => s.category === cat);
+      return { name: cat, count: skills.length };
+    });
+    res.json(withCounts);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Discoverable community personalities
@@ -1281,16 +1225,15 @@ apiRouter.post("/marketplace/skills/acquire", async (req, res) => {
 
     // Bundled skills: copy from bundled directory into ~/lumi_skills/
     if (installSource === 'bundled' && reqInstallPath) {
-      const skillDir = path.join(SKILLS_DIR, skillName);
+      const skillDirName = skillName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const skillDir = path.join(SKILLS_DIR, skillDirName);
       if (fs.existsSync(skillDir)) {
         return res.json({ success: true, name: skillName, message: `Skill "${skillName}" already installed.`, path: skillDir });
       }
-      // Copy the bundled skill to lumi_skills
       fs.cpSync(reqInstallPath, skillDir, { recursive: true });
-      // Register in MCP config
       const config = getMCPConfig();
       const updated = { ...config };
-      (updated as any)[skillName] = {
+      (updated as any)[skillDirName] = {
         command: 'npx',
         args: ['tsx', path.join(skillDir, 'index.ts')],
         description: `Lumi Official: ${skillName}`,
@@ -1299,27 +1242,143 @@ apiRouter.post("/marketplace/skills/acquire", async (req, res) => {
         autoGenerated: false,
       };
       await updateMCPConfig(updated);
-      // Restart to connect
-      await mcpManager.restartServer(skillName);
+      await mcpManager.restartServer(skillDirName);
+      recordInstall(skillId);
+      io.emit('skill:installed', { skillId, name: skillName, source: 'bundled' });
       return res.json({ success: true, name: skillName, message: `Skill "${skillName}" installed and activated!`, path: skillDir });
     }
 
-    // Community / external skills: record as acquired (bookmarked)
-    const config = getMCPConfig();
-    if (!config[skillName]) {
-      const updated = { ...config };
-      (updated as any)[skillName] = {
-        command: '',
-        args: [],
-        description: `Marketplace skill: ${skillId}`,
-        enabled: false,
-        source: 'marketplace',
-        autoGenerated: false,
-      };
-      await updateMCPConfig(updated);
+    // Community skills: copy from bundled dir too (they are implemented there now)
+    if (installSource === 'community') {
+      const skillDirName = skillId.replace('skill-', '');
+      const bundledPath = path.join(__dirname, 'server', 'skills', 'bundled', skillDirName);
+      const skillDir = path.join(SKILLS_DIR, skillDirName);
+      if (fs.existsSync(bundledPath)) {
+        if (fs.existsSync(skillDir)) {
+          return res.json({ success: true, name: skillName, message: `Skill "${skillName}" already installed.`, path: skillDir });
+        }
+        fs.cpSync(bundledPath, skillDir, { recursive: true });
+        const config = getMCPConfig();
+        const updated = { ...config };
+        (updated as any)[skillDirName] = {
+          command: 'npx',
+          args: ['tsx', path.join(skillDir, 'index.ts')],
+          description: `Community: ${skillName}`,
+          enabled: true,
+          source: 'local',
+          autoGenerated: false,
+        };
+        await updateMCPConfig(updated);
+        await mcpManager.restartServer(skillDirName);
+        recordInstall(skillId);
+        io.emit('skill:installed', { skillId, name: skillName, source: 'community' });
+        return res.json({ success: true, name: skillName, message: `Skill "${skillName}" installed and activated!`, path: skillDir });
+      }
+      // Fallback: mark as bookmarked
+      const config = getMCPConfig();
+      if (!config[skillDirName]) {
+        const updated = { ...config };
+        (updated as any)[skillDirName] = {
+          command: '',
+          args: [],
+          description: `Marketplace skill: ${skillId}`,
+          enabled: false,
+          source: 'marketplace',
+          autoGenerated: false,
+        };
+        await updateMCPConfig(updated);
+      }
+      recordInstall(skillId);
+      io.emit('skill:installed', { skillId, name: skillName, source: 'community' });
+      res.json({ success: true, name: skillName, message: `Acquired ${skillName}. Enable it in MCP Settings to activate.` });
+      return;
     }
 
-    res.json({ success: true, name: skillName, message: `Acquired ${skillName}. Enable it in MCP Settings to activate.` });
+    res.status(400).json({ error: 'Invalid installSource' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Publish a community skill
+apiRouter.post("/marketplace/publish", (req, res) => {
+  try {
+    const { name, description, author, category, icon, installPath, version, toolCount } = req.body;
+    if (!name || !description) return res.status(400).json({ error: 'name and description required' });
+    const skill = publishSkill({ name, description, author: author || 'Community', category: category || 'Other', icon: icon || 'Zap', installPath, version, toolCount });
+    res.json({ success: true, skill });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rate a skill
+apiRouter.post("/marketplace/skills/:id/rate", (req, res) => {
+  try {
+    const { rating, review } = req.body;
+    const userId = (req as any).user?.uid || 'anonymous';
+    const result = rateSkill(req.params.id, userId, Number(rating), review);
+    res.json({ success: true, rating: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get skill ratings
+apiRouter.get("/marketplace/skills/:id/reviews", (req, res) => {
+  try {
+    const ratings = getSkillRatings(req.params.id);
+    res.json({ ratings });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Discover skills from npm registry
+apiRouter.get("/marketplace/discover/npm", async (req, res) => {
+  try {
+    const q = req.query.q || 'lumi-skill';
+    const url = `https://registry.npmjs.org/-/v2/search?text=${encodeURIComponent(String(q))}+keywords:lumi-skill&size=20`;
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error(`npm registry returned ${resp.status}`);
+    const data: any = await resp.json();
+    const results = (data.objects || []).map((obj: any) => ({
+      name: obj.package?.name,
+      description: obj.package?.description,
+      version: obj.package?.version,
+      author: obj.package?.publisher?.username || obj.package?.author?.name,
+      npmUrl: obj.package?.links?.npm,
+      repository: obj.package?.links?.repository,
+    }));
+    res.json({ source: 'npm', count: results.length, results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Discover skills from GitHub topics
+apiRouter.get("/marketplace/discover/github", async (req, res) => {
+  try {
+    const topic = req.query.topic || 'lumi-skill';
+    const url = `https://api.github.com/search/repositories?q=topic:${encodeURIComponent(String(topic))}&sort=stars&per_page=20`;
+    const resp = await fetch(url, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'LumiOS/2.0',
+      },
+    });
+    if (!resp.ok) throw new Error(`GitHub API returned ${resp.status}`);
+    const data: any = await resp.json();
+    const results = (data.items || []).map((repo: any) => ({
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description,
+      stars: repo.stargazers_count,
+      url: repo.html_url,
+      language: repo.language,
+      updatedAt: repo.updated_at,
+    }));
+    res.json({ source: 'github', count: results.length, results });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
