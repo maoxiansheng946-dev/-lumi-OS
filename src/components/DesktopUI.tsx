@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { HardcoreBootSequence } from './HardcoreBootSequence';
 import { GlobalNodeMap } from './GlobalNodeMap';
@@ -60,13 +60,13 @@ import { MeshSyncSelector } from './MeshSyncSelector';
 import { useSocket } from '@/hooks/useSocket';
 import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useApp } from '@/contexts/AppContext';
-import { NexusGlobe } from './NexusGlobe/NexusGlobe';
+const NexusGlobe = lazy(() => import('./NexusGlobe/NexusGlobe').then(m => ({ default: m.NexusGlobe })));
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
 import { VoiceSubtitle } from './VoiceSubtitle';
 import { ErrorBoundary } from './ErrorBoundary';
 
-import { KnowledgeBase } from './KnowledgeBase';
+const KnowledgeBase = lazy(() => import('./KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
 import { PersonalityEditor } from './PersonalityEditor';
 import { Settings } from './Settings';
 import { systemService } from '@/services/systemService';
@@ -1226,7 +1226,7 @@ export function DesktopUI({
             transition={{ duration: 1.2 }}
             className="fixed inset-0 z-0"
           >
-            <NexusGlobe theme={theme as 'celestial' | 'nebula' | 'cyber'} syncRate={syncRate} />
+            <Suspense fallback={null}><NexusGlobe theme={theme as 'celestial' | 'nebula' | 'cyber'} syncRate={syncRate} /></Suspense>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1807,10 +1807,12 @@ export function DesktopUI({
       </motion.div>
 
       {/* Knowledge Base fullscreen overlay */}
-      <KnowledgeBase
-        isOpen={knowledgeOpen}
-        onClose={() => setKnowledgeOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <KnowledgeBase
+          isOpen={knowledgeOpen}
+          onClose={() => setKnowledgeOpen(false)}
+        />
+      </Suspense>
 
       {/* Chat fullscreen overlay */}
       <AgentChatPage

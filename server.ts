@@ -793,6 +793,35 @@ apiRouter.post("/ai/chat", asyncHandler(async (req, res) => {
         }))
       ];
 
+      const stream = req.query.stream === 'true';
+
+      if (stream) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        });
+
+        const result = await runWithTools(
+          normalizedMessages,
+          toolRegistry,
+          { provider, model: model || 'gemini-2.0-flash', userId },
+          undefined, 3,
+          getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
+          (chunk) => {
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          },
+        );
+
+        responseText = result.text || '';
+        const tokens = estimateTokens(
+          normalizedMessages.map((m: any) => m.content || '').join(' ') + ' ' + responseText
+        );
+        recordUsage(userId, tokens);
+        res.write(`data: ${JSON.stringify({ done: true, text: responseText, toolCalls: result.toolCalls.length })}\n\n`);
+        return res.end();
+      }
+
       const result = await runWithTools(
         normalizedMessages,
         toolRegistry,
@@ -1736,12 +1765,19 @@ io.on("connection", (socket) => {
         .sort((a: any, b: any) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
         .slice(0, 30);
 
+      // Pre-group interactions by conversationId in one pass (fixes N+1)
+      const interactionsByConv = new Map<string, any[]>();
+      for (const i of (db.interactions || [])) {
+        const cid = i.conversationId;
+        if (!cid) continue;
+        if (!interactionsByConv.has(cid)) interactionsByConv.set(cid, []);
+        interactionsByConv.get(cid)!.push(i);
+      }
+
       const list = convs.map((c: any) => {
-        const lastInteraction = (db.interactions || [])
-          .filter((i: any) => i.conversationId === c.id)
-          .slice(-1)[0];
-        const firstMsg = (db.interactions || [])
-          .filter((i: any) => i.conversationId === c.id)[0];
+        const convInteractions = interactionsByConv.get(c.id) || [];
+        const lastInteraction = convInteractions[convInteractions.length - 1];
+        const firstMsg = convInteractions[0];
         return {
           id: c.id,
           title: c.title || (firstMsg?.content || firstMsg?.message || 'New Conversation').slice(0, 50),

@@ -7,7 +7,24 @@ function getMemoryStore(): Memory[] {
   return db.memories;
 }
 
+// ── Dedup index (lazy, invalidated on write) ──
+
+let dedupIndex: Map<string, Map<string, Memory[]>> | null = null;
+
+function getDedupIndex(): Map<string, Map<string, Memory[]>> {
+  if (dedupIndex) return dedupIndex;
+  dedupIndex = new Map();
+  for (const m of getMemoryStore()) {
+    if (!dedupIndex.has(m.userId)) dedupIndex.set(m.userId, new Map());
+    const typeMap = dedupIndex.get(m.userId)!;
+    if (!typeMap.has(m.type)) typeMap.set(m.type, []);
+    typeMap.get(m.type)!.push(m);
+  }
+  return dedupIndex;
+}
+
 function saveMemoryStore(memories: Memory[]): void {
+  dedupIndex = null; // invalidate index on write
   const db = readDB();
   db.memories = memories;
   writeDB(db);
@@ -65,42 +82,25 @@ function relevanceScore(query: string, memory: Memory): number {
 }
 
 export function queryMemories(q: MemoryQuery): Memory[] {
-  let memories = getMemoryStore();
+  const all = getMemoryStore();
 
-  if (q.userId) {
-    memories = memories.filter(m => m.userId === q.userId);
-  }
-  if (q.agentId !== undefined) {
-    memories = memories.filter(m => (m.agentId || '') === q.agentId);
-  }
-  if (q.type) {
-    memories = memories.filter(m => m.type === q.type);
-  }
-  if (q.minConfidence !== undefined) {
-    memories = memories.filter(m => m.confidence >= q.minConfidence);
-  }
-  if (q.tier) {
-    memories = memories.filter(m => m.tier === q.tier);
-  }
-  if (q.perspective) {
-    memories = memories.filter(m => m.perspective === q.perspective);
-  }
-  if (q.minImportance !== undefined) {
-    memories = memories.filter(m => m.importance >= q.minImportance);
-  }
-  if (q.unconsolidatedOnly) {
-    memories = memories.filter(m => !m.parentId);
-  }
-  if (q.parentId !== undefined) {
-    memories = memories.filter(m => m.parentId === q.parentId);
-  }
-  if (q.nodeType) {
-    memories = memories.filter(m => m.nodeType === q.nodeType);
-  }
-  if (q.before) {
-    const cutoff = new Date(q.before).getTime();
-    memories = memories.filter(m => new Date(m.createdAt).getTime() <= cutoff);
-  }
+  const cutoff = q.before ? new Date(q.before).getTime() : 0;
+
+  // Single-pass filter combining all conditions
+  let memories = all.filter(m => {
+    if (q.userId && m.userId !== q.userId) return false;
+    if (q.agentId !== undefined && (m.agentId || '') !== q.agentId) return false;
+    if (q.type && m.type !== q.type) return false;
+    if (q.minConfidence !== undefined && m.confidence < q.minConfidence) return false;
+    if (q.tier && m.tier !== q.tier) return false;
+    if (q.perspective && m.perspective !== q.perspective) return false;
+    if (q.minImportance !== undefined && m.importance < q.minImportance) return false;
+    if (q.unconsolidatedOnly && m.parentId) return false;
+    if (q.parentId !== undefined && m.parentId !== q.parentId) return false;
+    if (q.nodeType && m.nodeType !== q.nodeType) return false;
+    if (q.before && new Date(m.createdAt).getTime() > cutoff) return false;
+    return true;
+  });
 
   // Tier-based priority: core_identity always first, then growth, then internalized, then episodic
   const tierPriority: Record<string, number> = {
@@ -141,15 +141,15 @@ export function queryMemories(q: MemoryQuery): Memory[] {
 
   // Mark as retrieved
   const now = new Date().toISOString();
-  const all = getMemoryStore();
+  const store = getMemoryStore();
   for (const m of result) {
-    const stored = all.find(s => s.id === m.id);
+    const stored = store.find(s => s.id === m.id);
     if (stored) {
       stored.lastRetrievedAt = now;
       stored.retrieveCount = (stored.retrieveCount || 0) + 1;
     }
   }
-  if (result.length > 0) saveMemoryStore(all);
+  if (result.length > 0) saveMemoryStore(store);
 
   return result;
 }
@@ -220,10 +220,10 @@ export function addMemory(
 ): Memory {
   const all = getMemoryStore();
 
-  // Deduplicate: check if similar memory exists
-  const existing = all.find(m =>
-    m.userId === memory.userId &&
-    m.type === memory.type &&
+  // Deduplicate using index — only scan same userId + type
+  const idx = getDedupIndex();
+  const candidates = idx.get(memory.userId)?.get(memory.type) || [];
+  const existing = candidates.find(m =>
     contentSimilarity(m.content, memory.content) > 0.7,
   );
 

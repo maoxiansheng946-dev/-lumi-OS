@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import * as authService from './services/authService';
 import { Navbar } from './components/Navbar';
 import { UnifiedAgent } from './components/UnifiedAgent';
@@ -21,15 +21,17 @@ import { LocalAgentSphere } from './components/LocalAgentSphere';
 import { FloatingAgent } from './components/FloatingAgent';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProactiveNotifications } from './components/ProactiveNotifications';
+import { LoadingFallback } from './components/LoadingFallback';
 import { Toaster } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { Rocket, Sparkles, Layout } from 'lucide-react';
 import { translations } from './lib/translations';
 import { useApp } from './contexts/AppContext';
 import { LoginRequired, LoginModal } from './core/components/Auth';
-import { WebPlatform } from './platforms/web/WebPlatform';
-import { DesktopPlatform } from './platforms/desktop/DesktopPlatform';
-import { MobilePlatform } from './platforms/mobile/MobilePlatform';
+
+const WebPlatform = lazy(() => import('./platforms/web/WebPlatform').then(m => ({ default: m.WebPlatform })));
+const DesktopPlatform = lazy(() => import('./platforms/desktop/DesktopPlatform').then(m => ({ default: m.DesktopPlatform })));
+const MobilePlatform = lazy(() => import('./platforms/mobile/MobilePlatform').then(m => ({ default: m.MobilePlatform })));
 
 export default function App() {
   const { user, loading: appLoading, logout: appLogout, login: appLogin, refreshUser } = useApp();
@@ -170,45 +172,47 @@ export default function App() {
       <ErrorBoundary>
       <ProactiveNotifications />
       <Toaster position="top-right" theme="dark" />
-      <AnimatePresence mode="wait">
-        {uiMode === 'mobile' ? (
-          <MobilePlatform 
-            t={t} 
-            user={user} 
-            lang={lang}
-            setLang={setLang}
-            onLogin={handleLogin} 
-            onExit={() => setUiMode('web')}
-            renderTabContent={renderTabContent} 
-          />
-        ) : uiMode === 'desktop' ? (
-          <DesktopPlatform 
-            t={t}
-            user={user}
-            lang={lang}
-            setLang={setLang}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            onLogin={handleLogin}
-            setUiMode={setUiMode}
-            renderTabContent={renderTabContent}
-          />
-        ) : (
-          <WebPlatform 
-            user={user}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            lang={lang}
-            setLang={setLang}
-            t={t}
-            onLogin={handleLogin}
-            onLogout={handleLogout}
-            renderTabContent={renderTabContent}
-            isDesktop={isDesktop}
-            setUiMode={setUiMode}
-          />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={<LoadingFallback />}>
+        <AnimatePresence mode="wait">
+          {uiMode === 'mobile' ? (
+            <MobilePlatform
+              t={t}
+              user={user}
+              lang={lang}
+              setLang={setLang}
+              onLogin={handleLogin}
+              onExit={() => setUiMode('web')}
+              renderTabContent={renderTabContent}
+            />
+          ) : uiMode === 'desktop' ? (
+            <DesktopPlatform
+              t={t}
+              user={user}
+              lang={lang}
+              setLang={setLang}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              onLogin={handleLogin}
+              setUiMode={setUiMode}
+              renderTabContent={renderTabContent}
+            />
+          ) : (
+            <WebPlatform
+              user={user}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              lang={lang}
+              setLang={setLang}
+              t={t}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
+              renderTabContent={renderTabContent}
+              isDesktop={isDesktop}
+              setUiMode={setUiMode}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
       <LoginModal 
         t={t} 

@@ -25,6 +25,18 @@ export default defineConfig(({ mode }) => {
         ignored: ['**/gpt-sovits-src/**', '**/data/voice_training/**', '**/*.db', '**/db.json', '**/.keys.json', '**/data/**'],
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (id.includes('node_modules/three') || id.includes('@react-three')) return 'vendor-three';
+            if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
+            if (id.includes('node_modules/motion')) return 'vendor-motion';
+            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) return 'vendor-react';
+          },
+        },
+      },
+    },
     optimizeDeps: {
       exclude: ['gpt-sovits-src'],
       entries: ['./src/**/*.{tsx,ts}'],

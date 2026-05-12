@@ -106,6 +106,14 @@ function migrateSchema(): Promise<void> {
       createdAt TEXT NOT NULL,
       firedAt TEXT
     )`, () => {});
+    // Indexes — safe to create repeatedly with IF NOT EXISTS
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_interactions_user_conv ON interactions(userId, conversationId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_interactions_agent ON interactions(agentId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_user_type_tier ON memories(userId, type, tier)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_user_agent ON memories(userId, agentId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_user_parent ON memories(userId, parentId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_conversations_user_status ON conversations(userId, status)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_token_usage_user_ts ON token_usage(userId, timestamp)`, () => {});
     resolve();
   });
 }
@@ -380,22 +388,45 @@ export function readDB(): any {
 // Write lock to prevent concurrent SQLite transactions
 let writeLock: Promise<void> = Promise.resolve();
 
+let writeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function writeDB(data: any): void {
   if (!db) {
     throw new Error('Database not initialized.');
   }
-  const previous = JSON.parse(JSON.stringify(memoryDB));
   memoryDB = data;
-  const ready = writeLock.catch((err) => {
-    console.error('[DB] Previous write failed:', err);
-  });
-  writeLock = ready
-    .then(() => persistMemoryDB())
-    .catch((err) => {
-      console.error('[DB] Failed to persist database:', err);
-      memoryDB = previous;
-      dbDirty = true;
+  dbDirty = true;
+
+  // Debounce persistence: batch rapid writes into a single SQLite flush
+  if (writeDebounceTimer) clearTimeout(writeDebounceTimer);
+  writeDebounceTimer = setTimeout(() => {
+    writeDebounceTimer = null;
+    const previous = JSON.parse(JSON.stringify(memoryDB));
+    const ready = writeLock.catch((err) => {
+      console.error('[DB] Previous write failed:', err);
     });
+    writeLock = ready
+      .then(() => persistMemoryDB())
+      .then(() => { dbDirty = false; })
+      .catch((err) => {
+        console.error('[DB] Failed to persist database:', err);
+        memoryDB = previous;
+      });
+  }, 100);
+}
+
+/** Flush pending writes immediately — call before shutdown */
+export async function flushDB(): Promise<void> {
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+    writeDebounceTimer = null;
+  }
+  try {
+    await persistMemoryDB();
+    dbDirty = false;
+  } catch (err) {
+    console.error('[DB] flushDB failed:', err);
+  }
 }
 
 let dbDirty = false;

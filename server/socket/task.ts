@@ -150,7 +150,9 @@ export function registerTaskHandler(
         },
         5,
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
-        undefined,
+        (chunk) => {
+          if (!cancelled) socket.emit("task:chunk", { text: chunk, agentName: personality.name });
+        },
         { desktopRelay, requestConfirmation, toolPolicy: personality.toolPolicy, isCancelled: () => cancelled },
       );
 
