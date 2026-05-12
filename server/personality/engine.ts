@@ -148,6 +148,10 @@ export function generateSystemPrompt(
         blocks.push('- **generate_skill** — Create a new reusable MCP tool from a natural language description. Use when you notice a repeating pattern or the user asks for automation. The generated skill compiles and becomes immediately available.');
         blocks.push('- **list_skills** — List all locally installed MCP skills in ~/lumi_skills/. Check before generating duplicates.');
         blocks.push('- **install_skill** — Install an MCP skill package from a local directory into the skill registry.');
+        blocks.push('');
+        blocks.push('## Office & Creative Tools');
+        blocks.push('You have powerful document creation tools. When the user asks you to create a presentation, report, or document — use these DIRECTLY:');
+        blocks.push('- **create_ppt** — Create professional PowerPoint .pptx presentations with full Chinese text support. Provide a title and an array of slides (each with title, content/bullets). The tool generates a real .pptx file. When asked for a PPT, presentation, slides, or 幻灯片, call this FIRST. You can search the web for research beforehand, but always finish by calling create_ppt.');
       } else {
         blocks.push(`\n## Available Capabilities\nYou have access to: ${toolPolicy.allowedTools.join(', ')}. Use them to help the user accomplish their goals.`);
       }

@@ -69,7 +69,7 @@ export function createLumiMcpServer(llmGetters?: {
           activeDeviceTypes: ds.activeDeviceTypes,
           deviceCount: ds.deviceCount,
         };
-        const { systemPrompt } = personalityRegistry.buildSystemPrompt(pid, { mode: 'chat', sensory });
+        const { systemPrompt } = personalityRegistry.buildSystemPrompt(pid, { mode: 'task', sensory });
 
         const memories = queryMemories({
           limit: personality.memoryPolicy.retrieveLimit,
@@ -84,7 +84,9 @@ export function createLumiMcpServer(llmGetters?: {
           { role: 'user', content: message },
         ];
 
-        const response = await runWithTools(
+        const MCP_TIMEOUT_MS = 25000;
+
+        const responsePromise = runWithTools(
           messages,
           tr,
           {
@@ -102,7 +104,7 @@ export function createLumiMcpServer(llmGetters?: {
               bc('agent:tool_call', { correlationId: cid, name: record.name, arguments: record.arguments, result: (record.result || '').slice(0, 300) });
             }
           },
-          3,
+          personality.toolPolicy.maxIterations,
           g.getDeepSeek || (() => null),
           g.getGemini || (() => null),
           g.getOpenAI || (() => null),
@@ -111,6 +113,28 @@ export function createLumiMcpServer(llmGetters?: {
           (chunk) => bc('mcp:chunk', { device: 'xiaozhi', text: chunk }),
           { toolPolicy: personality.toolPolicy },
         );
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('MCP_TIMEOUT')), MCP_TIMEOUT_MS)
+        );
+
+        let response: Awaited<typeof responsePromise>;
+        try {
+          response = await Promise.race([responsePromise, timeoutPromise]);
+        } catch (e: any) {
+          if (e.message === 'MCP_TIMEOUT') {
+            console.log('[MCP lumi_chat] Timeout — continuing in background');
+            bc('mcp:activity', { device: 'xiaozhi', action: 'chat', status: 'timeout' });
+            bc('agent:status', { status: 'idle', agentName: 'Lumi' });
+            responsePromise.then(() => {
+              bc('agent:status', { status: 'idle', agentName: 'Lumi' });
+            }).catch(() => {});
+            return {
+              content: [{ type: 'text' as const, text: '正在处理中，稍等片刻...' }],
+            };
+          }
+          throw e;
+        }
 
         // Fire-and-forget memory extraction (non-blocking)
         if (personality.memoryPolicy.autoExtract) {
