@@ -459,6 +459,42 @@ apiRouter.get("/mcp/github/search", async (req, res) => {
   }
 });
 
+// npm MCP package search — proxy npm registry for lumi-skill-* / mcp-* packages
+apiRouter.get("/mcp/npm/search", async (req, res) => {
+  try {
+    const q = (req.query.q as string) || 'mcp';
+    const response = await fetch(
+      `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}+keywords:mcp&size=20`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'LumiOS-MCP-Browser',
+        },
+      }
+    );
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `npm API error: ${response.statusText}` });
+    }
+    const data = await response.json();
+    const results = (data.objects || []).map((obj: any) => {
+      const pkg = obj.package || {};
+      return {
+        id: pkg.name,
+        name: pkg.name,
+        description: pkg.description || '',
+        stars: 0,
+        url: pkg.links?.npm || `https://www.npmjs.com/package/${pkg.name}`,
+        topics: pkg.keywords || [],
+        language: 'npm',
+        updatedAt: pkg.date || '',
+      };
+    });
+    res.json({ results, total: data.total || 0 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 0.3. Device management
 apiRouter.post("/devices/pair", (req, res) => {
   const { deviceId } = req.body || {};

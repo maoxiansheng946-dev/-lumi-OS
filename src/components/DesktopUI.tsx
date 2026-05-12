@@ -1727,7 +1727,7 @@ export function DesktopUI({
                   ) : windowId === 'tools' ? (
                     <ToolPanel />
                   ) : windowId === 'github-mcp' ? (
-                    <GitHubMCPBrowser />
+                    <GitHubMCPBrowser t={t} />
                   ) : windowId === 'persona-stats' ? (
                     <PersonalityDashboard />
                   ) : windowId === 'notifications' ? (
