@@ -35,7 +35,6 @@ export function ProductDetailPage({ t, product, onBack }: ProductDetailPageProps
   const [isTyping, setIsTyping] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const socket = React.useRef<any>(null);
-  const { personalityId } = useApp();
 
   useEffect(() => {
     socket.current = socketService.connect();
@@ -65,7 +64,7 @@ export function ProductDetailPage({ t, product, onBack }: ProductDetailPageProps
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.text
       })),
-      personalityId
+      personalityId: 'lumi'
     });
   };
 

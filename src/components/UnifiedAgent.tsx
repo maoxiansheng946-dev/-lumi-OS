@@ -17,7 +17,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const { user: appUser, personalityId: personality } = useApp();
+  const { user: appUser } = useApp();
   const [isVisionActive, setIsVisionActive] = useState(false);
   const [visionData, setVisionData] = useState<string[]>([]);
   const [founderVision, setFounderVision] = useState('');
@@ -217,7 +217,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
           role: m.type === 'user' ? 'user' : 'assistant',
           content: m.text
         })),
-        personalityId: personality
+        personalityId: 'lumi'
       });
     }
   };
@@ -341,7 +341,7 @@ Lumi Core Agent
               t={t} 
               callState={callState}
               audioLevel={audioLevel}
-              onStartCall={() => startCall(undefined, personality, personality)}
+              onStartCall={() => startCall(undefined, 'lumi', 'lumi')}
               onEndCall={endCall}
             />
           </div>

@@ -50,6 +50,7 @@ import { mountAuthRoutes } from "./server/routes/auth";
 import { mountMemoryRoutes } from "./server/routes/memory_routes";
 import { mountConversationRoutes } from "./server/routes/conversations";
 import { mountAgentRoutes } from "./server/routes/agent_routes";
+import { setOnAgentPromoted } from "./server/agents/orchestrator";
 import { mountSkillRoutes } from "./server/routes/skill_routes";
 import { mountMarketplaceRoutes } from "./server/routes/marketplace_routes";
 import { mountSystemRoutes } from "./server/routes/system_routes";
@@ -175,8 +176,6 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Serialize personality file writes to prevent concurrent overwrites
-let personalityFileLock: Promise<void> = Promise.resolve();
-
 // SameSite=None requires Secure (Chromium silently rejects otherwise).
 // Chromium allows Secure cookies on localhost/127.0.0.1, so safe to always enable.
 const getCookieOptions = (): { httpOnly: true; secure: true; sameSite: "none"; maxAge: number } => ({
@@ -186,146 +185,18 @@ const getCookieOptions = (): { httpOnly: true; secure: true; sameSite: "none"; m
   maxAge: 24 * 60 * 60 * 1000,
 });
 
-// 0. Personality list
+// Lumi core personality config (read-only — evolution drives changes, not manual editing)
 apiRouter.get("/personalities", (_req, res) => {
-  const list = personalityRegistry.list().map(p => ({
-    id: p.id,
-    name: p.name,
-    version: p.version,
-    coreMotivation: p.coreMotivation,
-    expressionStyle: p.expressionStyle,
-  }));
-  res.json(list);
+  const lumi = personalityRegistry.get('lumi');
+  res.json([lumi]);
 });
 
-// Full personality config (for editing)
 apiRouter.get("/personalities/:id", (req, res) => {
-  try {
-    const config = personalityRegistry.get(req.params.id);
-    if (!config) return res.status(404).json({ error: "Personality not found" });
-    res.json(config);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Failed to load personality" });
-  }
+  const config = personalityRegistry.get(req.params.id);
+  if (!config) return res.status(404).json({ error: "Personality not found" });
+  res.json(config);
 });
 
-// Create or update a personality
-apiRouter.post("/personalities", (req, res) => {
-  const { id, name, version, coreMotivation, behavioralBoundaries, expressionStyle, toolPolicy, memoryPolicy, defaultModel, fallbackModel } = req.body;
-  if (!id || !name) return res.status(400).json({ error: "id and name are required" });
-
-  const prev = personalityFileLock.catch(() => {});
-  personalityFileLock = prev.then(() => new Promise<void>((resolve) => {
-    try {
-      const filePath = path.join(process.cwd(), 'server', 'personality', 'personalities.json');
-      let configs: any[] = [];
-      try {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        configs = JSON.parse(raw);
-      } catch {}
-
-      const existing = configs.findIndex((c: any) => c.id === id);
-      const newConfig = { id, name, version: version || '1.0', coreMotivation: coreMotivation || '', behavioralBoundaries: behavioralBoundaries || [], expressionStyle: expressionStyle || { persona: '', tone: 'neutral', verbosity: 'balanced', languages: ['en'] }, toolPolicy: toolPolicy || { allowedTools: ['*'], requireConfirmation: [], maxIterations: 3 }, memoryPolicy: memoryPolicy || { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact'], autoExtract: true }, defaultModel: defaultModel || 'qwen-plus', fallbackModel: fallbackModel || 'gemini-2.0-flash' };
-
-      if (existing >= 0) {
-        configs[existing] = newConfig;
-      } else {
-        configs.push(newConfig);
-      }
-
-      fs.writeFileSync(filePath, JSON.stringify(configs, null, 2));
-      personalityRegistry.reload(filePath);
-      res.json(newConfig);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-    resolve();
-  })).catch(() => {});
-});
-
-// Delete a personality
-apiRouter.delete("/personalities/:id", (req, res) => {
-  const prev = personalityFileLock.catch(() => {});
-  personalityFileLock = prev.then(() => new Promise<void>((resolve) => {
-    try {
-      const filePath = path.join(process.cwd(), 'server', 'personality', 'personalities.json');
-      let configs: any[] = [];
-      try {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        configs = JSON.parse(raw);
-      } catch {}
-
-      const idx = configs.findIndex((c: any) => c.id === req.params.id);
-      if (idx === -1) { res.status(404).json({ error: "Personality not found" }); return resolve(); }
-      if (req.params.id === 'lumi') { res.status(400).json({ error: "Cannot delete the default 'lumi' personality" }); return resolve(); }
-
-      configs.splice(idx, 1);
-      fs.writeFileSync(filePath, JSON.stringify(configs, null, 2));
-      personalityRegistry.reload(filePath);
-      res.json({ success: true });
-      resolve();
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-      resolve();
-    }
-  })).catch(() => {});
-});
-
-// Personality stats — aggregated memory & behavior analytics
-apiRouter.get("/personality/stats", (req, res) => {
-  try {
-    const token = req.cookies.token;
-    let uid = 'anonymous';
-    if (token) {
-      try { const decoded: any = jwt.verify(token, JWT_SECRET); uid = decoded.uid; } catch {}
-    }
-
-    const db = readDB();
-    const memories: any[] = (db.memories || []).filter((m: any) => m.userId === uid);
-
-    const totalMemories = memories.length;
-    const byType: Record<string, number> = {};
-    const byConfidence: Record<string, number[]> = {};
-    for (const m of memories) {
-      byType[m.type] = (byType[m.type] || 0) + 1;
-      (byConfidence[m.type] ||= []).push(m.confidence || 0);
-    }
-
-    const avgConfidence: Record<string, number> = {};
-    for (const [type, vals] of Object.entries(byConfidence)) {
-      avgConfidence[type] = vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) : 0;
-    }
-
-    // Monthly trend: count memories created per month (last 6 months)
-    const monthlyTrend: { month: string; count: number }[] = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const count = memories.filter((m: any) => m.createdAt && m.createdAt.startsWith(key)).length;
-      monthlyTrend.push({ month: key, count });
-    }
-
-    // Unique interaction count
-    const interactionIds = new Set(memories.map((m: any) => m.sourceInteractionId).filter(Boolean));
-
-    // Active personality
-    const personalityId = req.query.personalityId as string || 'lumi';
-
-    res.json({
-      totalMemories,
-      byType,
-      avgConfidence,
-      monthlyTrend,
-      totalInteractions: interactionIds.size,
-      personalityId,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Personality evolution — get evolution history for a personality
 apiRouter.get("/personality/:id/evolution", (req, res) => {
   const config = personalityRegistry.get(req.params.id);
   if (!config) return res.status(404).json({ error: "Personality not found" });
@@ -1884,6 +1755,16 @@ personalityRegistry.load();
   // Set up broadcast callback for personality evolution live updates
   personalityRegistry.setBroadcast((event, data) => {
     io.emit(event, data);
+  });
+
+  // Wire up agent promotion notifications via socket.io
+  setOnAgentPromoted((agent) => {
+    io.emit('agent:promoted', {
+      id: agent.id,
+      name: agent.name,
+      skillTags: agent.skillTags,
+      autoCreated: true,
+    });
   });
 
   // Initialize memory sync for cross-device real-time updates

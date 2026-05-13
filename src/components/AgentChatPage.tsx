@@ -21,7 +21,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
   const [messages, setMessages] = useState<any[]>([]);
   const [agentMetadata, setAgentMetadata] = useState<Partial<AgentResponse>>({});
   const { platform, isElectron } = usePlatform();
-  const { aiConfig, personalityId } = useApp();
+  const { aiConfig } = useApp();
   const socket = useSocket();
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [voices, setVoices] = useState<any[]>([]);
@@ -366,7 +366,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
       socket.emit("agent:chat", {
         text,
         history: messages.map(m => ({ role: m.type === 'agent' ? 'assistant' : 'user', content: m.text })),
-        personalityId: personalityId || 'lumi',
+        personalityId: 'lumi',
         category: agentCategory,
         agentId,
       });
@@ -550,7 +550,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
           <VoiceCallButton 
             callState={callState}
             audioLevel={audioLevel}
-            onStart={() => startCall(selectedVoiceId, personalityId, agentId)}
+            onStart={() => startCall(selectedVoiceId, 'lumi', agentId)}
             onEnd={endCall}
             hasVoice={voices.length > 0}
           />

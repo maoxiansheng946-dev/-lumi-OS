@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Plus, Trash2, Save, X, ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { User, ChevronDown, ChevronRight, Activity } from 'lucide-react';
 import { toast } from 'sonner';
+import { PersonalityEvolution } from './PersonalityEvolution';
 
 interface PersonalityConfig {
   id: string;
@@ -12,8 +11,8 @@ interface PersonalityConfig {
   behavioralBoundaries: string[];
   expressionStyle: {
     persona: string;
-    tone: 'neutral' | 'warm' | 'professional' | 'technical' | 'playful' | 'inspiring';
-    verbosity: 'concise' | 'balanced' | 'detailed';
+    tone: string;
+    verbosity: string;
     languages: string[];
     vocabularyHints?: string[];
   };
@@ -32,53 +31,29 @@ interface PersonalityConfig {
   };
   defaultModel: string;
   fallbackModel: string;
+  ttsVoiceId?: string;
+  personalityVector?: {
+    cognitiveStyle: { analytical: number; intuitive: number; systematic: number; creative: number };
+    socialStyle: { warmth: number; directness: number; playfulness: number; formality: number };
+  };
+  evolutionConfig?: {
+    plasticity: number;
+    minMemoriesForEvolution: number;
+    minConnectionForEvolution: number;
+    cooldownMs: number;
+    maxMutationsPerStep: number;
+  };
+  lastEvolvedAt?: string | null;
 }
 
-const DEFAULT_CONFIG: PersonalityConfig = {
-  id: '',
-  name: '',
-  version: '1.0',
-  coreMotivation: '',
-  behavioralBoundaries: [],
-  expressionStyle: {
-    persona: '',
-    tone: 'neutral',
-    verbosity: 'balanced',
-    languages: ['en'],
-    vocabularyHints: [],
-  },
-  toolPolicy: {
-    allowedTools: ['*'],
-    requireConfirmation: [],
-    forbiddenTools: [],
-    maxIterations: 3,
-    securityOverrides: {},
-  },
-  memoryPolicy: {
-    retrieveLimit: 5,
-    minConfidence: 0.4,
-    includeTypes: ['preference', 'fact'],
-    autoExtract: true,
-  },
-  defaultModel: 'qwen-plus',
-  fallbackModel: 'gemini-1.5-flash',
-};
-
-const TONES = ['neutral', 'warm', 'professional', 'technical', 'playful', 'inspiring'] as const;
-const VERBOSITIES = ['concise', 'balanced', 'detailed'] as const;
-const MEMORY_TYPES = ['preference', 'fact', 'habit', 'knowledge'] as const;
-
 export function PersonalityEditor({ t }: { t?: any }) {
-  const [personalities, setPersonalities] = useState<PersonalityConfig[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<PersonalityConfig>(DEFAULT_CONFIG);
-  const [isNew, setIsNew] = useState(false);
+  const [config, setConfig] = useState<PersonalityConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tools, setTools] = useState<any[]>([]);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     identity: true,
-    boundaries: true,
-    expression: true,
+    boundaries: false,
+    expression: false,
+    evolution: true,
     tools: false,
     memory: false,
     models: false,
@@ -86,338 +61,161 @@ export function PersonalityEditor({ t }: { t?: any }) {
 
   const toggleSection = (s: string) => setExpandedSections(prev => ({ ...prev, [s]: !prev[s] }));
 
-  const fetchPersonalities = async () => {
-    try {
-      const res = await fetch('/api/personalities');
-      const data = await res.json();
-      setPersonalities(data);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFullConfig = async (id: string) => {
-    try {
-      const res = await fetch(`/api/personalities/${id}`);
-      const data = await res.json();
-      setEditing(data);
-      setIsNew(false);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
-
-  useEffect(() => { fetchPersonalities(); fetch('/api/tools').then(r => r.json()).then(setTools).catch(err => toast.error(t.failedToLoadTools || 'Failed to load tools')); }, []);
-
-  const handleSelect = (id: string) => {
-    setSelectedId(id);
-    fetchFullConfig(id);
-  };
-
-  const handleNew = () => {
-    setSelectedId(null);
-    setEditing({ ...DEFAULT_CONFIG, id: 'custom_' + Date.now() });
-    setIsNew(true);
-  };
-
-  const handleSave = async () => {
-    if (!editing.id || !editing.name) {
-      toast.error(t.idNameRequired || 'ID and Name are required');
-      return;
-    }
-    try {
-      const res = await fetch('/api/personalities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editing),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || (t.saveFailed || 'Save failed'));
-      toast.success(`${editing.name} ${t.savedSuffix || 'saved'}`);
-      await fetchPersonalities();
-      setSelectedId(editing.id);
-      setIsNew(false);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (id === 'lumi' || id === 'scholar' || id === 'founder') { toast.error(t.cannotDeleteCore || "Cannot delete core personalities"); return; }
-    try {
-      await fetch(`/api/personalities/${id}`, { method: 'DELETE' });
-      toast.success(t.personalityDeleted || 'Personality deleted');
-      setSelectedId(null);
-      setEditing(DEFAULT_CONFIG);
-      fetchPersonalities();
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
-
-  const update = (path: string[], value: any) => {
-    setEditing(prev => {
-      const next = { ...prev };
-      let obj: any = next;
-      for (let i = 0; i < path.length - 1; i++) {
-        obj = obj[path[i]];
-      }
-      obj[path[path.length - 1]] = value;
-      return next;
-    });
-  };
-
-  const addBoundary = () => update(['behavioralBoundaries'], [...editing.behavioralBoundaries, '']);
-  const removeBoundary = (i: number) => update(['behavioralBoundaries'], editing.behavioralBoundaries.filter((_, idx) => idx !== i));
-
-  const addVocab = () => update(['expressionStyle', 'vocabularyHints'], [...(editing.expressionStyle.vocabularyHints || []), '']);
-  const removeVocab = (i: number) => update(['expressionStyle', 'vocabularyHints'], (editing.expressionStyle.vocabularyHints || []).filter((_, idx) => idx !== i));
+  useEffect(() => {
+    fetch('/api/personalities')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setConfig(data[0]);
+        }
+      })
+      .catch(() => toast.error(t?.failedToLoadPersonalities || 'Failed to load Lumi config'))
+      .finally(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
         <div className="flex items-center gap-3">
           <User className="text-celestial-saturn" />
-          <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t.personalityEditor || 'Personality Editor'}</h3>
+          <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t?.lumiCore || 'Lumi Core Config'}</h3>
         </div>
-        <p className="text-white/40 text-sm">{t.loadingPersonalities || 'Loading personality configurations...'}</p>
+        <p className="text-white/40 text-sm">{t?.loadingPersonalities || 'Loading...'}</p>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="flex items-center gap-3">
+          <User className="text-celestial-saturn" />
+          <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t?.lumiCore || 'Lumi Core Config'}</h3>
+        </div>
+        <p className="text-white/40 text-sm">{t?.noPersonalitiesDefined || 'No configuration found.'}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <User className="text-celestial-saturn" />
-          <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t.personalityEditor || 'Personality Editor'}</h3>
-        </div>
-        <Button onClick={handleNew} className="bg-celestial-saturn text-black font-bold text-xs px-4 py-2 rounded-xl">
-          <Plus size={14} className="mr-1" /> {t.newBtn || 'New'}
-        </Button>
+      <div className="flex items-center gap-3">
+        <User className="text-celestial-saturn" />
+        <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t?.lumiCore || 'Lumi Core Config'}</h3>
+        <span className="text-[10px] font-mono text-white/20 bg-white/5 px-2 py-0.5 rounded-full">v{config.version}</span>
       </div>
 
       <p className="text-sm text-white/40 max-w-xl">
-        {t.personalityEditorDesc || 'Define AI personalities with structured identity, boundaries, expression style, and tool policies. Each personality can be used as-is or overridden per context.'}
+        {t?.lumiCoreDesc || 'Lumi\'s core personality evolves organically through Hebbian learning from interactions. This view shows the current configuration — changes happen automatically, not through manual editing.'}
       </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Personality list */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-2">{t.personalitiesLabel || 'Personalities'}</label>
-          {personalities.map(p => (
-            <button
-              key={p.id}
-              onClick={() => handleSelect(p.id)}
-              className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                selectedId === p.id
-                  ? 'bg-celestial-saturn/10 border-celestial-saturn/30 text-white'
-                  : 'bg-white/5 border-white/5 text-white/60 hover:bg-white/10'
-              }`}
-            >
-              <div className="font-bold text-sm">{p.name}</div>
-              <div className="text-[10px] text-white/30 mt-1 truncate">{p.coreMotivation?.slice(0, 50)}</div>
-            </button>
-          ))}
-          {personalities.length === 0 && (
-            <p className="text-white/20 text-xs p-4">{t.noPersonalitiesDefined || 'No personalities defined.'}</p>
-          )}
-        </div>
+      <div className="space-y-4">
+        {/* Identity */}
+        <Section title={t?.identitySection || 'Identity'} section="identity" expanded={expandedSections} onToggle={toggleSection}>
+          <ReadonlyField label={t?.idLabel || 'ID'} value={config.id} mono />
+          <ReadonlyField label={t?.nameLabel || 'Name'} value={config.name} />
+          <ReadonlyField label={t?.versionLabel || 'Version'} value={config.version} />
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-white/30">{t?.coreMotivationLabel || 'Core Motivation'}</label>
+            <p className="text-sm text-white/60 bg-white/5 rounded-xl p-3">{config.coreMotivation}</p>
+          </div>
+        </Section>
 
-        {/* Editor */}
-        {selectedId || isNew ? (
-          <div className="lg:col-span-2 space-y-4">
-            {/* Identity */}
-            <Section title={t.identitySection || 'Identity'} section="identity" expanded={expandedSections} onToggle={toggleSection}>
-              <Field label={t.idLabel || 'ID'} value={editing.id} onChange={v => update(['id'], v)} disabled={!isNew} mono />
-              <Field label={t.nameLabel || 'Name'} value={editing.name} onChange={v => update(['name'], v)} />
-              <Field label={t.versionLabel || 'Version'} value={editing.version} onChange={v => update(['version'], v)} />
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-white/30">{t.coreMotivationLabel || 'Core Motivation'}</label>
-                <textarea
-                  value={editing.coreMotivation}
-                  onChange={e => update(['coreMotivation'], e.target.value)}
-                  rows={3}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm font-mono focus:border-celestial-saturn/50 outline-none resize-none"
-                />
-              </div>
-            </Section>
-
-            {/* Boundaries */}
-            <Section title={t.behavioralBoundariesSection || 'Behavioral Boundaries'} section="boundaries" expanded={expandedSections} onToggle={toggleSection}>
-              {editing.behavioralBoundaries.map((b, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    value={b}
-                    onChange={e => {
-                      const next = [...editing.behavioralBoundaries];
-                      next[i] = e.target.value;
-                      update(['behavioralBoundaries'], next);
-                    }}
-                    placeholder={t.boundaryPlaceholder || 'e.g. Do not pretend to be human'}
-                    className="flex-1 bg-white/5 border-white/10 rounded-xl py-2 text-sm"
-                  />
-                  <button onClick={() => removeBoundary(i)} className="p-2 text-white/20 hover:text-red-500">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-              <Button onClick={addBoundary} variant="ghost" className="text-xs text-white/30">
-                <Plus size={12} className="mr-1" /> {t.addBoundary || 'Add boundary'}
-              </Button>
-            </Section>
-
-            {/* Expression Style */}
-            <Section title={t.expressionStyleSection || 'Expression Style'} section="expression" expanded={expandedSections} onToggle={toggleSection}>
-              <Field label={t.personaField || 'Persona'} value={editing.expressionStyle.persona} onChange={v => update(['expressionStyle', 'persona'], v)} placeholder={t.personaPlaceholder || 'a futuristic AI architect'} />
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-white/30">{t.toneField || 'Tone'}</label>
-                  <select
-                    value={editing.expressionStyle.tone}
-                    onChange={e => update(['expressionStyle', 'tone'], e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold appearance-none cursor-pointer"
-                  >
-                    {TONES.map(t => (<option key={t} value={t}>{t}</option>))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-white/30">{t.verbosityField || 'Verbosity'}</label>
-                  <select
-                    value={editing.expressionStyle.verbosity}
-                    onChange={e => update(['expressionStyle', 'verbosity'], e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold appearance-none cursor-pointer"
-                  >
-                    {VERBOSITIES.map(v => (<option key={v} value={v}>{v}</option>))}
-                  </select>
-                </div>
-              </div>
-
-              <Field label={t.languagesField || 'Languages (comma separated)'} value={editing.expressionStyle.languages.join(', ')} onChange={v => update(['expressionStyle', 'languages'], v.split(',').map(s => s.trim()).filter(Boolean))} mono />
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-white/30">{t.vocabularyHints || 'Vocabulary Hints'}</label>
-                {(editing.expressionStyle.vocabularyHints || []).map((h, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Input value={h} onChange={e => {
-                      const next = [...(editing.expressionStyle.vocabularyHints || [])];
-                      next[i] = e.target.value;
-                      update(['expressionStyle', 'vocabularyHints'], next);
-                    }} className="flex-1 bg-white/5 border-white/10 rounded-xl py-2 text-sm" />
-                    <button onClick={() => removeVocab(i)} className="p-2 text-white/20 hover:text-red-500"><X size={14} /></button>
-                  </div>
-                ))}
-                <Button onClick={addVocab} variant="ghost" className="text-xs text-white/30"><Plus size={12} className="mr-1" /> {t.addHint || 'Add hint'}</Button>
-              </div>
-            </Section>
-
-            {/* Tool Policy */}
-            <Section title={t.toolPolicySection || 'Tool Policy'} section="tools" expanded={expandedSections} onToggle={toggleSection}>
-              <Field label={t.allowedToolsField || 'Allowed Tools (comma separated, * for all)'} value={(editing.toolPolicy.allowedTools || ['*']).join(', ')} onChange={v => update(['toolPolicy', 'allowedTools'], v.split(',').map(s => s.trim()).filter(Boolean))} />
-              <Field label={t.requireConfirmationField || 'Require Confirmation (comma separated)'} value={(editing.toolPolicy.requireConfirmation || []).join(', ')} onChange={v => update(['toolPolicy', 'requireConfirmation'], v.split(',').map(s => s.trim()).filter(Boolean))} />
-              <Field label={t.forbiddenToolsField || 'Forbidden Tools (comma separated)'} value={(editing.toolPolicy.forbiddenTools || []).join(', ')} onChange={v => update(['toolPolicy', 'forbiddenTools'], v.split(',').map(s => s.trim()).filter(Boolean))} />
-              <Field label={t.maxIterationsField || 'Max Iterations'} value={String(editing.toolPolicy.maxIterations)} onChange={v => update(['toolPolicy', 'maxIterations'], parseInt(v) || 3)} type="number" />
-
-              {/* Per-tool security overrides */}
-              {tools.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-white/30">{t.perToolOverrides || 'Per-Tool Security Overrides'}</label>
-                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {tools.map(tool => {
-                      const currentOverride = (editing.toolPolicy.securityOverrides || {})[tool.name] || tool.securityLevel;
-                      const isOverridden = currentOverride !== tool.securityLevel;
-                      return (
-                        <div key={tool.name} className="flex items-center gap-2 p-2 bg-white/5 rounded-xl group hover:bg-white/10 transition-all">
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[10px] font-mono text-white/70 block truncate">{tool.name}</span>
-                            <span className="text-[8px] text-white/20">{tool.description}</span>
-                          </div>
-                          <select
-                            value={currentOverride}
-                            onChange={e => {
-                              const overrides = { ...(editing.toolPolicy.securityOverrides || {}) };
-                              if (e.target.value === tool.securityLevel) {
-                                delete overrides[tool.name];
-                              } else {
-                                overrides[tool.name] = e.target.value;
-                              }
-                              update(['toolPolicy', 'securityOverrides'], overrides);
-                            }}
-                            className={`text-[9px] font-bold uppercase px-2 py-1 rounded-lg border appearance-none cursor-pointer outline-none ${
-                              isOverridden ? 'bg-celestial-saturn/20 text-celestial-saturn border-celestial-saturn/30' : 'bg-white/5 text-white/30 border-white/5'
-                            }`}
-                          >
-                            <option value="safe">{t.toolSecuritySafe || 'Safe'}</option>
-                            <option value="confirm">{t.toolSecurityConfirm || 'Confirm'}</option>
-                            <option value="forbidden">{t.toolSecurityForbidden || 'Forbidden'}</option>
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </Section>
-
-            {/* Memory Policy */}
-            <Section title={t.memoryPolicySection || 'Memory Policy'} section="memory" expanded={expandedSections} onToggle={toggleSection}>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={t.retrieveLimitField || 'Retrieve Limit'} value={String(editing.memoryPolicy.retrieveLimit)} onChange={v => update(['memoryPolicy', 'retrieveLimit'], parseInt(v) || 5)} type="number" />
-                <Field label={t.minConfidenceField || 'Min Confidence'} value={String(editing.memoryPolicy.minConfidence)} onChange={v => update(['memoryPolicy', 'minConfidence'], parseFloat(v) || 0.4)} type="number" step="0.1" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-white/30">{t.includeTypesField || 'Include Types'}</label>
-                <div className="flex flex-wrap gap-2">
-                  {MEMORY_TYPES.map(mt => (
-                    <button
-                      key={mt}
-                      onClick={() => {
-                        const cur = editing.memoryPolicy.includeTypes;
-                        update(['memoryPolicy', 'includeTypes'], cur.includes(mt) ? cur.filter(t => t !== mt) : [...cur, mt]);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all ${
-                        editing.memoryPolicy.includeTypes.includes(mt) ? 'bg-celestial-saturn/20 text-celestial-saturn border border-celestial-saturn/30' : 'bg-white/5 text-white/30 border border-white/5'
-                      }`}
-                    >
-                      {mt}
-                    </button>
+        {/* Evolution Vector */}
+        <Section title={t?.evolutionVector || 'Evolution Vector'} section="evolution" expanded={expandedSections} onToggle={toggleSection}>
+          {config.personalityVector ? (
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-white/30 block mb-2">Cognitive Style</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {Object.entries(config.personalityVector.cognitiveStyle).map(([k, v]) => (
+                    <div key={k} className="text-center p-3 bg-white/5 rounded-xl">
+                      <div className="text-lg font-black text-celestial-saturn">{(v * 100).toFixed(0)}%</div>
+                      <div className="text-[9px] text-white/30 uppercase">{k}</div>
+                    </div>
                   ))}
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
-                <input type="checkbox" checked={editing.memoryPolicy.autoExtract} onChange={e => update(['memoryPolicy', 'autoExtract'], e.target.checked)} className="rounded" />
-                {t.autoExtractLabel || 'Auto-extract from conversations'}
-              </label>
-            </Section>
-
-            {/* Models */}
-            <Section title={t.modelsSection || 'Models'} section="models" expanded={expandedSections} onToggle={toggleSection}>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={t.defaultModelField || 'Default Model'} value={editing.defaultModel} onChange={v => update(['defaultModel'], v)} placeholder="qwen-plus" />
-                <Field label={t.fallbackModelField || 'Fallback Model'} value={editing.fallbackModel} onChange={v => update(['fallbackModel'], v)} placeholder="gemini-1.5-flash" />
+              <div>
+                <label className="text-[10px] font-black uppercase text-white/30 block mb-2">Social Style</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {Object.entries(config.personalityVector.socialStyle).map(([k, v]) => (
+                    <div key={k} className="text-center p-3 bg-white/5 rounded-xl">
+                      <div className="text-lg font-black text-violet-400">{(v * 100).toFixed(0)}%</div>
+                      <div className="text-[9px] text-white/30 uppercase">{k}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </Section>
-
-            {/* Actions */}
-            <div className="flex justify-between pt-4">
-              <Button
-                onClick={() => handleDelete(editing.id)}
-                variant="ghost"
-                className="text-red-500/50 hover:text-red-500 text-xs px-4 py-2"
-                disabled={editing.id === 'lumi' || editing.id === 'scholar' || editing.id === 'founder'}
-              >
-                <Trash2 size={14} className="mr-1" /> {t.deleteBtn || 'Delete'}
-              </Button>
-              <Button onClick={handleSave} className="bg-celestial-saturn text-black font-bold px-8 py-3 rounded-xl">
-                <Save size={14} className="mr-1" /> {t.save || 'Save'}
-              </Button>
+              {config.evolutionConfig && (
+                <div className="text-[10px] text-white/20 space-y-1">
+                  <div>Plasticity: {config.evolutionConfig.plasticity} | Cooldown: {Math.round(config.evolutionConfig.cooldownMs / 86400000)}d | Max mutations/step: {config.evolutionConfig.maxMutationsPerStep}</div>
+                  {config.lastEvolvedAt && <div>Last evolved: {new Date(config.lastEvolvedAt).toLocaleDateString()}</div>}
+                </div>
+              )}
             </div>
+          ) : (
+            <p className="text-white/30 text-xs">Evolution vector not yet initialized. It will be seeded on first interaction.</p>
+          )}
+        </Section>
+
+        {/* Expression */}
+        <Section title={t?.expressionStyleSection || 'Expression Style'} section="expression" expanded={expandedSections} onToggle={toggleSection}>
+          <ReadonlyField label={t?.personaField || 'Persona'} value={config.expressionStyle.persona} />
+          <div className="grid grid-cols-2 gap-4">
+            <ReadonlyField label={t?.toneField || 'Tone'} value={config.expressionStyle.tone} />
+            <ReadonlyField label={t?.verbosityField || 'Verbosity'} value={config.expressionStyle.verbosity} />
           </div>
-        ) : (
-          <div className="lg:col-span-2 flex items-center justify-center p-16 bg-white/5 rounded-[2rem] border border-white/5">
-            <p className="text-white/20 text-sm uppercase tracking-widest">{t.selectPersonalityPrompt || 'Select a personality or create a new one'}</p>
+          <ReadonlyField label={t?.languagesField || 'Languages'} value={config.expressionStyle.languages.join(', ')} />
+          {config.expressionStyle.vocabularyHints && config.expressionStyle.vocabularyHints.length > 0 && (
+            <ReadonlyField label={t?.vocabularyHints || 'Vocabulary Hints'} value={config.expressionStyle.vocabularyHints.join(', ')} />
+          )}
+          <ReadonlyField label="TTS Voice" value={config.ttsVoiceId || 'default'} />
+        </Section>
+
+        {/* Boundaries */}
+        <Section title={t?.behavioralBoundariesSection || 'Behavioral Boundaries'} section="boundaries" expanded={expandedSections} onToggle={toggleSection}>
+          {config.behavioralBoundaries.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl">
+              <Activity size={12} className="text-celestial-saturn/50 shrink-0" />
+              <span className="text-sm text-white/60">{b}</span>
+            </div>
+          ))}
+          {config.behavioralBoundaries.length === 0 && (
+            <p className="text-white/20 text-xs">No boundaries defined.</p>
+          )}
+        </Section>
+
+        {/* Tool Policy */}
+        <Section title={t?.toolPolicySection || 'Tool Policy'} section="tools" expanded={expandedSections} onToggle={toggleSection}>
+          <ReadonlyField label={t?.allowedToolsField || 'Allowed Tools'} value={(config.toolPolicy.allowedTools || ['*']).join(', ')} />
+          <ReadonlyField label={t?.requireConfirmationField || 'Require Confirmation'} value={(config.toolPolicy.requireConfirmation || []).join(', ') || 'none'} />
+          <ReadonlyField label={t?.forbiddenToolsField || 'Forbidden Tools'} value={(config.toolPolicy.forbiddenTools || []).join(', ') || 'none'} />
+          <ReadonlyField label={t?.maxIterationsField || 'Max Iterations'} value={String(config.toolPolicy.maxIterations)} />
+        </Section>
+
+        {/* Memory Policy */}
+        <Section title={t?.memoryPolicySection || 'Memory Policy'} section="memory" expanded={expandedSections} onToggle={toggleSection}>
+          <div className="grid grid-cols-2 gap-4">
+            <ReadonlyField label={t?.retrieveLimitField || 'Retrieve Limit'} value={String(config.memoryPolicy.retrieveLimit)} />
+            <ReadonlyField label={t?.minConfidenceField || 'Min Confidence'} value={String(config.memoryPolicy.minConfidence)} />
           </div>
-        )}
+          <ReadonlyField label={t?.includeTypesField || 'Include Types'} value={config.memoryPolicy.includeTypes.join(', ')} />
+          <ReadonlyField label={t?.autoExtractLabel || 'Auto-extract'} value={config.memoryPolicy.autoExtract ? 'Yes' : 'No'} />
+        </Section>
+
+        {/* Models */}
+        <Section title={t?.modelsSection || 'Models'} section="models" expanded={expandedSections} onToggle={toggleSection}>
+          <div className="grid grid-cols-2 gap-4">
+            <ReadonlyField label={t?.defaultModelField || 'Default Model'} value={config.defaultModel} />
+            <ReadonlyField label={t?.fallbackModelField || 'Fallback Model'} value={config.fallbackModel} />
+          </div>
+        </Section>
+      </div>
+
+      {/* Evolution History + Radar */}
+      <div className="rounded-2xl overflow-hidden">
+        <PersonalityEvolution />
       </div>
     </div>
   );
@@ -444,28 +242,17 @@ function Section({ title, section, expanded, onToggle, children }: {
   );
 }
 
-function Field({ label, value, onChange, placeholder, disabled, mono, type, step }: {
+function ReadonlyField({ label, value, mono }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
   mono?: boolean;
-  type?: string;
-  step?: string;
 }) {
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-black uppercase text-white/30">{label}</label>
-      <Input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        type={type}
-        step={step}
-        className={`w-full bg-white/5 border-white/10 rounded-xl py-2 text-sm ${mono ? 'font-mono' : ''} ${disabled ? 'opacity-50' : ''}`}
-      />
+      <div className={`w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-sm text-white/60 ${mono ? 'font-mono' : ''}`}>
+        {value || <span className="text-white/20">—</span>}
+      </div>
     </div>
   );
 }

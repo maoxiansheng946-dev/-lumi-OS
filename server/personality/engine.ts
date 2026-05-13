@@ -4,15 +4,6 @@ import { formatMemoriesForContext } from '../memory/store';
 import { EmotionalState, formatEmotionalStateForPrompt, resolveVerbosityFromState, applyIntimacyToVector } from './state';
 import { generateSpatiotemporalContext } from '../time/spatiotemporal';
 
-const TONE_GUIDE: Record<ExpressionStyle['tone'], string> = {
-  neutral: 'Communicate in a balanced, matter-of-fact manner.',
-  warm: 'Communicate with warmth and empathy. Make the user feel understood.',
-  professional: 'Communicate professionally. Prioritize clarity and precision.',
-  technical: 'Communicate with technical depth. Use precise terminology when appropriate.',
-  playful: 'Communicate playfully and with humour. Keep interactions light and engaging.',
-  inspiring: 'Communicate with passion and vision. Inspire the user to think bigger.',
-};
-
 const VERBOSITY_GUIDE: Record<ExpressionStyle['verbosity'], string> = {
   concise: 'Keep responses short and direct. One or two sentences when possible.',
   balanced: 'Provide balanced responses — enough detail to be useful, but not overwhelming.',
@@ -230,8 +221,6 @@ export function generateSystemPrompt(
   config: PersonalityConfig,
   ctx: PersonalityContext,
   options?: {
-    /** Additional skill/module override (e.g. "colleague", "family") */
-    skillOverride?: string;
     /** Relevant memories to inject */
     memories?: Memory[];
     /** RAG knowledge chunks from ingested documents */
@@ -293,9 +282,6 @@ export function generateSystemPrompt(
       blocks.push('\n## Operating Style');
       blocks.push(directives);
     }
-  } else {
-    blocks.push(TONE_GUIDE[style.tone]);
-    blocks.push(VERBOSITY_GUIDE[verbosity]);
   }
   if (style.vocabularyHints && style.vocabularyHints.length > 0) {
     blocks.push(`Favour these expression patterns: ${style.vocabularyHints.join(', ')}.`);
@@ -307,12 +293,7 @@ export function generateSystemPrompt(
     blocks.push(formatEmotionalStateForPrompt(options.emotionalState));
   }
 
-  // 5. Skill override (e.g. immortality skills)
-  if (options?.skillOverride) {
-    blocks.push(`\n## Active Role Module\n${options.skillOverride}`);
-  }
-
-  // 6. Memory context — perspective-based, first-person for Lumi's own memories
+  // 5. Memory context — perspective-based, first-person for Lumi's own memories
   if (options?.memories && options.memories.length > 0) {
     const formatted = formatMemoriesForContext(options.memories);
     if (formatted) {

@@ -18,7 +18,6 @@ export function FloatingAgent({ t }: { t: any }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const { speak, isSpeaking } = useTTS();
-  const { personalityId } = useApp();
   const scrollRef = useRef<HTMLDivElement>(null);
   const socket = useSocket();
 
@@ -69,7 +68,7 @@ export function FloatingAgent({ t }: { t: any }) {
           role: m.role,
           content: m.content
         })),
-        personalityId
+        personalityId: 'lumi'
       });
     }
   };

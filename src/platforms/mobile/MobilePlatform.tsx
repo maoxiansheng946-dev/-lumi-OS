@@ -51,7 +51,6 @@ export function MobilePlatform({ t, user, lang, setLang, onLogin, onExit, render
   const [isDarkMode, setIsDarkMode] = useState(true);
 
   const socket = useSocket();
-  const { personalityId } = useApp();
   const { callState, startCall, endCall } = useVoiceCall({
     socket,
     onResponse: (text) => {
@@ -213,7 +212,7 @@ export function MobilePlatform({ t, user, lang, setLang, onLogin, onExit, render
                 <button 
                   onClick={() => {
                     triggerHaptic(10);
-                    if (callState === 'idle') startCall(undefined, personalityId, personalityId);
+                    if (callState === 'idle') startCall(undefined, 'lumi', 'lumi');
                     else endCall();
                   }}
                   className={`w-full p-6 glass-dark rounded-[2.5rem] border transition-all flex items-center justify-between group active:bg-white/5 ${

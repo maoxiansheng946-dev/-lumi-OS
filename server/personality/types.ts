@@ -124,6 +124,21 @@ export interface PersonalityConfig {
     toolPolicy: Partial<ToolPolicy>;
     memoryPolicy: Partial<MemoryPolicy>;
   }>>;
+
+  /** Evolution config — controls how this personality evolves through Hebbian learning */
+  evolutionConfig?: {
+    plasticity: number;
+    minMemoriesForEvolution: number;
+    minConnectionForEvolution: number;
+    cooldownMs: number;
+    maxMutationsPerStep: number;
+  };
+
+  /** Timestamp of the last evolution step */
+  lastEvolvedAt?: string | null;
+
+  /** Record of evolution steps applied to this personality */
+  evolutionHistory?: any[];
 }
 
 /** Active sensory channels from connected devices */

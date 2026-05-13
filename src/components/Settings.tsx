@@ -33,8 +33,6 @@ import { RemoteMCPSettings } from './RemoteMCPSettings';
 import { FeishuSettings } from './FeishuSettings';
 import { KnowledgeBase } from './KnowledgeBase';
 import { PersonalityEditor } from './PersonalityEditor';
-import { PersonalityMarketplace } from './PersonalityMarketplace';
-
 
 function buildSidebarGroups(t: any) {
   return [
@@ -64,7 +62,6 @@ function buildSidebarGroups(t: any) {
       label: t.sidebarPersonality || 'Personality',
       items: [
         { id: 'personality', label: t.sidebarEditor || 'Editor', icon: <User size={16} /> },
-        { id: 'market', label: t.sidebarMarket || 'Market', icon: <Globe size={16} /> },
         { id: 'memory', label: t.memory || 'Memory', icon: <Database size={16} /> },
       ],
     },
@@ -100,17 +97,12 @@ export function Settings({
   onSectionChange?: (section: string) => void;
 }) {
   const { platform, isElectron } = usePlatform();
-  const { aiConfig, updateAIConfig, personalityId, setPersonalityId } = useApp();
+  const { aiConfig, updateAIConfig } = useApp();
   const [showApiKey, setShowApiKey] = useState(false);
-  const [personalities, setPersonalities] = useState<any[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, { available: boolean; model: string }>>({});
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetch('/api/personalities')
-      .then(r => r.json())
-      .then(setPersonalities)
-      .catch(() => toast.error(t.failedToLoadPersonalities || 'Failed to load personalities'));
     fetch('/api/llm/providers')
       .then(r => r.json())
       .then(d => setProviderStatus(d.providers || {}))
@@ -183,19 +175,6 @@ export function Settings({
           <div className="space-y-8">
             <SettingsSection title={t.agentFramework || "Agent Framework (Lumi Protocol)"} icon={<BrainCircuit size={18} className="text-celestial-saturn" />}>
               <div className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-white/30 ml-2">{t.corePersonality || "Core Personality"}</label>
-                  <div className="relative">
-                    <User size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
-                    <select value={personalityId} onChange={(e) => setPersonalityId(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:border-celestial-saturn/50 outline-none">
-                      {personalities.map((p: any) => (
-                        <option key={p.id} value={p.id}>{p.name} — {p.coreMotivation?.slice(0, 60)}...</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
-                  </div>
-                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-2">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40 tracking-widest"><span>{t.neuralEngine || "Neural Engine"}</span><span className="text-green-500">{t.neuralEngineActive || "Active"}</span></div>
@@ -362,9 +341,7 @@ export function Settings({
         return <HardwareSettings t={t} />;
       case 'personality':
         return <PersonalityEditor t={t} />;
-      case 'market':
-        return <PersonalityMarketplace t={t} />;
-      case 'memory':
+case 'memory':
         return <KnowledgeBase isOpen={true} onClose={() => onSectionChange?.('general')} />;
       case 'mcp':
         return <MCPSettings t={t} />;

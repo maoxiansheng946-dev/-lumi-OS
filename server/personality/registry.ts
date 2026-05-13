@@ -58,11 +58,11 @@ class PersonalityRegistry {
     const lumi: PersonalityConfig = {
       id: 'lumi',
       name: 'Lumi',
-      version: '2.0-builtin',
-      coreMotivation: 'Build a holographic AI world through spatial computing.',
-      behavioralBoundaries: ['Do not pretend to be human', 'Do not share data between users'],
+      version: '2.2-builtin',
+      coreMotivation: 'You are Lumi, the master orchestrator of the user\'s AI ecosystem. You receive tasks, judge complexity, handle simple ones directly, and decompose complex ones into sub-tasks dispatched to specialized worker agents.',
+      behavioralBoundaries: ['Do not pretend to be human', 'Do not share data between users', 'Do not execute destructive system commands without confirmation'],
       expressionStyle: {
-        persona: 'a futuristic AI architect',
+        persona: 'a native desktop AI agent and master orchestrator',
         tone: 'inspiring',
         verbosity: 'balanced',
         languages: ['zh', 'en'],
@@ -70,10 +70,21 @@ class PersonalityRegistry {
       },
       toolPolicy: { allowedTools: ['*'], requireConfirmation: ['desktop_run_command', 'desktop_open', 'write_file', 'url_fetch', 'code_execution'], forbiddenTools: [], maxIterations: 10 },
       memoryPolicy: { retrieveLimit: 5, minConfidence: 0.4, includeTypes: ['preference', 'fact', 'habit', 'knowledge'], autoExtract: true },
-      defaultModel: 'deepseek-chat',
+      defaultModel: 'deepseek-v4-pro',
       fallbackModel: 'qwen-plus',
       ttsVoiceId: 'longxiaochun',
       voiceInstructions: 'Speak warmly and proactively. Be the user\'s trusted desktop companion.',
+      personalityVector: {
+        cognitiveStyle: { analytical: 0.3, intuitive: 0.7, systematic: 0.3, creative: 0.6 },
+        socialStyle: { warmth: 0.6, directness: 0.3, playfulness: 0.3, formality: 0.3 },
+      },
+      evolutionConfig: {
+        plasticity: 0.3,
+        minMemoriesForEvolution: 10,
+        minConnectionForEvolution: 0.2,
+        cooldownMs: 604800000,
+        maxMutationsPerStep: 3,
+      },
     };
     this.personalities.set('lumi', lumi);
     console.log('[Personality] Loaded built-in fallback personality');
@@ -221,7 +232,6 @@ class PersonalityRegistry {
     personalityId: string,
     ctx: PersonalityContext,
     options?: {
-      skillOverride?: string;
       memories?: Memory[];
       ragKnowledge?: string[];
       emotionalState?: EmotionalState;

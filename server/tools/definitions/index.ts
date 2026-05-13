@@ -10,6 +10,7 @@ import { registerVerifyTools } from './verify_tools';
 import { registerSkillTools, setSkillLLMGetters } from './skill_tools';
 import { registerOfficeTools } from './office_tools';
 import { registerCalendarTools } from './calendar_tools';
+import { registerAgentTools } from './agent_tools';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -32,6 +33,7 @@ export function registerAllTools(
   registerSkillTools(registry);
   registerOfficeTools(registry);
   registerCalendarTools(registry);
+  registerAgentTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

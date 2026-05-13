@@ -49,7 +49,6 @@ interface AppContextType {
   loading: boolean;
   agents: Agent[];
   aiConfig: AIConfig;
-  personalityId: string;
   // Voice
   selectedVoiceId: string | undefined;
   setSelectedVoiceId: (id: string) => void;
@@ -72,7 +71,6 @@ interface AppContextType {
   updateBalance: (amount: number) => Promise<void>;
   refreshUser: () => Promise<void>;
   updateAIConfig: (config: Partial<AIConfig>) => void;
-  setPersonalityId: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -85,10 +83,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('lumi_ai_config');
     return saved ? JSON.parse(saved) : { provider: 'deepseek', model: 'deepseek-chat', apiKey: '' };
   });
-  const [personalityId, setPersonalityIdState] = useState<string>(() => {
-    return localStorage.getItem('lumi_personality_id') || 'lumi';
-  });
-
   // Voice state
   const [selectedVoiceId, setSelectedVoiceIdState] = useState<string | undefined>(() => {
     return localStorage.getItem('lumi_selected_voice_id') || undefined;
@@ -211,11 +205,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser((prev) => prev ? { ...prev, balance: (prev.balance || 0) + amount } : prev);
   };
 
-  const setPersonalityId = (id: string) => {
-    setPersonalityIdState(id);
-    localStorage.setItem('lumi_personality_id', id);
-  };
-
   const setSelectedVoiceId = (id: string) => {
     setSelectedVoiceIdState(id);
     localStorage.setItem('lumi_selected_voice_id', id);
@@ -261,7 +250,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loading,
       agents,
       aiConfig,
-      personalityId,
       selectedVoiceId,
       setSelectedVoiceId,
       favoriteVoices,
@@ -280,7 +268,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateBalance,
       refreshUser,
       updateAIConfig,
-      setPersonalityId,
     }}>
       {children}
     </AppContext.Provider>

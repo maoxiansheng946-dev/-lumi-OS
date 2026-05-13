@@ -157,7 +157,7 @@ export function mountAgentRoutes(
     try {
       const decoded: any = jwt.verify(token, jwtSecret);
       const db = readDB();
-      const userAgents = db.agents.filter((a: any) => a.ownerUid === decoded.uid);
+      const userAgents = db.agents.filter((a: any) => a.ownerUid === decoded.uid && !a.id.startsWith('ephemeral_'));
       res.json(userAgents);
     } catch (e) {
       res.status(401).json({ error: "Invalid token" });

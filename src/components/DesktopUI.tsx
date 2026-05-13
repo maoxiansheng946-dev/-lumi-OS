@@ -35,7 +35,6 @@ import {
   Wrench,
   MessageSquare,
   Crown,
-  GitBranch,
   Castle,
   Brush,
 } from 'lucide-react';
@@ -44,13 +43,10 @@ import { GlassCard } from './SharedUI';
 import { LocalAgentSphere } from './LocalAgentSphere';
 import { VoiceTrainingDialog } from './VoiceTrainingDialog';
 import { VoicePicker } from './VoicePicker';
-import { PersonalityQuickSwitch } from './PersonalityQuickSwitch';
 import { LLMConfigPanel } from './LLMConfigPanel';
 import { ToolPanel } from './ToolPanel';
 import { GitHubMCPBrowser } from './GitHubMCPBrowser';
 import { SkillCenter } from './SkillCenter';
-import { PersonalityDashboard } from './PersonalityDashboard';
-import { PersonalityEvolution } from './PersonalityEvolution';
 import { NotificationCenter } from './NotificationCenter';
 import { TokenDashboard } from './TokenDashboard';
 import { SubscriptionPanel } from './SubscriptionPanel';
@@ -248,7 +244,7 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
 }) {
   const [nightShift, setNightShift] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const { personalityId, aiConfig, selectedVoiceId, unreadCount } = useApp();
+  const { aiConfig, selectedVoiceId, unreadCount } = useApp();
 
   if (!isOpen) return null;
 
@@ -356,18 +352,6 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
       <div className="space-y-2 mb-6">
         <span className="text-[10px] font-black text-white/20 uppercase tracking-widest px-2">{t.aiCore || 'AI Core'}</span>
         <div className="space-y-1">
-          {/* Personality switcher */}
-          <button
-            onClick={() => { toggleWindow('personality'); onClose(); }}
-            className="w-full flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <UserIcon size={14} className="text-violet-400" />
-              <span className="text-xs font-bold text-white/70">{t.personaLabel || 'Persona'}</span>
-            </div>
-            <span className="text-[10px] font-black text-violet-400 uppercase">{personalityId}</span>
-          </button>
-
           {/* Voice selector */}
           <button
             onClick={() => { toggleWindow('voice'); onClose(); }}
@@ -729,7 +713,7 @@ export function DesktopUI({
   const personalScale = useTransform(cameraZ, [0, -1000], [1, 0.4]);
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
   const { isTauri } = usePlatform();
-  const { personalityId, selectedVoiceId, unreadCount, notifications } = useApp();
+  const { selectedVoiceId, unreadCount, notifications } = useApp();
 
   const [openWindows, setOpenWindows] = useState<string[]>(activeTab !== 'home' && activeTab !== 'knowledge' ? [activeTab] : []);
   const [minimizedWindows, setMinimizedWindows] = useState<string[]>([]);
@@ -773,8 +757,6 @@ export function DesktopUI({
     { id: 'llm', labelKey: 'llmConfig', icon: <BrainCircuit size={24} />, colorClass: 'from-blue-500 to-indigo-600', windowId: 'llm' },
     { id: 'tools', labelKey: 'tools', icon: <Wrench size={24} />, colorClass: 'from-amber-500 to-orange-600', windowId: 'tools' },
     { id: 'github-mcp', labelKey: 'githubMCP', icon: <Globe size={24} />, colorClass: 'from-purple-500 to-violet-600', windowId: 'github-mcp' },
-    { id: 'persona-stats', labelKey: 'personaStats', icon: <Activity size={24} />, colorClass: 'from-violet-500 to-fuchsia-600', windowId: 'persona-stats' },
-    { id: 'personality-evolution', labelKey: 'evolutionTitle', icon: <GitBranch size={24} />, colorClass: 'from-fuchsia-500 to-pink-600', windowId: 'personality-evolution' },
     { id: 'devices', labelKey: 'deviceMesh', icon: <Wifi size={24} />, colorClass: 'from-cyan-500 to-blue-600', windowId: 'devices' },
     { id: 'skills', labelKey: 'skills', icon: <Sparkles size={24} />, colorClass: 'from-emerald-500 to-teal-600', windowId: 'skills' },
     { id: 'subscription', labelKey: 'subscription', icon: <Crown size={24} />, colorClass: 'from-amber-400 to-yellow-600', windowId: 'subscription' },
@@ -800,7 +782,6 @@ export function DesktopUI({
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('lumi_onboarding_seen') !== 'true';
   });
-  const [personaStats, setPersonaStats] = useState<{ totalMemories: number; totalInteractions: number; avgConfidence: number } | null>(null);
   const [mcpActivities, setMcpActivities] = useState<Array<{
     id: string; device: string; action: string; status: string;
     message?: string; title?: string; path?: string; slidesCount?: number; toolCalls?: number; error?: string;
@@ -809,13 +790,6 @@ export function DesktopUI({
   const [showMcpPanel, setShowMcpPanel] = useState(false);
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'executing' | 'done' | 'error'>('idle');
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
-
-  useEffect(() => {
-    fetch(`/api/personality/stats?personalityId=${personalityId}`)
-      .then(r => r.json())
-      .then(d => setPersonaStats(d))
-      .catch(() => {});
-  }, [personalityId]);
 
   const socket = useSocket();
   const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, responseText, interrupt, toggleMute } = useVoiceCall({
@@ -826,8 +800,6 @@ export function DesktopUI({
   const wakeWord = useWakeWord({
     startCallRef,
     enabled: true,
-    personalityId,
-    agentId: personalityId,
     keyword: 'Computer',
     onDetection: () => sounds.playWakeChime(),
   });
@@ -835,18 +807,6 @@ export function DesktopUI({
   useEffect(() => {
     if (callError) toast.error(callError);
   }, [callError]);
-
-  // Listen for mid-call personality switch events
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.personalityId && socket) {
-        socket.emit('audio:switch-personality', { personalityId: detail.personalityId });
-      }
-    };
-    window.addEventListener('lumi:switch-personality', handler);
-    return () => window.removeEventListener('lumi:switch-personality', handler);
-  }, [socket]);
 
   // Listen for Memory Avatar Lab open request from AgentGenerator
   useEffect(() => {
@@ -1137,8 +1097,6 @@ export function DesktopUI({
     if (windowId === 'knowledge') return { w: '1100px', h: '750px' };
     if (windowId === 'kernel') return { w: '1050px', h: '720px' };
     if (windowId === 'personality') return { w: '1050px', h: '720px' };
-    if (windowId === 'persona-stats') return { w: '1050px', h: '720px' };
-    if (windowId === 'personality-evolution') return { w: '1100px', h: '750px' };
     if (windowId === 'generate') return { w: '1050px', h: '720px' };
     if (windowId === 'music') return { w: '850px', h: '620px' };
     if (windowId === 'tools') return { w: '850px', h: '620px' };
@@ -1379,7 +1337,7 @@ export function DesktopUI({
                <div className="flex items-center gap-1"><Wifi size={14} /></div>
                <div className="flex items-center gap-1"><Volume2 size={14} /></div>
                <div className="flex items-center gap-1"><Battery size={14} /> <span className="text-[10px] font-bold">98%</span></div>
-               <span className="text-[8px] font-black text-white/20 uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/5">{personalityId}</span>
+               <span className="text-[8px] font-black text-white/20 uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/5">Lumi</span>
             </div>
 
             <button
@@ -1540,12 +1498,7 @@ export function DesktopUI({
                     audioLevel={audioLevel}
                     callState={callState}
                     behavior={
-                      personalityId === 'lover' ? 'cuddly' :
-                      personalityId === 'lumi' ? 'playful' :
-                      personalityId === 'mentor' ? 'curious' :
-                      personalityId === 'zen' ? 'calm' :
-                      personalityId === 'colleague' ? 'curious' :
-                      'default'
+                      'playful'
                     }
                   />
                 </button>
@@ -1571,7 +1524,7 @@ export function DesktopUI({
                 audioLevel={audioLevel}
                 highPerformance={isTauri}
                 isWallpaperMode={isWallpaperMode}
-                onStartCall={() => startCall(selectedVoiceId, personalityId, personalityId)}
+                onStartCall={() => startCall(selectedVoiceId)}
                 onEndCall={endCall}
                 onInterrupt={interrupt}
                 onToggleMute={toggleMute}
@@ -1582,8 +1535,6 @@ export function DesktopUI({
             <div className={`flex flex-col items-center gap-4 mt-8 transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 blur-sm pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center gap-3">
                 <VoicePicker t={t} />
-                <PersonalityQuickSwitch t={t} callActive={callState !== 'idle'} />
-
                 <div className="flex gap-2">
                   <button
                     onClick={toggleWallpaperMode}
@@ -1705,29 +1656,6 @@ export function DesktopUI({
 
               <NeuralSynthesisMonitor t={t} onOpenTokens={() => toggleWindow('tokens')} />
 
-              {/* Personality Mini Stats */}
-              <GlassCard className="p-5 rounded-[2rem] space-y-3 border-white/5 bg-black/30 backdrop-blur-3xl cursor-pointer hover:bg-white/[0.06] transition-all" onClick={() => toggleWindow('persona-stats')}>
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 flex items-center gap-2">
-                    <BrainCircuit size={12} className="text-violet-400" /> {t.personaPrefix || 'Persona:'} {personalityId}
-                  </h4>
-                  <ChevronRight size={12} className="text-white/20" />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="text-center">
-                    <div className="text-lg font-black text-violet-400">{personaStats?.totalMemories ?? '-'}</div>
-                    <div className="text-[7px] font-bold text-white/20 uppercase">{t.memories || 'Memories'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-black text-emerald-400">{personaStats?.totalInteractions ?? '-'}</div>
-                    <div className="text-[7px] font-bold text-white/20 uppercase">{t.interactions || 'Interactions'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-black text-amber-400">{personaStats ? `${Math.round(personaStats.avgConfidence)}%` : '-'}</div>
-                    <div className="text-[7px] font-bold text-white/20 uppercase">{t.confidence || 'Confidence'}</div>
-                  </div>
-                </div>
-              </GlassCard>
 
               {/* Notification Preview */}
               {notifications.filter(n => !n.read).length > 0 && (
@@ -1891,10 +1819,6 @@ export function DesktopUI({
                     <ToolPanel />
                   ) : windowId === 'github-mcp' ? (
                     <GitHubMCPBrowser t={t} />
-                  ) : windowId === 'persona-stats' ? (
-                    <PersonalityDashboard />
-                  ) : windowId === 'personality-evolution' ? (
-                    <PersonalityEvolution personalityId={personalityId} />
                   ) : windowId === 'notifications' ? (
                     <NotificationCenter />
                   ) : windowId === 'devices' ? (

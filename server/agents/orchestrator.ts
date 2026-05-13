@@ -63,55 +63,118 @@ export interface OrchestrationContext {
 
 // ── Complexity classification ──
 
-/** Heuristic keywords that suggest a task needs decomposition */
-const COMPLEX_SIGNALS = [
-  'build', 'create a', 'implement', 'design and', 'refactor the',
-  'set up', 'configure', 'deploy', 'migrate', 'analyze and',
-  'add a', 'create an', 'develop a', 'optimize', 'fix the',
-  '全部', '所有', '整个', '重构', '部署', '迁移', '实现', '设计并',
-  '帮我写一个', '帮我做一个', '帮我搭建', '帮我设计',
-  '开发一个', '设计一个', '优化一下', '修复一下',
-  '同时', '并且', '另外还', '还需要', '除了', '包括',
+/**
+ * Signals are organized by WHAT they reveal about task structure,
+ * not just keyword matching.
+ */
+
+// Multi-step sequential markers: the user is describing a chain of actions
+const SEQUENTIAL_MARKERS = [
+  '先', '再', '然后', '接着', '之后', '最后',
+  '第一步', '第二步', '第三步', '首先', '其次', '最后',
+  'first', 'then', 'next', 'finally', 'after that',
+  'step 1', 'step 2', 'step 3',
 ];
 
-const MODERATE_SIGNALS = [
-  'explain', 'compare', 'review', 'summarize', 'find all',
-  'how to', 'why does', 'what is', 'how does',
-  '解释', '比较', '总结', '检查', '查找', '搜索',
-  '怎么', '为什么', '如何', '什么原因', '查一下', '找一下',
-  '帮我查', '帮我看', '帮我找',
+// Parallel markers: the user explicitly wants things done concurrently
+const PARALLEL_MARKERS = [
+  '同时', '并行', '一边', '各自', '分别', '分开',
+  'simultaneously', 'in parallel', 'at the same time', 'concurrently',
+  'both', 'each', 'separately',
+];
+
+// Numbered/bulleted list: user already decomposed the task themselves
+const LIST_PATTERN = /(?:^|\n)\s*(?:\d+[.、)]|[-*+•])\s+/gm;
+
+// Cross-domain verb pairs: one message touching fundamentally different domains
+// Each pair = [domain1_verb, domain2_verb] — both must appear
+const CROSS_DOMAIN_PAIRS: [string[], string[]][] = [
+  [['写', '开发', '实现', 'build', 'code', 'implement', 'create'], ['部署', '上线', '发布', 'deploy', 'release', 'publish']],
+  [['分析', '研究', 'analyze', 'research', 'investigate'], ['写', '生成', '报告', 'write', 'generate', 'report']],
+  [['设计', 'design', 'plan'], ['实现', '开发', '搭建', 'implement', 'build', 'code']],
+  [['修复', '排查', 'debug', 'fix', 'troubleshoot'], ['测试', '验证', '部署', 'test', 'verify', 'deploy']],
+  [['查', '搜索', 'search', 'find', 'look up'], ['整理', '汇总', '对比', 'organize', 'summarize', 'compare']],
+];
+
+// High-depth verbs: these verbs imply multiple implicit sub-steps
+const DEEP_VERBS = [
+  '搭建', '重构', '架构', '迁移', '集成', '部署方案',
+  'build a', 'set up a', 'architect', 'refactor', 'migrate', 'bootstrap',
+  '从零', 'from scratch', '整套', '完整的', '完整的',
+  'end-to-end', 'full stack', 'pipeline', 'workflow',
+];
+
+// Pure Q&A / single-step verbs — these stay with Lumi directly
+const SIMPLE_VERBS = [
+  '是什么', '什么是', '什么意思', '怎么用', '用法',
+  'what is', 'how do i', 'how to', 'why is',
+  '解释一下', 'explain', '查一下', 'find', 'search for',
+  '哪个', 'which', 'when', 'where',
 ];
 
 /**
- * Classify task complexity using fast local heuristics.
- * For ambiguous cases, LLM classification can be invoked separately.
+ * Classify task complexity using structural heuristics.
+ *
+ * The goal: only send a task to the orchestrator when it genuinely
+ * benefits from decomposition + parallel worker execution.
+ *
+ * Simple: single question or action, one domain, one step.
+ * Moderate: 2-3 related steps, possible tool use but single domain.
+ * Complex: multi-step + multi-domain, or explicit parallelism, or deep-task verbs.
  */
 export function classifyComplexity(
   text: string,
-  context: OrchestrationContext,
+  _context: OrchestrationContext,
 ): TaskComplexity {
   const lower = text.toLowerCase();
+  const trimmed = text.trim();
 
-  // Multi-sentence / multi-clause tasks are at least moderate
-  const sentenceCount = text.split(/[.。!！?？\n,，;；、]+/).filter(s => s.trim().length > 0).length;
+  // ── Structural checks ──
+
+  // 1. Explicit list: user already broke it down → complex
+  const listMatches = trimmed.match(LIST_PATTERN);
+  if (listMatches && listMatches.length >= 3) return 'complex';
+  if (listMatches && listMatches.length >= 2) return 'moderate';
+
+  // 2. Sequential chain: "先X, 再Y, 然后Z" → complex
+  const seqMatches = SEQUENTIAL_MARKERS.filter(s => lower.includes(s));
+  if (seqMatches.length >= 3) return 'complex';
+  if (seqMatches.length >= 2) return 'moderate';
+
+  // 3. Explicit parallelism → at least moderate, usually complex
+  const paraMatches = PARALLEL_MARKERS.filter(s => lower.includes(s));
+  if (paraMatches.length >= 2) return 'complex';
+  if (paraMatches.length >= 1) return 'moderate';
+
+  // 4. Cross-domain detection: e.g., "写代码" + "部署"
+  let crossDomainHits = 0;
+  for (const [domain1, domain2] of CROSS_DOMAIN_PAIRS) {
+    const hit1 = domain1.some(v => lower.includes(v));
+    const hit2 = domain2.some(v => lower.includes(v));
+    if (hit1 && hit2) crossDomainHits++;
+  }
+  if (crossDomainHits >= 2) return 'complex';
+  if (crossDomainHits >= 1) return 'moderate';
+
+  // 5. Deep verbs that imply multi-step work
+  const deepHits = DEEP_VERBS.filter(s => lower.includes(s));
+  if (deepHits.length >= 1) return 'complex';
+
+  // 6. Pure Q&A — single question, single domain → simple
+  const simpleHits = SIMPLE_VERBS.filter(s => lower.includes(s));
+  const clauseCount = trimmed.split(/[.。!！?？\n]+/).filter(s => s.trim().length > 0).length;
+  if (simpleHits.length >= 1 && clauseCount <= 1) return 'simple';
+
+  // ── Fallback size-based heuristics ──
+  const chineseChars = (text.match(/[一-鿿]/g) || []).length;
   const wordCount = text.split(/\s+/).length;
 
-  // Chinese character count (more accurate for CJK text than wordCount)
-  const chineseChars = (text.match(/[一-鿿]/g) || []).length;
+  // Very short → simple
+  if (chineseChars < 20 && wordCount < 15) return 'simple';
 
-  // Strong complex signals
-  const complexMatches = COMPLEX_SIGNALS.filter(s => lower.includes(s.toLowerCase()));
-  if (complexMatches.length >= 1 && sentenceCount >= 2) return 'complex';
-  if (complexMatches.length >= 2) return 'complex';
-  if (wordCount > 50 && sentenceCount >= 2) return 'complex';
-  if (chineseChars > 100 && sentenceCount >= 2) return 'complex';
-
-  // Moderate signals — broader capture
-  const moderateMatches = MODERATE_SIGNALS.filter(s => lower.includes(s.toLowerCase()));
-  if (moderateMatches.length >= 1 && sentenceCount >= 1) return 'moderate';
-  if (wordCount > 25 && sentenceCount >= 1) return 'moderate';
-  if (chineseChars > 50 && sentenceCount >= 1) return 'moderate';
-  if (sentenceCount >= 3) return 'moderate'; // Multi-clause is at least moderate
+  // Very long → at least moderate
+  if (chineseChars > 200 || wordCount > 80) return 'complex';
+  if (chineseChars > 80 || wordCount > 40) return 'moderate';
 
   return 'simple';
 }
@@ -207,12 +270,50 @@ const SKILL_TO_CATEGORY: Record<string, string> = {
 const routingCache = new Map<string, Map<string, number>>();
 const ROUTING_CACHE_MAX_AGE_MS = 7 * 86400000; // 7 days
 
+let onAgentPromoted: ((agent: AgentRecord) => void) | null = null;
+export function setOnAgentPromoted(cb: (agent: AgentRecord) => void) { onAgentPromoted = cb; }
+
+const PROMOTION_THRESHOLD = 5; // Same skill successfully executed N times → promote
+
 function recordRoutingSuccess(skillTag: string, agentId: string): void {
   if (!routingCache.has(skillTag)) {
     routingCache.set(skillTag, new Map());
   }
   const agentScores = routingCache.get(skillTag)!;
-  agentScores.set(agentId, (agentScores.get(agentId) || 0) + 1);
+  const newCount = (agentScores.get(agentId) || 0) + 1;
+  agentScores.set(agentId, newCount);
+
+  // Check if this ephemeral agent should be promoted to permanent
+  if (agentId.startsWith('ephemeral_') && newCount >= PROMOTION_THRESHOLD) {
+    promoteEphemeralAgent(agentId, skillTag);
+  }
+}
+
+function promoteEphemeralAgent(agentId: string, skillTag: string): void {
+  const db = readDB();
+  const idx = db.agents.findIndex((a: any) => a.id === agentId);
+  if (idx === -1) return;
+
+  const agent = db.agents[idx];
+  const newId = `worker_${skillTag}_${Date.now().toString(36)}`;
+  agent.id = newId;
+  agent.name = `${skillTag}-specialist`;
+  agent.status = 'active';
+  agent.autoCreated = true;
+  agent.promotedAt = new Date().toISOString();
+
+  // Update routing cache to point to new ID
+  for (const [, agentScores] of routingCache) {
+    if (agentScores.has(agentId)) {
+      const score = agentScores.get(agentId)!;
+      agentScores.delete(agentId);
+      agentScores.set(newId, score);
+    }
+  }
+
+  writeDB(db);
+  console.log(`[Orchestrator] Promoted ephemeral agent "${agentId}" → "${newId}" (${skillTag} specialist)`);
+  if (onAgentPromoted) onAgentPromoted(agent);
 }
 
 function getRoutingScore(skillTag: string, agentId: string): number {

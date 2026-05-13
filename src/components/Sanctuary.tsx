@@ -52,7 +52,7 @@ export function Sanctuary({ agent, isOpen, onClose }: { agent: SanctuaryAgent | 
   const [dependencyWarning, setDependencyWarning] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socket = useSocket();
-  const { user, personalityId } = useApp();
+  const { user } = useApp();
 
   const meta = RELATIONSHIP_META[agent?.relationshipType || ''] || DEFAULT_META;
   const agentId = agent?.id || '';
@@ -187,7 +187,7 @@ export function Sanctuary({ agent, isOpen, onClose }: { agent: SanctuaryAgent | 
     socket.emit('agent:chat', {
       text,
       history: messages.map(m => ({ role: m.type === 'agent' ? 'assistant' : 'user', content: m.text })),
-      personalityId: personalityId || 'lumi',
+      personalityId: 'lumi',
       agentId,
     });
 
@@ -202,7 +202,7 @@ export function Sanctuary({ agent, isOpen, onClose }: { agent: SanctuaryAgent | 
     socket.once('agent:response', onResponse);
     socket.once('agent:error', onError);
     socket.once('agent:status', onStatus);
-  }, [newMessage, socket, messages, user, personalityId, agentId]);
+  }, [newMessage, socket, messages, user, agentId]);
 
   if (!agent) return null;
 

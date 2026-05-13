@@ -18,13 +18,6 @@ import { processInput, handleLLMFailure, CognitiveContext } from "../cognition";
 import { checkLLMAccess, recordUsage, estimateTokens } from "../subscription/proxy";
 import { classifyComplexity, decomposeTask, matchWorkers, executeWorkflow, aggregateWithLLM, recordWorkflowPattern, shouldDistillSkill, buildSkillDescription } from "../agents/orchestrator";
 
-const immortalitySkills: Record<string, string> = {
-  colleague: "【同事技能包】：你现在是一个专业且高效的同事。你拥有深厚的行业背景，熟悉办公流程，擅长团队协作。你说话直接、专业，注重结果。",
-  family: "【祖先技能包】：你现在是一位充满智慧的家族长辈。你拥有丰富的家族历史知识，说话温和且富有哲理，致力于传承家族的价值观和智慧。",
-  friend: "【知己技能包】：你现在是一个感性且富有同理心的知己。你擅长倾听，能够产生情感共鸣，并提供深度的心理支持。你说话温暖、真诚。",
-  lover: "【前任技能包】：你现在是一个复杂且充满情感张力的'前任'。你拥有共同的回忆，说话时而怀旧、时而克制，致力于在对话中寻找情感的终结或升华。"
-};
-
 export function registerChatHandler(
   socket: Socket,
   llmGetters: {
@@ -73,13 +66,10 @@ export function registerChatHandler(
     const isNovel = relevantMemories.length < 2;
 
     const sensory = sensoryFn(uid);
-    // Sanctuary agents use distilled personality, not immortality skill overrides
-    const skillOverride = isSanctuary ? undefined : (category ? immortalitySkills[category] : undefined);
     const { config: personality, systemPrompt: systemInstruction } = personalityRegistry.buildSystemPrompt(
       personalityId,
       { mode: 'chat', sensory },
       {
-        skillOverride,
         memories: relevantMemories.length > 0 ? relevantMemories : undefined,
         ragKnowledge: ragChunks.length > 0 ? ragChunks : undefined,
         emotionalState,
