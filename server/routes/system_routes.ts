@@ -1,7 +1,7 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import os from "os";
-import { readDB, isDbDirty } from "../../db_layer";
+import { readDB, writeDB, isDbDirty } from "../../db_layer";
 import { logger } from "../../logger";
 import { toolRegistry } from "../tools/registry";
 import { scheduler } from "../scheduler";
@@ -139,6 +139,58 @@ export function mountSystemRoutes(router: Router, jwtSecret: string) {
   });
 
   // API Keys — read/write user-configured keys
+  // LLM model preferences — read/write per user
+  router.put("/preferences/llm", (req, res) => {
+    try {
+      const { provider, models } = req.body || {};
+      if (!provider || !models || typeof models !== 'object') {
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
+      // Extract user ID from JWT cookie or header
+      let uid = 'anonymous';
+      const token = req.cookies?.token || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
+      if (token) {
+        try {
+          const decoded: any = jwt.verify(token, jwtSecret);
+          uid = decoded.uid || 'anonymous';
+        } catch {}
+      }
+      const db = readDB();
+      const key = `llm_prefs_${uid}`;
+      const payload = { provider, models, updatedAt: new Date().toISOString() };
+      const existing = (db.settings || []).findIndex((s: any) => s.key === key);
+      if (existing >= 0) {
+        (db.settings as any[])[existing].value = JSON.stringify(payload);
+      } else {
+        if (!db.settings) (db as any).settings = [];
+        db.settings.push({ key, value: JSON.stringify(payload) });
+      }
+      writeDB(db);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get("/preferences/llm", (req, res) => {
+    try {
+      let uid = 'anonymous';
+      const token = req.cookies?.token || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
+      if (token) {
+        try {
+          const decoded: any = jwt.verify(token, jwtSecret);
+          uid = decoded.uid || 'anonymous';
+        } catch {}
+      }
+      const key = `llm_prefs_${uid}`;
+      const db = readDB();
+      const row = (db.settings || []).find((s: any) => s.key === key);
+      res.json(row ? JSON.parse(row.value) : { provider: '', models: {} });
+    } catch {
+      res.json({ provider: '', models: {} });
+    }
+  });
+
   router.get("/settings/keys", (_req, res) => {
     const stored = loadKeys();
     const masked: Record<string, boolean> = {};
