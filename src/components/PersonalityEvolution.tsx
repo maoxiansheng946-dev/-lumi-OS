@@ -113,9 +113,11 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
     try {
       const r = await fetch(`/api/personality/${personalityId}/evolve`, { method: 'POST' });
       if (!r.ok) throw new Error((await r.json()).error || 'Evolution failed');
-      const updated = await r.json();
-      setData(prev => prev ? { ...prev, version: updated.version, history: updated.history } : prev);
-      setSelectedStep(updated.history?.length > 0 ? updated.history.length - 1 : null);
+      // Re-fetch to get the full updated state with new evolution history
+      const refresh = await fetch(`/api/personality/${personalityId}/evolution`);
+      const d = await refresh.json();
+      setData(d);
+      setSelectedStep(d.history?.length > 0 ? d.history.length - 1 : null);
       toast.success('Personality evolved!');
     } catch (err: any) {
       toast.error(err.message);
