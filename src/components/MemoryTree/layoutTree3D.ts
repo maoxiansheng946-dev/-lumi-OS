@@ -95,10 +95,7 @@ export function layoutTree3D(
     fileNodes[i].position.set(Math.cos(angle) * r, y, Math.sin(angle) * r * 0.6);
   }
 
-  // ── No-data seed ──
-  if (memNodes.size === 0 && fileNodes.length === 0) {
-    return buildSeedNodes();
-  }
+  const seedNodes = buildSeedNodes();
 
   // Build connector curves (thin arcs between nodes of same tier, for visual connection)
   const curves: BranchCurve3D[] = [];
@@ -125,8 +122,8 @@ export function layoutTree3D(
     }
   }
 
-  const allNodes: TreeNode3D[] = [...memNodes.values(), ...fileNodes];
-  return { nodes: allNodes, curves };
+  const allNodes: TreeNode3D[] = [...seedNodes.nodes, ...memNodes.values(), ...fileNodes];
+  return { nodes: allNodes, curves: [...seedNodes.curves, ...curves] };
 }
 
 // ── Seed (no data) ──
