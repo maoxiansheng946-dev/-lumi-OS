@@ -12,7 +12,7 @@ const SAMPLE_TEXTS: Record<string, string> = {
   ko: '안녕하세요, 이것은 제 음성 샘플입니다.',
 };
 
-export function VoicePicker({ t }: { t: any }) {
+export function VoicePicker({ t, direction = 'up', refreshTrigger = 0 }: { t: any; direction?: 'up' | 'down'; refreshTrigger?: number }) {
   const { selectedVoiceId, setSelectedVoiceId, favoriteVoices, toggleFavoriteVoice } = useApp();
   const [voices, setVoices] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -28,9 +28,9 @@ export function VoicePicker({ t }: { t: any }) {
     setLoadingVoices(true);
     listVoices()
       .then(data => { setVoices([...data.cloned, ...data.premade]); })
-      .catch(err => toast.error('Failed to load voices'))
+      .catch(() => toast.error('Failed to load voices'))
       .finally(() => setLoadingVoices(false));
-  }, []);
+  }, [refreshTrigger]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -103,7 +103,7 @@ export function VoicePicker({ t }: { t: any }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full mb-2 right-0 w-72 max-h-[360px] overflow-hidden rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-white/10 shadow-2xl z-50 flex flex-col"
+            className={`absolute right-0 w-72 max-h-[360px] overflow-hidden rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-white/10 shadow-2xl z-50 flex flex-col ${direction === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'}`}
           >
             {/* Search */}
             <div className="p-3 border-b border-white/5">

@@ -358,6 +358,165 @@ fn set_wallpaper_mode(
     Ok(())
 }
 
+// ── Screen Monitoring Commands ──
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActiveWindowInfo {
+    pub title: String,
+    pub process_name: String,
+    pub pid: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub window_title: String,
+    pub cpu_percent: f32,
+    pub memory_mb: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureResult {
+    pub image_base64: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[tauri::command]
+fn get_active_window_info() -> ActiveWindowInfo {
+    #[cfg(target_os = "windows")]
+    {
+        // Native Win32 FFI — no PowerShell overhead
+        extern "system" {
+            fn GetForegroundWindow() -> isize;
+            fn GetWindowTextW(hwnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
+            fn GetWindowThreadProcessId(hwnd: isize, lpdwProcessId: *mut u32) -> u32;
+        }
+
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd == 0 {
+                return ActiveWindowInfo { title: String::new(), process_name: String::new(), pid: 0 };
+            }
+
+            let mut buf: [u16; 512] = [0; 512];
+            let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 512);
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+
+            let process_name = if pid != 0 {
+                use sysinfo::System;
+                let sys = System::new_all();
+                sys.process(sysinfo::Pid::from(pid as usize))
+                    .map(|p| p.name().to_string_lossy().to_string())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            return ActiveWindowInfo { title, process_name, pid };
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = Command::new("osascript")
+            .args(["-e", r#"tell application "System Events" to get name of first application process whose frontmost is true"#])
+            .output();
+        if let Ok(out) = output {
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !name.is_empty() {
+                return ActiveWindowInfo { title: name.clone(), process_name: name, pid: 0 };
+            }
+        }
+    }
+    ActiveWindowInfo { title: String::new(), process_name: String::new(), pid: 0 }
+}
+
+#[tauri::command]
+fn get_running_processes() -> Vec<ProcessInfo> {
+    use sysinfo::System;
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    sys.refresh_all();
+
+    let mut processes: Vec<ProcessInfo> = Vec::new();
+    for (pid, proc) in sys.processes() {
+        let cpu = proc.cpu_usage();
+        let mem = proc.memory() as f32 / 1024.0 / 1024.0; // bytes -> MB
+        let name = proc.name().to_string_lossy().to_string();
+        // Only include processes using >0.1% CPU or >10MB memory (reduce noise)
+        if cpu > 0.1 || mem > 10.0 {
+            processes.push(ProcessInfo {
+                pid: pid.as_u32(),
+                name,
+                window_title: String::new(),
+                cpu_percent: cpu,
+                memory_mb: mem,
+            });
+        }
+    }
+    processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
+    processes.truncate(50); // top 50
+    processes
+}
+
+#[tauri::command]
+fn capture_screen() -> CaptureResult {
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile", "-NonInteractive", "-Command",
+                r#"Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen
+$w = $screen.Bounds.Width; $h = $screen.Bounds.Height
+$bmp = New-Object System.Drawing.Bitmap($w, $h)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+$g.Dispose()
+$ms = New-Object System.IO.MemoryStream
+$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp.Dispose()
+$bytes = $ms.ToArray()
+$ms.Dispose()
+Write-Output "$([Convert]::ToBase64String($bytes))|${w}|${h}"#
+            ])
+            .output();
+        if let Ok(out) = output {
+            let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Some(first_newline) = text.find('\n') {
+                // PowerShell may add extra output before our Write-Output
+                let lines: Vec<&str> = text.lines().collect();
+                if let Some(last) = lines.last() {
+                    let parts: Vec<&str> = last.split('|').collect();
+                    if parts.len() >= 3 {
+                        return CaptureResult {
+                            image_base64: parts[0].to_string(),
+                            width: parts[1].parse().unwrap_or(0),
+                            height: parts[2].parse().unwrap_or(0),
+                        };
+                    }
+                }
+            } else {
+                let parts: Vec<&str> = text.split('|').collect();
+                if parts.len() >= 3 {
+                    return CaptureResult {
+                        image_base64: parts[0].to_string(),
+                        width: parts[1].parse().unwrap_or(0),
+                        height: parts[2].parse().unwrap_or(0),
+                    };
+                }
+            }
+        }
+    }
+    CaptureResult { image_base64: String::new(), width: 0, height: 0 }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -377,6 +536,9 @@ pub fn run() {
             run_command,
             open_item,
             set_wallpaper_mode,
+            get_active_window_info,
+            get_running_processes,
+            capture_screen,
         ])
         .setup(|app| {
             let resource_dir = app

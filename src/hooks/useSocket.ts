@@ -74,6 +74,21 @@ async function handleDesktopExec(socket: Socket, data: {
         output = (result.success ? '' : '[FAILED] ') + result.output;
         break;
       }
+      case 'desktop_active_window': {
+        const info = await invoke('get_active_window_info');
+        output = JSON.stringify(info, null, 2);
+        break;
+      }
+      case 'desktop_running_processes': {
+        const procs = await invoke('get_running_processes');
+        output = JSON.stringify(procs, null, 2);
+        break;
+      }
+      case 'desktop_capture_screen': {
+        const capture = await invoke('capture_screen');
+        output = JSON.stringify({ width: (capture as any).width, height: (capture as any).height, image_base64_preview: (capture as any).image_base64?.slice(0, 80) + '...' });
+        break;
+      }
       default:
         socket.emit(`tool:desktop_result:${correlationId}`, {
           error: `Unknown desktop tool: ${name}`,

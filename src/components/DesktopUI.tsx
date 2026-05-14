@@ -44,6 +44,7 @@ import { GlassCard } from './SharedUI';
 import { LocalAgentSphere } from './LocalAgentSphere';
 import { VoiceTrainingDialog } from './VoiceTrainingDialog';
 import { VoicePicker } from './VoicePicker';
+import { VoiceForge } from './VoiceForge';
 import { ToolPanel } from './ToolPanel';
 import { GitHubMCPBrowser } from './GitHubMCPBrowser';
 import { SkillCenter } from './SkillCenter';
@@ -59,7 +60,6 @@ import { Sanctuary } from './Sanctuary';
 import { MemoryAvatarLab } from './MemoryAvatarLab';
 import { AvatarStudio } from './AvatarStudio';
 import { ReminderPanel } from './ReminderPanel';
-import { ReminderWidget } from './ReminderWidget';
 import { PetAvatar } from './SpriteAnimator';
 import { getDefaultPets } from '../pets/defaults';
 import type { PetConfig } from '../pets/types';
@@ -790,6 +790,7 @@ export function DesktopUI({
     { id: 'subscription', labelKey: 'subscription', icon: <Crown size={24} />, colorClass: 'from-amber-400 to-yellow-600', windowId: 'subscription' },
     { id: 'memory-avatar', labelKey: 'memoryAvatars', icon: <Castle size={24} />, colorClass: 'from-fuchsia-500 to-purple-600', windowId: 'memory-avatar' },
     { id: 'avatar-studio', labelKey: 'avatarStudio', icon: <Brush size={24} />, colorClass: 'from-cyan-400 to-blue-600', windowId: 'avatar-studio' },
+    { id: 'sound', labelKey: 'sound', icon: <Volume2 size={24} />, colorClass: 'from-sky-500 to-indigo-600', windowId: 'sound' },
   ];
 
   const handleWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1207,6 +1208,7 @@ export function DesktopUI({
     if (windowId === 'skills') return { w: '900px', h: '700px' };
     if (windowId === 'subscription') return { w: '850px', h: '640px' };
     if (windowId === 'avatar-studio') return { w: '1050px', h: '720px' };
+    if (windowId === 'sound') return { w: '900px', h: '700px' };
     return { w: '900px', h: '700px' };
   };
 
@@ -1769,10 +1771,6 @@ export function DesktopUI({
 
               <NeuralSynthesisMonitor t={t} onOpenTokens={() => toggleWindow('tokens')} />
 
-
-              {/* Reminder Widget */}
-              <ReminderWidget onOpenFull={() => toggleWindow('reminders')} />
-
               {/* Notification Preview */}
               {notifications.filter(n => !n.read).length > 0 && (
                 <GlassCard className="p-5 rounded-[2rem] space-y-2 border-white/5 bg-black/30 backdrop-blur-3xl cursor-pointer hover:bg-white/[0.06] transition-all" onClick={() => toggleWindow('notifications')}>
@@ -1961,6 +1959,8 @@ export function DesktopUI({
                         toast.info('已切换回原始圆球');
                       }}
                     />
+                  ) : windowId === 'sound' ? (
+                    <SoundPanel t={t} />
                   ) : windowId === 'chat' ? (
                     // Chat is now fullscreen overlay — this case should not be reached
                     null
@@ -2029,6 +2029,92 @@ export function DesktopUI({
         )}
       </AnimatePresence>
 
+    </div>
+  );
+}
+
+function SoundPanel({ t }: { t?: any }) {
+  const [designPrompt, setDesignPrompt] = useState('');
+  const [designName, setDesignName] = useState('');
+  const [designing, setDesigning] = useState(false);
+  const [voiceRefresh, setVoiceRefresh] = useState(0);
+
+  const handleDesign = async () => {
+    if (!designPrompt.trim() || !designName.trim()) return;
+    setDesigning(true);
+    try {
+      const res = await fetch('/api/voice/design', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: designPrompt.trim(), name: designName.trim() }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      toast.success(`Voice "${data.name}" created`);
+      setDesignPrompt('');
+      setDesignName('');
+      setVoiceRefresh(n => n + 1);
+    } catch (err: any) {
+      toast.error(err.message || 'Voice design failed');
+    } finally {
+      setDesigning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col">
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="p-3 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-2xl shadow-lg">
+          <Volume2 size={24} className="text-white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t?.voiceStudio || 'Voice Studio'}</h3>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest">{t?.voiceStudioDesc || 'Cloning & Design'}</p>
+        </div>
+        <div className="ml-auto">
+          <VoicePicker t={t} direction="down" refreshTrigger={voiceRefresh} />
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-2 gap-4 overflow-hidden">
+        {/* Left: Clone */}
+        <div className="overflow-y-auto scrollbar-hide rounded-2xl bg-white/[0.02] border border-white/5 p-4">
+          <h4 className="text-xs font-black uppercase tracking-widest text-white/30 mb-4">{t?.voiceCloning || 'Voice Cloning'}</h4>
+          <VoiceForge t={t} compact onCloneSuccess={() => setVoiceRefresh(n => n + 1)} />
+        </div>
+
+        {/* Right: Design */}
+        <div className="overflow-y-auto scrollbar-hide rounded-2xl bg-white/[0.02] border border-white/5 p-4 space-y-4">
+          <h4 className="text-xs font-black uppercase tracking-widest text-white/30">{t?.voiceDesignTab || 'Voice Design'}</h4>
+          <p className="text-xs text-white/40">{t?.voiceDesignDesc || 'Describe the voice you want, and AI will generate it. No audio sample needed.'}</p>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase text-white/30">{t?.voiceDesignPrompt || 'Voice Description'}</label>
+            <textarea
+              value={designPrompt}
+              onChange={e => setDesignPrompt(e.target.value)}
+              placeholder={t?.voiceDesignPlaceholder || 'e.g. A warm, gentle female voice with a soft tone, speaking at a moderate pace, suitable for storytelling...'}
+              className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-3 text-sm text-white/80 outline-none focus:border-sky-500/50 resize-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase text-white/30">{t?.voiceDesignName || 'Voice Name'}</label>
+            <input
+              value={designName}
+              onChange={e => setDesignName(e.target.value)}
+              placeholder="e.g. Storyteller_v1"
+              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white/80 outline-none focus:border-sky-500/50"
+            />
+          </div>
+          <button
+            onClick={handleDesign}
+            disabled={designing || !designPrompt.trim() || !designName.trim()}
+            className="w-full py-3 bg-sky-500/20 border border-sky-500/30 rounded-2xl text-sm font-black uppercase tracking-widest text-sky-400 hover:bg-sky-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            {designing ? (t?.generating || 'Generating...') : t?.generateVoice || 'Generate Voice'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

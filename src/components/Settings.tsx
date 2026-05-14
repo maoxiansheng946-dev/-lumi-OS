@@ -19,7 +19,6 @@ import {
   Mic,
   CheckCircle,
   AlertCircle,
-  User,
   LogOut
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -32,8 +31,6 @@ import { VoiceForge } from './VoiceForge';
 import { MCPSettings } from './MCPSettings';
 import { RemoteMCPSettings } from './RemoteMCPSettings';
 import { FeishuSettings } from './FeishuSettings';
-import { KnowledgeBase } from './KnowledgeBase';
-import { PersonalityEditor } from './PersonalityEditor';
 
 function buildSidebarGroups(t: any) {
   return [
@@ -56,13 +53,6 @@ function buildSidebarGroups(t: any) {
       items: [
         { id: 'voice', label: t.voiceForge || 'Voice Forge', icon: <Mic size={16} /> },
         { id: 'music', label: t.sidebarMediaServices || 'Media Services', icon: <Music size={16} /> },
-      ],
-    },
-    {
-      label: t.sidebarPersonality || 'Personality',
-      items: [
-        { id: 'personality', label: t.sidebarEditor || 'Editor', icon: <User size={16} /> },
-        { id: 'memory', label: t.memory || 'Memory', icon: <Database size={16} /> },
       ],
     },
     {
@@ -275,10 +265,6 @@ export function Settings({
         );
       case 'hardware':
         return <HardwareSettings t={t} />;
-      case 'personality':
-        return <PersonalityEditor t={t} />;
-case 'memory':
-        return <KnowledgeBase isOpen={true} onClose={() => onSectionChange?.('general')} />;
       case 'mcp':
         return <MCPSettings t={t} />;
       case 'remote-mcp':

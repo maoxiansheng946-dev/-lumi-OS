@@ -7,7 +7,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
 
-export function VoiceForge({ t }: { t: any }) {
+export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: boolean; onCloneSuccess?: () => void }) {
   const {
     isRecording,
     audioLevel,
@@ -109,6 +109,7 @@ export function VoiceForge({ t }: { t: any }) {
     if (result) {
       toast.success(t.voiceClonedSuccess || "Voice successfully cloned!");
       setVoiceName('');
+      onCloneSuccess?.();
       refreshVoices();
     }
   };
@@ -128,22 +129,24 @@ export function VoiceForge({ t }: { t: any }) {
 
   return (
     <div className="space-y-8 h-full flex flex-col">
-      <div className="flex justify-between items-start">
-        <div>
-           <h3 className="text-3xl font-black italic uppercase tracking-tighter text-glow mb-2">{t.voiceForge || 'Voice Forge'}</h3>
-           <p className="text-xs text-white/40 uppercase tracking-widest leading-relaxed max-w-lg">
-             {t.voiceForgeDesc || 'Clone your digital essence or select from neural presets.'}
-           </p>
+      {!compact && (
+        <div className="flex justify-between items-start">
+          <div>
+             <h3 className="text-3xl font-black italic uppercase tracking-tighter text-glow mb-2">{t.voiceForge || 'Voice Forge'}</h3>
+             <p className="text-xs text-white/40 uppercase tracking-widest leading-relaxed max-w-lg">
+               {t.voiceForgeDesc || 'Clone your digital essence or select from neural presets.'}
+             </p>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-celestial-saturn/10 rounded-2xl border border-celestial-saturn/20 shadow-xl">
+             <Sparkles className="text-celestial-saturn animate-pulse" size={20} />
+             <div className="text-[10px] font-black uppercase tracking-widest text-celestial-saturn">Neural Synthesis Active</div>
+          </div>
         </div>
-        <div className="flex items-center gap-3 p-4 bg-celestial-saturn/10 rounded-2xl border border-celestial-saturn/20 shadow-xl">
-           <Sparkles className="text-celestial-saturn animate-pulse" size={20} />
-           <div className="text-[10px] font-black uppercase tracking-widest text-celestial-saturn">Neural Synthesis Active</div>
-        </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 overflow-hidden">
-        {/* Left Side: Recording & Cloning */}
-        <div className="space-y-6 overflow-y-auto pr-4 custom-scrollbar">
+      <div className={`${compact ? '' : 'grid grid-cols-1 lg:grid-cols-2 gap-8'} flex-1 overflow-hidden`}>
+        {/* Recording & Cloning */}
+        <div className={`space-y-6 overflow-y-auto ${compact ? '' : 'pr-4 custom-scrollbar'}`}>
            <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 space-y-8 relative overflow-hidden">
               <div className="text-center space-y-6 relative z-10">
                  <div className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20">{t.audioVisualizer || 'Neural Audio Visualizer'}</div>
@@ -286,8 +289,8 @@ export function VoiceForge({ t }: { t: any }) {
            )}
         </div>
 
-        {/* Right Side: Voice Inventory */}
-        <div className="overflow-y-auto pr-4 custom-scrollbar">
+        {/* Right Side: Voice Inventory — hidden in compact mode */}
+        {!compact && <div className="overflow-y-auto pr-4 custom-scrollbar">
            <div className="space-y-8 pb-12">
               <section className="space-y-4">
                  <div className="flex items-center justify-between">
@@ -328,6 +331,7 @@ export function VoiceForge({ t }: { t: any }) {
               </section>
            </div>
         </div>
+        }
       </div>
     </div>
   );

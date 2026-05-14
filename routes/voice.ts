@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { synthesizeSpeech, cloneVoice, listVoices, getActiveProvider } from '../server/tts/adapter';
+import { synthesizeSpeech, cloneVoice, designVoice, listVoices, getActiveProvider } from '../server/tts/adapter';
 import { readDB, writeDB } from '../db_layer';
 import { logger } from '../logger';
 import { recordLatency } from '../server/monitor/latency_store';
@@ -85,15 +85,14 @@ router.post('/voice/clone', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No TTS provider configured. Add an API key in Settings → Voice Services or Settings → API Matrix.' });
     }
 
-    // Only certain providers support voice cloning
-    if (activeProvider === 'cosyvoice' || activeProvider === 'gptsovits') {
+    // GPT-SoVITS doesn't support cloud cloning; CosyVoice (DashScope) does
+    if (activeProvider === 'gptsovits') {
       return res.status(400).json({
-        error: `${activeProvider === 'cosyvoice' ? 'DashScope CosyVoice' : 'GPT-SoVITS'} does not support voice cloning. Use ElevenLabs or FishAudio for cloud cloning, or use GPT-SoVITS locally to clone then import.`,
+        error: 'GPT-SoVITS does not support cloud cloning. Use CosyVoice (DashScope) for voice cloning.',
         activeProvider,
       });
     }
 
-    // Convert relative URLs to absolute
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const absoluteUrls = sampleUrls.map((url: string) =>
       url.startsWith('http') ? url : `${baseUrl}${url}`
@@ -118,6 +117,43 @@ router.post('/voice/clone', async (req: Request, res: Response) => {
   } catch (err: any) {
     logger.error('[Voice Clone Error]', err);
     res.status(500).json({ error: err.message || 'Voice cloning service unavailable' });
+  }
+});
+
+// POST /api/voice/design — Design a new voice from text description
+router.post('/voice/design', async (req: Request, res: Response) => {
+  try {
+    const { prompt, name } = req.body;
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 10) {
+      return res.status(400).json({ error: 'Voice prompt is required (at least 10 characters)' });
+    }
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Voice name is required' });
+    }
+    const activeProvider = getActiveProvider() || 'cosyvoice';
+    if (activeProvider === 'gptsovits') {
+      return res.status(400).json({ error: 'GPT-SoVITS does not support voice design. Use CosyVoice (DashScope).' });
+    }
+
+    const voiceId = await designVoice(prompt.trim(), name, activeProvider);
+
+    const db = readDB();
+    const userId = getUserId(req);
+    if (!db.voiceProfiles) db.voiceProfiles = {};
+    if (!db.voiceProfiles[userId]) db.voiceProfiles[userId] = [];
+    db.voiceProfiles[userId].push({
+      voiceId,
+      name,
+      provider: activeProvider,
+      prompt: prompt.trim(),
+      createdAt: new Date().toISOString(),
+    });
+    writeDB(db);
+
+    res.json({ voiceId, name, provider: activeProvider });
+  } catch (err: any) {
+    logger.error('[Voice Design Error]', err);
+    res.status(500).json({ error: err.message || 'Voice design service unavailable' });
   }
 });
 

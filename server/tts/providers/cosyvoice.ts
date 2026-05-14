@@ -90,3 +90,104 @@ export async function synthesizeSpeech(
 export async function listVoices(): Promise<VoiceListItem[]> {
   return PRESET_VOICES;
 }
+
+const CLONE_URL = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization';
+
+/** Clone a voice from local audio file(s). Uses CosyVoice voice-enrollment API. */
+export async function cloneVoice(sampleUrls: string[], name: string): Promise<string> {
+  const apiKey = getApiKey();
+
+  // Read the first audio sample as base64
+  const fs = require('fs');
+  const path = require('path');
+  let audioBase64: string;
+  const firstUrl = sampleUrls[0];
+
+  try {
+    // sampleUrls are like http://host/api/voice/samples/uid/file.wav
+    // Resolve to local disk: data/voice_samples/uid/file.wav
+    const urlPath = firstUrl.replace(/^https?:\/\/[^/]+/, ''); // strip host → /api/voice/samples/uid/file.wav
+    const relativePath = urlPath.replace(/^\/api\/voice\/samples\//, ''); // → uid/file.wav
+    const localPath = path.join(process.cwd(), 'data', 'voice_samples', relativePath);
+    const buf = fs.readFileSync(localPath);
+    audioBase64 = buf.toString('base64');
+  } catch {
+    throw new Error('Failed to read voice sample file. Make sure the audio file exists in data/voice_samples/');
+  }
+
+  // Sanitize prefix: lowercase letters/numbers only, max 10 chars
+  const prefix = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 10) || 'voice';
+
+  const body = {
+    model: 'voice-enrollment',
+    input: {
+      action: 'create_voice',
+      target_model: 'cosyvoice-v3-flash',
+      url: `data:audio/wav;base64,${audioBase64}`,
+      prefix,
+    },
+  };
+
+  const res = await fetch(CLONE_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(`CosyVoice clone error (${res.status}): ${err.message || err.code || 'Unknown'}`);
+  }
+
+  const json = await res.json();
+  const voiceId = json.output?.voice_id || json.output?.voiceId;
+  if (!voiceId) {
+    throw new Error(`CosyVoice clone response missing voice_id: ${JSON.stringify(json)}`);
+  }
+
+  return voiceId;
+}
+
+/** Design a new voice from a text description. Uses Qwen Voice Design API. */
+export async function designVoice(voicePrompt: string, name: string): Promise<string> {
+  const apiKey = getApiKey();
+
+  const body = {
+    model: 'qwen-voice-design',
+    input: {
+      action: 'create',
+      voice_prompt: voicePrompt,
+      preview_text: '你好，这是我的声音。',
+      target_model: 'qwen3-tts-vd-realtime-2025-12-16',
+      preferred_name: name,
+    },
+  };
+
+  const res = await fetch(CLONE_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(`Voice design error (${res.status}): ${err.message || err.code || 'Unknown'}`);
+  }
+
+  const json = await res.json();
+  const voiceId = json.output?.voice_id || json.output?.voiceId;
+  if (!voiceId) {
+    throw new Error(`Voice design response missing voice_id: ${JSON.stringify(json)}`);
+  }
+
+  return voiceId;
+}

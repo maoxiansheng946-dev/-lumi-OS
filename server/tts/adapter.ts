@@ -1,23 +1,10 @@
 import { TTSConfig, TTSResult, TTSProvider, VoiceCloneRequest, VoiceListItem } from './types';
-import * as elevenlabs from './providers/elevenlabs';
-import * as fishaudio from './providers/fishaudio';
 import * as gptsovits from './providers/gptsovits';
 import * as cosyvoice from './providers/cosyvoice';
 import { getKey } from '../config/keys';
 
 export async function synthesizeSpeech(text: string, config: TTSConfig): Promise<TTSResult> {
   switch (config.provider) {
-    case 'elevenlabs':
-      return elevenlabs.synthesizeSpeech(
-        text,
-        config.voiceId,
-        config.model,
-        config.stability,
-        config.similarityBoost,
-        config.signal,
-      );
-    case 'fishaudio':
-      return fishaudio.synthesizeSpeech(text, config.voiceId, config.signal);
     case 'gptsovits':
       return gptsovits.synthesizeSpeech(text, config.voiceId, config.signal);
     case 'cosyvoice':
@@ -29,21 +16,24 @@ export async function synthesizeSpeech(text: string, config: TTSConfig): Promise
 
 export async function cloneVoice(request: VoiceCloneRequest, provider: TTSProvider): Promise<string> {
   switch (provider) {
-    case 'elevenlabs':
-      return elevenlabs.cloneVoice(request.sampleUrls, request.name);
-    case 'fishaudio':
-      return fishaudio.cloneVoice(request.sampleUrls, request.name);
+    case 'cosyvoice':
+      return cosyvoice.cloneVoice(request.sampleUrls, request.name);
     default:
       throw new Error(`Voice cloning not supported for provider: ${provider}`);
   }
 }
 
+export async function designVoice(prompt: string, name: string, provider: TTSProvider = 'cosyvoice'): Promise<string> {
+  switch (provider) {
+    case 'cosyvoice':
+      return cosyvoice.designVoice(prompt, name);
+    default:
+      throw new Error(`Voice design not supported for provider: ${provider}`);
+  }
+}
+
 export async function listVoices(provider: TTSProvider): Promise<VoiceListItem[]> {
   switch (provider) {
-    case 'elevenlabs':
-      return elevenlabs.listVoices();
-    case 'fishaudio':
-      return fishaudio.listVoices();
     case 'cosyvoice':
       return cosyvoice.listVoices();
     case 'gptsovits':
@@ -54,11 +44,8 @@ export async function listVoices(provider: TTSProvider): Promise<VoiceListItem[]
 }
 
 export function getActiveProvider(): TTSProvider | null {
-  // Prefer CosyVoice (fast, DashScope), then GPT-SoVITS (local cloned voice), then cloud providers
   const dashscopeKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || getKey('DASHSCOPE_API_KEY') || getKey('QWEN_API_KEY');
   if (dashscopeKey) return 'cosyvoice';
   if (process.env.GPTSOVITS_API_URL || process.env.GPTSOVITS_ENABLED === 'true') return 'gptsovits';
-  if (process.env.FISHAUDIO_API_KEY || getKey('FISHAUDIO_API_KEY')) return 'fishaudio';
-  if (process.env.ELEVENLABS_API_KEY || getKey('ELEVENLABS_API_KEY')) return 'elevenlabs';
   return 'cosyvoice';
 }

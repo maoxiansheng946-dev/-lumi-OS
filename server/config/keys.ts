@@ -11,8 +11,6 @@ interface KeyStore {
   GEMINI_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   QWEN_API_KEY?: string;
-  FISHAUDIO_API_KEY?: string;
-  ELEVENLABS_API_KEY?: string;
 }
 
 export function loadKeys(): KeyStore {
@@ -51,7 +49,5 @@ export function getAllKeyNames(): (keyof KeyStore)[] {
     'GEMINI_API_KEY',
     'DEEPSEEK_API_KEY',
     'QWEN_API_KEY',
-    'FISHAUDIO_API_KEY',
-    'ELEVENLABS_API_KEY',
   ];
 }

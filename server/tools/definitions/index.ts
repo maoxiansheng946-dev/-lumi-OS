@@ -11,6 +11,7 @@ import { registerSkillTools, setSkillLLMGetters } from './skill_tools';
 import { registerOfficeTools } from './office_tools';
 import { registerCalendarTools } from './calendar_tools';
 import { registerAgentTools } from './agent_tools';
+import { registerScreenMonitorTools } from './screen_monitor';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -34,6 +35,7 @@ export function registerAllTools(
   registerOfficeTools(registry);
   registerCalendarTools(registry);
   registerAgentTools(registry);
+  registerScreenMonitorTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }
