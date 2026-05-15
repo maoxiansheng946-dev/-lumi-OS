@@ -78,6 +78,7 @@ import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
 import { VoiceSubtitle } from './VoiceSubtitle';
 import { ErrorBoundary } from './ErrorBoundary';
+import { ToolConfirmDialog } from './ToolConfirmDialog';
 
 const KnowledgeBase = lazy(() => import('./KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
 import { PersonalityEditor } from './PersonalityEditor';
@@ -2145,6 +2146,8 @@ export function DesktopUI({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ToolConfirmDialog socket={socket} />
 
     </div>
   );
