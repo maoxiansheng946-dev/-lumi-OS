@@ -381,6 +381,8 @@ export function registerChatHandler(
         role: "user", personality: personality.id, timestamp: new Date().toISOString(),
         cognitiveIntent: cognition.intent.category,
         llmWasCalled,
+        domain: domain || 'personal',
+        orgId: orgId || '',
       });
       writeDB(db);
 
@@ -407,7 +409,7 @@ export function registerChatHandler(
             userId: uid, type: mem.type, content: mem.content,
             keywords: mem.keywords, confidence: mem.confidence, sourceInteractionId: interactionId,
             agentId: agentId || '',
-          } as any, { parentId, location: locationTag });
+          } as any, { parentId, location: locationTag, domain, orgId: orgId || '' });
         }
         for (const rem of extracted.reminders) {
           addReminder({ userId: uid, content: rem.content, dueAt: rem.dueAt, sourceInteractionId: interactionId });

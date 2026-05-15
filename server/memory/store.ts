@@ -535,7 +535,7 @@ export function fireReminder(id: string): void {
 
 export function addMemory(
   memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt' | 'lastRetrievedAt' | 'retrieveCount' | 'tier' | 'perspective' | 'importance' | 'parentId' | 'agentId' | 'nodeType'>,
-  overrides?: { tier?: Memory['tier']; perspective?: Memory['perspective']; importance?: number; parentId?: string | null; agentId?: string; nodeType?: Memory['nodeType']; location?: string },
+  overrides?: { tier?: Memory['tier']; perspective?: Memory['perspective']; importance?: number; parentId?: string | null; agentId?: string; nodeType?: Memory['nodeType']; location?: string; domain?: string; orgId?: string },
 ): Memory {
   const all = getMemoryStore();
 
@@ -568,6 +568,8 @@ export function addMemory(
     existing.confidence = Math.min(1, existing.confidence + 0.1);
     existing.importance = Math.max(existing.importance, overrides?.importance ?? 0.3);
     existing.updatedAt = now;
+    if (overrides?.domain) existing.domain = overrides.domain;
+    if (overrides?.orgId !== undefined) existing.orgId = overrides.orgId;
     saveMemoryStore(all);
     return existing;
   }
@@ -586,6 +588,8 @@ export function addMemory(
     agentId: overrides?.agentId ?? '',
     nodeType: overrides?.nodeType ?? 'leaf',
     location: overrides?.location,
+    domain: overrides?.domain ?? memory.domain ?? 'personal',
+    orgId: overrides?.orgId ?? memory.orgId ?? '',
   };
 
   all.push(newMemory);

@@ -51,6 +51,10 @@ export interface Memory {
   location?: string;
   /** 1536-dimension embedding vector from text-embedding-3-small for semantic search */
   embedding?: number[];
+  /** Domain: personal or work */
+  domain?: string;
+  /** Organization ID (work domain only) */
+  orgId?: string;
 }
 
 export interface MemoryTree {
@@ -90,6 +94,10 @@ export interface MemoryQuery {
   retrievalPerspectiveWeights?: Record<string, number>;
   /** Enable vector semantic search via embedding cosine similarity */
   useVector?: boolean;
+  /** Filter by domain */
+  domain?: string;
+  /** Filter by organization ID */
+  orgId?: string;
 }
 
 export interface ExtractedMemory {

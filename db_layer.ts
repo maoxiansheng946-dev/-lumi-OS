@@ -125,6 +125,12 @@ function migrateSchema(): Promise<void> {
     db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_user_parent ON memories(userId, parentId)`, () => {});
     db!.run(`CREATE INDEX IF NOT EXISTS idx_conversations_user_status ON conversations(userId, status)`, () => {});
     db!.run(`CREATE INDEX IF NOT EXISTS idx_token_usage_user_ts ON token_usage(userId, timestamp)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_user_domain ON memories(userId, domain)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_memories_org ON memories(orgId, userId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_interactions_user_domain ON interactions(userId, domain)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_interactions_org ON interactions(orgId, userId)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_agents_user_domain ON agents(userId, domain)`, () => {});
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_agents_org ON agents(orgId, userId)`, () => {});
     resolve();
   });
 }
