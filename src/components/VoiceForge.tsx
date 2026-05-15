@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Phone, Loader2, Volume2, Trash2, Plus, Sparkles, CheckCircle2, History, Play, Pause, Cpu, Upload, FileAudio } from 'lucide-react';
+import { Mic, MicOff, Phone, Loader2, Volume2, Trash2, Plus, Sparkles, CheckCircle2, XCircle, History, Play, Pause, Cpu, Upload, FileAudio } from 'lucide-react';
 import { useVoiceCloning } from '../hooks/useVoiceCloning';
 import { deleteVoice } from '../services/voiceService';
 import { Button } from './ui/button';
@@ -11,10 +11,13 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
   const {
     isRecording,
     audioLevel,
+    recordingDuration,
     recordings,
     isUploading,
     isCloning,
     cloneProgress,
+    cloneStatus,
+    cloneError,
     voices,
     error,
     startRecording,
@@ -28,6 +31,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
 
   const [voiceName, setVoiceName] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const prevRecordingCount = useRef(0);
 
   useEffect(() => {
     refreshVoices();
@@ -39,6 +43,13 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
       clearError();
     }
   }, [error, clearError]);
+
+  useEffect(() => {
+    if (recordings.length > prevRecordingCount.current) {
+      toast.success(`Recording captured (${(recordings[recordings.length - 1]?.size / 1024).toFixed(0)} KB)`);
+    }
+    prevRecordingCount.current = recordings.length;
+  }, [recordings.length]);
 
   // Audio Visualizer
   useEffect(() => {
@@ -101,16 +112,23 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
   };
 
   const handleClone = async () => {
+    console.log('[VoiceForge] handleClone called, voiceName:', voiceName, 'recordings:', recordings.length);
     if (!voiceName.trim()) {
       toast.error("Please enter a name for your voice essence.");
       return;
     }
-    const result = await uploadAndClone(voiceName);
-    if (result) {
-      toast.success(t.voiceClonedSuccess || "Voice successfully cloned!");
-      setVoiceName('');
-      onCloneSuccess?.();
-      refreshVoices();
+    try {
+      const result = await uploadAndClone(voiceName);
+      console.log('[VoiceForge] uploadAndClone result:', result);
+      if (result) {
+        toast.success(t.voiceClonedSuccess || "Voice successfully cloned!");
+        setVoiceName('');
+        onCloneSuccess?.();
+        refreshVoices();
+      }
+    } catch (e: any) {
+      console.error('[VoiceForge] handleClone error:', e);
+      toast.error(e.message || 'Clone failed');
     }
   };
 
@@ -176,8 +194,8 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                     <Button
                       onClick={isRecording ? stopRecording : startRecording}
                       className={`h-14 px-10 rounded-full font-black uppercase tracking-widest text-xs transition-all ${
-                        isRecording 
-                          ? 'bg-celestial-mars text-white hover:bg-red-600 shadow-[0_0_30px_rgba(255,102,102,0.3)] animate-pulse' 
+                        isRecording
+                          ? 'bg-celestial-mars text-white hover:bg-red-600 shadow-[0_0_30px_rgba(255,102,102,0.3)] animate-pulse'
                           : 'bg-white text-black hover:bg-celestial-saturn shadow-xl'
                       }`}
                     >
@@ -193,9 +211,32 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                         </div>
                       )}
                     </Button>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest italic leading-relaxed">
-                       {isRecording ? "Capturing synaptic vocal patterns..." : "Speak naturally for 15-30 seconds for optimal capture."}
-                    </p>
+                    <div className="flex flex-col items-center gap-1">
+                       {isRecording && (
+                         <div className="flex items-center gap-2">
+                           <span className="text-sm font-mono font-bold text-celestial-saturn">
+                             {recordingDuration}s
+                           </span>
+                           <span className="text-[10px] font-bold text-white/20">
+                             / 15-30s recommended
+                           </span>
+                           {recordingDuration >= 15 && (
+                             <span className="text-[10px] font-black text-green-400 animate-pulse">OPTIMAL</span>
+                           )}
+                         </div>
+                       )}
+                       <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest italic leading-relaxed">
+                         {isRecording
+                           ? recordingDuration < 5
+                             ? "Keep speaking — neural map needs more data"
+                             : recordingDuration < 15
+                               ? "Good — a few more seconds for optimal capture"
+                               : recordingDuration < 30
+                                 ? "Neural patterns captured — stop when ready"
+                                 : "Excellent! Recording complete — stop to save"
+                           : "Speak naturally for 15-30 seconds for optimal capture."}
+                       </p>
+                    </div>
 
                     {/* File upload alternative */}
                     <div className="flex items-center gap-2 pt-2">
@@ -244,8 +285,8 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                               <Volume2 size={18} />
                            </div>
                            <div>
-                              <div className="text-[10px] font-black text-white/80 uppercase">Sample_0x{i.toString(16).toUpperCase()}</div>
-                              <div className="text-[8px] text-white/20 uppercase font-black">{(recording.size / 1024 / 1024).toFixed(2)} MB • WebM Opus</div>
+                              <div className="text-[10px] font-black text-white/80 uppercase">Sample {i + 1}</div>
+                              <div className="text-[8px] text-white/20 uppercase font-black">{(recording.size / 1024).toFixed(1)} KB • WebM Opus</div>
                            </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -260,16 +301,58 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                 <div className="pt-6 border-t border-white/5 space-y-4">
                    <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-2">{t.voiceName || 'Voice Name'}</label>
-                      <Input 
+                      <Input
                         value={voiceName}
                         onChange={e => setVoiceName(e.target.value)}
                         placeholder="e.g. Master_Essence_v1"
                         className="bg-black/40 border-white/10 rounded-2xl h-12 focus-visible:ring-celestial-saturn/50"
                       />
                    </div>
+
+                   {cloneStatus !== 'idle' && (
+                     <motion.div
+                       initial={{ opacity: 0, height: 0 }}
+                       animate={{ opacity: 1, height: 'auto' }}
+                       className={`p-4 rounded-2xl space-y-3 border ${
+                         cloneStatus === 'error' ? 'bg-red-500/5 border-red-500/20' :
+                         cloneStatus === 'success' ? 'bg-green-500/5 border-green-500/20' :
+                         'bg-yellow-500/5 border-yellow-500/20'
+                       }`}
+                     >
+                       <div className="flex items-center gap-3">
+                         {cloneStatus === 'uploading' || cloneStatus === 'cloning' ? (
+                           <Loader2 size={18} className="animate-spin text-yellow-400" />
+                         ) : cloneStatus === 'success' ? (
+                           <CheckCircle2 size={18} className="text-green-400" />
+                         ) : (
+                           <XCircle size={18} className="text-red-400" />
+                         )}
+                         <span className={`text-xs font-bold uppercase tracking-widest ${
+                           cloneStatus === 'error' ? 'text-red-400' :
+                           cloneStatus === 'success' ? 'text-green-400' :
+                           'text-yellow-400'
+                         }`}>
+                           {cloneStatus === 'error' ? cloneError :
+                            cloneStatus === 'success' ? 'Voice cloned successfully!' :
+                            cloneProgress}
+                         </span>
+                       </div>
+                       {(cloneStatus === 'uploading' || cloneStatus === 'cloning') && (
+                         <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                           <motion.div
+                             className="h-full bg-gradient-to-r from-yellow-400 to-celestial-saturn"
+                             initial={{ width: 0 }}
+                             animate={{ width: cloneStatus === 'uploading' ? '40%' : '80%' }}
+                             transition={{ duration: 0.5 }}
+                           />
+                         </div>
+                       )}
+                     </motion.div>
+                   )}
+
                    <Button
                      onClick={handleClone}
-                     disabled={isUploading || isCloning || !voiceName.trim()}
+                     disabled={cloneStatus === 'uploading' || cloneStatus === 'cloning' || !voiceName.trim()}
                      className="w-full h-14 bg-celestial-saturn text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-[1.02] active:scale-95 transition-all shadow-2xl disabled:opacity-50"
                    >
                      {isUploading || isCloning ? (

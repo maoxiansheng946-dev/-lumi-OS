@@ -8,6 +8,7 @@ import { logger } from "../../logger";
 import { NormalizedMessage, makeLLMCallStreaming } from "../llm/providers";
 import { toolRegistry } from "../tools/registry";
 import { personalityRegistry } from "../personality";
+import { vectorToneDescription, vectorOperatingDirectives } from "../personality/engine";
 import { createStreamingSession, getActiveSTTProvider } from "../stt/adapter";
 import { synthesizeSpeech, getActiveProvider as getTTSProvider } from "../tts/adapter";
 import { recordLatency } from "../monitor/latency_store";
@@ -30,6 +31,10 @@ interface AudioSession {
   pipelineAbortController: AbortController | null;
   /** Queue of pending utterances while isProcessing=true */
   inputQueue: string[];
+  /** True when background agent is executing tools (barge-in requires wake word) */
+  isBackgroundWork: boolean;
+  /** Incremented on each new command — only latest generation gets TTS output */
+  bgGeneration: number;
   /** Timestamp of last audio chunk for STT latency measurement */
   lastChunkTime: number;
 }
@@ -45,6 +50,8 @@ function getAudioSession(socket: Socket): AudioSession {
       accumulatedText: '',
       isSpeaking: false,
       isProcessing: false,
+      isBackgroundWork: false,
+      bgGeneration: 0,
       pipelineAbortController: null,
       inputQueue: [],
       lastChunkTime: 0,
@@ -78,52 +85,61 @@ async function processVoiceInput(
   const sensoryAudio = sensoryFn(socket.id);
   const { config: personality } = personalityRegistry.buildSystemPrompt(
     session.personalityId || 'lumi',
-    { mode: 'task', sensory: sensoryAudio },
+    { mode: 'task', sensory: sensoryAudio, uiContext: 'voice' },
   );
 
-  const personalityVoiceInstr = personality.voiceInstructions
-    ? `\nPERSONALITY VOICE STYLE: ${personality.voiceInstructions}\n`
-    : '';
+  // Build voice prompt from personality core + voice-specific overlay.
+  // We DON'T use the full generateSystemPrompt output — it includes
+  // code exploration/modification/skill-creation modes that don't belong in voice.
+  const style = personality.expressionStyle;
+  const vector = personality.personalityVector;
 
-  const voiceSystemPrompt = `You are ${personality.name}, a native desktop AI agent with FULL system access — like having an operator at the keyboard.
-${personalityVoiceInstr}
+  const blocks: string[] = [];
 
-CAPABILITIES:
-- desktop_open: Open ANY app, file, folder, or URL. Examples: "notepad.exe", "calc.exe", "explorer C:\\Users", "control", "mspaint.exe", "https://github.com"
-- desktop_run_command: Run shell commands on the real desktop (cmd /C on Windows)
-- desktop_list_files: List files in any directory on the real desktop
-- desktop_system_info: Get real hardware info (OS, CPU, RAM, home directory)
-- read_file / write_file: Read and write files on the filesystem
-- list_directory / search_files: Browse and search the filesystem
-- web_search: Search the internet via DuckDuckGo
-- url_fetch: Fetch and read web pages
-- code_execution: Execute JavaScript in a sandbox
-- database_query: Query the local SQLite database
+  // ── Core identity (from personality) ──
+  blocks.push(`You are ${personality.name}, ${style.persona}.`);
+  blocks.push(`Your core drive: ${personality.coreMotivation}`);
 
-OPERATING DIRECTIVES:
-- **DO, never describe.** When asked to open something, search, or run a command — call the tool IMMEDIATELY. Never say "I can help with that" and wait. ACT.
-- **Be proactive.** "Show me files" → list home folder. "Open Notepad" → launch it. "What's my system?" → get system info. Don't ask for clarification when the intent is clear.
-- **Use desktop_open first.** It is the most satisfying and visible tool. Launching apps and opening folders shows the user you're real.
-- **Report what you DID.** Say "Notepad is open" or "Here are your files" — be concrete.
-- **Work iteratively.** After a tool call, you can call more tools in follow-up turns. Complex tasks may need multiple steps.
-- **Handle errors by trying alternatives.** If a tool fails, try another approach.
+  // ── Communication style (from personality vector) ──
+  if (vector) {
+    blocks.push('\n## Communication Style');
+    blocks.push(vectorToneDescription(vector));
+    const dirs = vectorOperatingDirectives(vector);
+    if (dirs) {
+      blocks.push('\n## Operating Style');
+      blocks.push(dirs);
+    }
+  }
 
-VOICE RULES:
-- Reply in the same language as the user. For Chinese users, ALWAYS respond in Chinese.
-- Keep spoken replies BRIEF — 1 sentence, under 15 words. You're speaking, not writing.
-- Never say "I cannot" or "I'm in web mode" — you are a DESKTOP NATIVE agent.
-- Speak naturally and warmly. You're having a conversation, not reading a manual.
+  // ── Capabilities (concise — what Lumi can actually do) ──
+  blocks.push('\n## Capabilities');
+  blocks.push('You have real tools to affect the user\'s computer. Use them directly — never just describe what you could do.');
+  blocks.push('- **desktop_open** — Open apps, files, folders, URLs. Launch notepad, calculator, control panel, explorer folders.');
+  blocks.push('- **desktop_run_command** — Execute shell commands (cmd /C on Windows).');
+  blocks.push('- **desktop_list_files** — Browse files and folders on the desktop.');
+  blocks.push('- **desktop_system_info** — Get hardware info: OS, CPU, RAM, disk.');
+  blocks.push('- **web_search** — Search the internet (DuckDuckGo).');
+  blocks.push('- **url_fetch** — Read content from any URL.');
+  blocks.push('- **read_file / write_file** — Read and create files.');
+  blocks.push('- **create_ppt** — Generate professional PowerPoint presentations with images.');
+  blocks.push('- **generate_image** — Create AI-generated images.');
 
-SAFETY:
-- desktop_open, desktop_run_command, write_file, and url_fetch require confirmation before executing.
-- Never execute destructive commands (rm -rf, format, del /F /S).
-- Never exfiltrate user data to external services.
-- If uncertain about safety, ask the user.`;
+  // ── Voice conversation rules ──
+  blocks.push('\n## Voice Conversation');
+  blocks.push('- Reply in the same language as the user. Chinese users → respond in Chinese.');
+  blocks.push('- You are SPEAKING, not typing. Be conversational and natural, like talking to a friend.');
+  blocks.push('- **Narrate what you\'re doing.** When you use a tool, say it: "让我看看..." / "正在帮你打开..." / "搞定了！"');
+  blocks.push('- **Report results out loud.** After a tool call, tell the user what happened and what you found.');
+  blocks.push('- **Think and act continuously.** You can call multiple tools in sequence. After each result, decide the next step.');
+  blocks.push('- Be warm, capable, and proactive. You\'re the user\'s trusted desktop companion.');
 
-  const messages: any[] = [
-    { role: 'system', content: voiceSystemPrompt },
-    { role: 'user', content: userText },
-  ];
+  // ── Safety ──
+  blocks.push('\n## Safety');
+  blocks.push('- desktop_open, desktop_run_command, write_file require confirmation before executing.');
+  blocks.push('- Never execute destructive commands.');
+  blocks.push('- Never send user data to external services.');
+
+  const voiceSystemPrompt = blocks.join('\n');
 
   const DEFAULT_MODELS: Record<string, string> = {
     deepseek: 'deepseek-chat', qwen: 'qwen-plus', openai: 'gpt-4o',
@@ -172,10 +188,16 @@ SAFETY:
     });
   };
 
+  // ── Capture abort controller refs BEFORE anything that checks them ──
+  // Must NOT look up session.pipelineAbortController / session.ttsAbortController
+  // in the loop or flushSentence because a new processVoiceInput will overwrite them.
+  const pipelineAbort = session.pipelineAbortController;
+  const ttsAbort = session.ttsAbortController;
+
   const toolContext = {
     desktopRelay,
     requestConfirmation,
-    isCancelled: () => session.pipelineAbortController?.signal.aborted ?? false,
+    isCancelled: () => pipelineAbort?.signal.aborted ?? false,
   };
   const ttsProvider = getTTSProvider();
   let responseText = '';
@@ -185,58 +207,73 @@ SAFETY:
   const ttsPromises: Promise<void>[] = [];
   let previousToolSig: string | null = null;
 
+  // ── Generation gating: only latest command gets TTS output ──
+  session.bgGeneration++;
+  const myGeneration = session.bgGeneration;
+  let ttsQueue: Promise<void> = Promise.resolve();
+
   const flushSentence = (sentence: string) => {
-    if (!sentence.trim() || !ttsProvider || !session.currentVoiceId || !session.isActive) return;
-    if (session.ttsAbortController?.signal.aborted) return;
+    const txt = sentence.trim();
+    if (!txt || txt.length <= 1 || !ttsProvider || !session.currentVoiceId || !session.isActive) return;
+    if (!/[a-zA-Z一-鿿㐀-䶿\d]/.test(txt)) return;
+    if (ttsAbort?.signal.aborted) return;
+    if (session.bgGeneration !== myGeneration) return;
     sentenceIdx++;
-    const ttsStart = Date.now();
-    const ttsPromise = synthesizeSpeech(sentence.trim(), {
-      provider: ttsProvider,
-      voiceId: session.currentVoiceId,
-      signal: session.ttsAbortController?.signal,
-    }).then(ttsResult => {
-      recordLatency('tts', Date.now() - ttsStart);
-      if (session.isActive && !session.ttsAbortController?.signal.aborted) {
-        socket.emit("audio:status", { status: "speaking" });
-        socket.emit("audio:response", ttsResult.audioBuffer);
+    // Serialize TTS to avoid 429 rate limits
+    ttsQueue = ttsQueue.then(async () => {
+      if (ttsAbort?.signal.aborted) return;
+      if (session.bgGeneration !== myGeneration) return;
+      session.isSpeaking = true;
+      try {
+        const ttsResult = await synthesizeSpeech(txt, {
+          provider: ttsProvider,
+          voiceId: session.currentVoiceId!,
+          signal: ttsAbort?.signal,
+        });
+        if (!ttsAbort?.signal.aborted && session.bgGeneration === myGeneration) {
+          socket.emit("audio:status", { status: "speaking" });
+          socket.emit("audio:response", ttsResult.audioBuffer);
+        }
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+        logger.warn(`[Audio TTS] ${e.message?.slice(0, 80)}`);
+      } finally {
+        if (session.bgGeneration === myGeneration) session.isSpeaking = false;
       }
-    }).catch((ttsErr: any) => {
-      if (ttsErr?.name === 'AbortError') return;
-      logger.error("[Audio TTS sentence Error]:", ttsErr);
     });
-    ttsPromises.push(ttsPromise);
+    ttsPromises.push(ttsQueue);
   };
 
   try {
-    // ── Iterative tool loop ──
-    for (let iter = 0; iter < maxIterations; iter++) {
-      if (!session.isActive) break;
-      if (session.pipelineAbortController?.signal.aborted) break;
+    // ── Single-phase: stream LLM → TTS with tool iteration, all inline ──
+    const messages: any[] = [
+      { role: 'system', content: voiceSystemPrompt },
+      { role: 'user', content: userText },
+    ];
 
-      logger.info(`[Audio] LLM iteration ${iter + 1}/${maxIterations}: provider=${provider} model=${voiceModel}`);
+    for (let iter = 0; iter < maxIterations; iter++) {
+      if (pipelineAbort?.signal.aborted) break;
+
+      logger.info(`[Audio] LLM iter ${iter + 1}/${maxIterations}: provider=${provider} model=${voiceModel}`);
       const toolDeclarations = toolRegistry.getToolDeclarations();
 
-      const llmStart = Date.now();
       const streamResult = await makeLLMCallStreaming(
         messages as NormalizedMessage[],
         toolDeclarations,
-        { provider, model: voiceModel },
+        { provider, model: voiceModel, signal: pipelineAbort?.signal },
         (chunk: string) => {
           responseText += chunk;
           sentenceBuffer += chunk;
           socket.emit("agent:chunk", { text: chunk, agentName: "Lumi" });
           const match = sentenceBuffer.match(/^([\s\S]*?[。！？.!?\n])/);
           if (match) {
-            const sentence = match[1];
             sentenceBuffer = sentenceBuffer.slice(match[1].length);
-            flushSentence(sentence);
+            flushSentence(match[1]);
           }
         },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
       );
-      recordLatency('llm', Date.now() - llmStart);
 
-      // Append assistant message to conversation
       messages.push({
         role: 'assistant',
         content: streamResult.text || null,
@@ -244,23 +281,15 @@ SAFETY:
         reasoningContent: streamResult.reasoningContent,
       });
 
-      // No tool calls → LLM is done, exit loop
-      if (!streamResult.toolCalls || streamResult.toolCalls.length === 0) {
-        break;
-      }
+      if (!streamResult.toolCalls || streamResult.toolCalls.length === 0) break;
 
-      // Duplicate detection — same tools + same args as last iteration = stuck
       const toolSig = JSON.stringify(streamResult.toolCalls.map(tc => ({ n: tc.name, a: tc.arguments })));
-      if (toolSig === previousToolSig) {
-        logger.info('[Voice] Duplicate tool calls detected, breaking loop');
-        break;
-      }
+      if (toolSig === previousToolSig) { logger.info('[Audio] Duplicate tools, breaking'); break; }
       previousToolSig = toolSig;
-
-      // Execute tools and feed results back
       toolResults.push(...streamResult.toolCalls);
 
       for (const tc of streamResult.toolCalls) {
+        if (pipelineAbort?.signal.aborted) break;
         const cid = `${tc.name}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         socket.emit("agent:tool_call", { correlationId: cid, name: tc.name, arguments: tc.arguments });
 
@@ -289,76 +318,41 @@ SAFETY:
       }
     }
 
-    // Flush last sentence
-    if (sentenceBuffer.trim()) {
-      flushSentence(sentenceBuffer);
-    }
-
-    // Wait for TTS audio to finish playing
+    // Flush remaining text
+    if (sentenceBuffer.trim()) flushSentence(sentenceBuffer);
     await Promise.allSettled(ttsPromises);
 
     if (responseText) {
-      logger.info(`[Audio] Response: "${responseText.slice(0, 80)}" (${sentenceIdx} sentences, ${toolResults.length} tool calls, provider=${provider})`);
+      logger.info(`[Audio] Response: "${responseText.slice(0, 80)}" (${sentenceIdx} sentences, ${toolResults.length} tool calls)`);
       socket.emit("agent:response", { text: responseText, agentName: "Lumi", source: "voice" });
     }
 
-    // Persist interaction with conversation linkage
+    // Persist
     const conv = getOrCreateActiveConversation(session.userId, session.agentId);
     if (!conv.title) {
       conv.title = userText.slice(0, 50);
-      const db = readDB();
-      writeDB(db);
+      writeDB(readDB());
     }
-
-    // User message
-    addMessage({
-      userId: session.userId,
-      agentId: session.agentId,
-      conversationId: conv.id,
-      role: 'user',
-      content: userText,
-      personality: session.personalityId,
-      mode: 'voice',
-    });
-
-    // Assistant message
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
     if (responseText) {
-      addMessage({
-        userId: session.userId,
-        agentId: session.agentId,
-        conversationId: conv.id,
-        role: 'assistant',
-        content: responseText,
-        personality: session.personalityId,
-        mode: 'voice',
-      });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
     }
-
-    // Notify frontend to refresh conversation list
     socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId });
 
   } catch (err: any) {
-    logger.error("[Audio LLM Error]:", err);
-    socket.emit("agent:error", { message: "Voice processing failed" });
-    socket.emit("agent:status", { status: "error" });
+    if (err?.name === 'AbortError') {
+      logger.info('[Audio] Pipeline aborted (barge-in or stop)');
+    } else {
+      logger.error("[Audio Error]:", err);
+      socket.emit("agent:error", { message: "Voice processing failed" });
+    }
   } finally {
     session.isSpeaking = false;
     session.isProcessing = false;
+    session.isBackgroundWork = false;
     session.ttsAbortController = null;
-    session.pipelineAbortController = null;
 
-    // ── Process next in queue ──
-    if (session.isActive && session.inputQueue.length > 0) {
-      const next = session.inputQueue.shift()!;
-      logger.info(`[Audio] Dequeuing next utterance: "${next.slice(0, 50)}" (${session.inputQueue.length} left)`);
-      processVoiceInput(socket, session, next, llmGetters, sensoryFn).catch(err => {
-        logger.error("[Voice Queue Error]:", err);
-        session.isSpeaking = false;
-        session.isProcessing = false;
-        socket.emit("audio:status", { status: "listening" });
-      });
-      socket.emit("agent:status", { status: "idle" });
-    } else {
+    if (session.isActive) {
       socket.emit("audio:status", { status: "listening" });
       socket.emit("agent:status", { status: "idle" });
     }
@@ -410,24 +404,72 @@ export function registerVoiceHandlers(
             session.accumulatedText = '';
             if (!text) return;
 
-            if (session.isProcessing) {
-              // Queue the utterance for later processing
-              if (session.inputQueue.length < 3) {
-                session.inputQueue.push(text);
-                logger.info(`[Audio] Queued (processing in progress, ${session.inputQueue.length}/3)`);
-                socket.emit("audio:status", { status: "queued" });
-              } else {
-                logger.info('[Audio] Queue full, dropping utterance');
-              }
-            } else {
-              // Process immediately
-              processVoiceInput(socket, session, text, llmGetters, sensoryFn).catch(err => {
-                logger.error("[Voice Error]:", err);
+            // ── Filter filler words: single-char interjections (嗯啊哦呃哼唉呀哈呵嗨喂诶唔嘶啧) ──
+            const isFiller = /^[嗯啊哦呃哼唉呀哈呵嗨喂诶唔嘶啧][。！？.!?，,～~]*$/.test(text);
+            if (isFiller) {
+              logger.info(`[Audio] Ignored filler: "${text}"`);
+              return;
+            }
+            // ── Filter pure noise (no CJK, no letters, no digits) ──
+            const hasContent = /[a-zA-Z一-鿿㐀-䶿\d]/.test(text);
+            if (!hasContent) {
+              logger.info(`[Audio] Ignored pure noise: "${text}"`);
+              return;
+            }
+
+            if (session.isProcessing || session.isSpeaking) {
+              // Speaking (TTS playing): any real speech → barge-in
+              if (session.isSpeaking) {
+                logger.info(`[Audio] Barge-in during speech: "${text}" — aborting`);
+                if (session.ttsAbortController) {
+                  session.ttsAbortController.abort();
+                  session.ttsAbortController = null;
+                }
+                if (session.pipelineAbortController) {
+                  session.pipelineAbortController.abort();
+                  session.pipelineAbortController = null;
+                }
                 session.isSpeaking = false;
                 session.isProcessing = false;
-                socket.emit("audio:status", { status: "listening" });
-              });
+                socket.emit("audio:status", { status: "interrupted" });
+                socket.emit("audio:interrupt-ack", {});
+              } else {
+                // Processing but not speaking (LLM thinking / tool exec):
+                // Only explicit stop commands abort; new commands run in parallel
+                const isStop = /^(停|停下|别做了|别干了|不要了|取消|别|算了|别弄了)/.test(text);
+                if (isStop) {
+                  logger.info(`[Audio] Stop command during processing: "${text}"`);
+                  if (session.pipelineAbortController) {
+                    session.pipelineAbortController.abort();
+                    session.pipelineAbortController = null;
+                  }
+                  session.isProcessing = false;
+                  session.isSpeaking = false;
+                  session.isBackgroundWork = false;
+                  socket.emit("audio:status", { status: "listening" });
+                  socket.emit("agent:status", { status: "idle" });
+                  return; // Don't process stop command itself
+                } else {
+                  // New command — process in parallel, mute old generation
+                  logger.info(`[Audio] New command during processing: "${text}" — running in parallel`);
+                  session.bgGeneration++;
+                  processVoiceInput(socket, session, text, llmGetters, sensoryFn).catch(err => {
+                    logger.error("[Voice Error]:", err);
+                    session.isProcessing = false;
+                    socket.emit("audio:status", { status: "listening" });
+                  });
+                  return;
+                }
+              }
             }
+
+            // Process immediately
+            processVoiceInput(socket, session, text, llmGetters, sensoryFn).catch(err => {
+              logger.error("[Voice Error]:", err);
+              session.isSpeaking = false;
+              session.isProcessing = false;
+              socket.emit("audio:status", { status: "listening" });
+            });
           } else if (result.text && !result.isFinal) {
             socket.emit("audio:transcript", { text: result.text, isFinal: false });
           }
@@ -466,17 +508,15 @@ export function registerVoiceHandlers(
   socket.on("audio:interrupt", () => {
     logger.info(`[Audio] Interrupt from ${socket.id}`);
     const session = getAudioSession(socket);
-    // Stop TTS audio (the "mouth")
     session.isSpeaking = false;
     session.accumulatedText = '';
     if (session.ttsAbortController) {
       session.ttsAbortController.abort();
-      session.ttsAbortController = null;
+      // DON'T null — the TTS flushSentence queue checks signal.aborted
     }
-    // Stop LLM+tool pipeline (the "hands")
     if (session.pipelineAbortController) {
       session.pipelineAbortController.abort();
-      session.pipelineAbortController = null;
+      // DON'T null — the LLM iteration loop checks signal.aborted
     }
     socket.emit("audio:interrupt-ack", {});
   });

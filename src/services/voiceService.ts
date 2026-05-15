@@ -6,25 +6,35 @@ export async function uploadSamples(files: File[]): Promise<{ urls: string[]; fi
   const form = new FormData();
   files.forEach(f => form.append('samples', f));
 
-  const res = await fetch(`${BASE}/samples`, { method: 'POST', body: form });
+  console.log('[VoiceService] Uploading', files.length, 'samples, sizes:', files.map(f => f.size));
+  const url = `${BASE}/samples`;
+  console.log('[VoiceService] POST', url);
+  const res = await fetch(url, { method: 'POST', body: form });
+  console.log('[VoiceService] Upload response:', res.status, res.statusText);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Upload failed' }));
     throw new Error(err.error || 'Upload failed');
   }
-  return res.json();
+  const data = await res.json();
+  console.log('[VoiceService] Upload result:', data);
+  return data;
 }
 
 export async function cloneVoice(sampleUrls: string[], name: string, provider?: string): Promise<{ voiceId: string; name: string; provider: string }> {
+  console.log('[VoiceService] Cloning voice with name:', name, 'urls:', sampleUrls);
   const res = await fetch(`${BASE}/clone`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sampleUrls, name, provider }),
   });
+  console.log('[VoiceService] Clone response:', res.status, res.statusText);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Clone failed' }));
     throw new Error(err.error || 'Clone failed');
   }
-  return res.json();
+  const data = await res.json();
+  console.log('[VoiceService] Clone result:', data);
+  return data;
 }
 
 export async function listVoices(): Promise<{ cloned: any[]; premade: any[] }> {

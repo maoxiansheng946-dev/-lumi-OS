@@ -1,3 +1,7 @@
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import os from 'os';
 import { TTSResult, VoiceListItem } from '../types';
 import { getKey } from '../../config/keys';
 
@@ -97,22 +101,45 @@ const CLONE_URL = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/cust
 export async function cloneVoice(sampleUrls: string[], name: string): Promise<string> {
   const apiKey = getApiKey();
 
-  // Read the first audio sample as base64
-  const fs = require('fs');
-  const path = require('path');
-  let audioBase64: string;
   const firstUrl = sampleUrls[0];
 
+  // Resolve uploaded file to local disk path
+  let localPath: string;
   try {
-    // sampleUrls are like http://host/api/voice/samples/uid/file.wav
-    // Resolve to local disk: data/voice_samples/uid/file.wav
-    const urlPath = firstUrl.replace(/^https?:\/\/[^/]+/, ''); // strip host → /api/voice/samples/uid/file.wav
-    const relativePath = urlPath.replace(/^\/api\/voice\/samples\//, ''); // → uid/file.wav
-    const localPath = path.join(process.cwd(), 'data', 'voice_samples', relativePath);
-    const buf = fs.readFileSync(localPath);
-    audioBase64 = buf.toString('base64');
-  } catch {
-    throw new Error('Failed to read voice sample file. Make sure the audio file exists in data/voice_samples/');
+    const u = new URL(firstUrl);
+    const relativePath = u.pathname.replace(/^\/api\/voice\/samples\//, '');
+    localPath = path.join(process.cwd(), 'data', 'voice_samples', relativePath);
+    if (!fs.existsSync(localPath)) {
+      throw new Error(`Sample file not found: ${localPath}`);
+    }
+  } catch (err: any) {
+    if (err.message?.includes('Sample file not found')) throw err;
+    throw new Error(`Invalid sample URL: ${firstUrl}`);
+  }
+
+  // Convert to 16kHz mono WAV if not already WAV (CosyVoice requires PCM)
+  const ext = path.extname(localPath).toLowerCase();
+  let wavPath: string;
+  if (ext === '.wav') {
+    wavPath = localPath;
+  } else {
+    wavPath = path.join(os.tmpdir(), `lumi_voice_${Date.now()}.wav`);
+    try {
+      execSync(`ffmpeg -y -i "${localPath}" -acodec pcm_s16le -ar 16000 -ac 1 "${wavPath}"`, {
+        stdio: 'pipe',
+        timeout: 15000,
+      });
+    } catch (ffErr: any) {
+      throw new Error(`Audio conversion failed: ${ffErr.stderr?.toString()?.slice(0, 200) || ffErr.message}`);
+    }
+  }
+
+  const buf = fs.readFileSync(wavPath);
+  const audioBase64 = buf.toString('base64');
+
+  // Clean up temp file
+  if (wavPath !== localPath) {
+    try { fs.unlinkSync(wavPath); } catch {}
   }
 
   // Sanitize prefix: lowercase letters/numbers only, max 10 chars

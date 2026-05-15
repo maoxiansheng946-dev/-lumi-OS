@@ -38,16 +38,8 @@ class SoundService {
     osc.stop(this.ctx.currentTime + duration);
   }
 
-  // Soft mechanical click for opening windows
-  playClick() {
-    this.playTone(800, 'sine', 0.1, 0.05);
-    setTimeout(() => this.playTone(400, 'square', 0.05, 0.02), 50);
-  }
-
-  // Gentle pulse for theme changes
-  playPulse() {
-    this.playTone(200, 'sine', 0.5, 0.1);
-  }
+  playClick() {}
+  playPulse() {}
 
   // Success chime
   playSuccess() {
@@ -55,10 +47,7 @@ class SoundService {
     setTimeout(() => this.playTone(900, 'sine', 0.2, 0.05), 100);
   }
 
-  // Neural trigger sound
-  playNeural() {
-    this.playTone(1200, 'triangle', 0.05, 0.03);
-  }
+  playNeural() {}
 
   // Wake word detection chime — ascending two-tone with sparkle
   playWakeChime() {

@@ -36,7 +36,7 @@ export const PLANS: Record<string, SubscriptionPlan> = {
     name: 'Free',
     tier: 'free',
     monthlyTokens: 500_000,
-    llmProviders: ['qwen'],
+    llmProviders: ['qwen', 'deepseek'],
     sttIncluded: true,
     ttsIncluded: true,
     voiceCloneIncluded: false,

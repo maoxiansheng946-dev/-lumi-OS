@@ -99,7 +99,7 @@ export function mountAgentRoutes(
       const db = readDB();
 
       // Verify agent ownership or check if it's a default agent
-      const isDefaultAgent = ['lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
+      const isDefaultAgent = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
       const agent = isDefaultAgent ? true : db.agents.find((a: any) => a.id === id && a.ownerUid === decoded.uid);
       if (!agent) return res.status(404).json({ error: "Agent not found" });
 
@@ -127,7 +127,7 @@ export function mountAgentRoutes(
       const db = readDB();
 
       // Verify agent ownership or check if it's a default agent
-      const isDefaultAgent = ['lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
+      const isDefaultAgent = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
       const agent = isDefaultAgent ? true : db.agents.find((a: any) => a.id === id && a.ownerUid === decoded.uid);
       if (!agent) return res.status(404).json({ error: "Agent not found" });
 

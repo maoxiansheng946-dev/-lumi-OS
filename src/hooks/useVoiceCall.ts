@@ -123,10 +123,6 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       audioElementRef.current = null;
     }
     isTtsPlaying.current = false;
-    // Re-enable mic track
-    if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
-    }
   }, []);
 
   const audioQueue = useRef<ArrayBuffer[]>([]);
@@ -149,9 +145,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       if (!isCallActive.current) return;
       try {
         isTtsPlaying.current = true;
-        if (streamRef.current) {
-          streamRef.current.getAudioTracks().forEach(t => { t.enabled = false; });
-        }
+        // Keep mic enabled so user can barge-in while Lumi is speaking
 
         const blob = new Blob([buffer], { type: 'audio/mp3' });
         const url = URL.createObjectURL(blob);
@@ -159,9 +153,6 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
 
         const onDone = () => {
           isTtsPlaying.current = false;
-          if (streamRef.current) {
-            streamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
-          }
           URL.revokeObjectURL(url);
           audioElementRef.current = null;
           // Play next queued chunk
@@ -268,7 +259,8 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
 
       scriptProcessor.onaudioprocess = (event) => {
         if (!socket?.connected) return;
-        if (isTtsPlaying.current) return; // Don't capture mic while TTS is playing
+        // Always send mic audio — server STT handles barge-in detection
+        // Echo cancellation is in getUserMedia (echoCancellation: true)
         const input = event.inputBuffer.getChannelData(0);
         // Convert float32 [-1,1] to int16 PCM
         const int16 = new Int16Array(input.length);
@@ -353,17 +345,19 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     setAudioLevel(0);
   }, [socket, stopAllPlayback]);
 
-  // Detect interruption: only allow interrupt when TTS audio is actually playing
+  // Barge-in: detect user speaking over TTS via audio level
   useEffect(() => {
-    const threshold = 0.15;
+    const threshold = 0.12;
     if (
       audioLevel > threshold &&
       isTtsPlaying.current &&
       (callState === 'speaking' || callState === 'thinking')
     ) {
-      interrupt();
+      socket?.emit('audio:interrupt');
+      stopAllPlayback();
+      setCallState('listening');
     }
-  }, [audioLevel, callState, interrupt]);
+  }, [audioLevel, callState, socket, stopAllPlayback]);
 
   // Monitor connection quality via socket latency
   useEffect(() => {

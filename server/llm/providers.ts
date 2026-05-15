@@ -440,7 +440,7 @@ export type StreamCallback = (chunk: string) => void;
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
   onChunk: StreamCallback,
   getDeepSeek: () => any,
   getGemini: () => any,
@@ -465,7 +465,7 @@ export async function makeLLMCallStreaming(
     });
     params.stream = true;
 
-    const stream = await client.chat.completions.create(params);
+    const stream = await client.chat.completions.create(params, { signal: config.signal });
     const accumulatedText: string[] = [];
     const accumulatedReasoning: string[] = [];
     const toolCallAccumulators: Map<number, { id: string; name: string; args: string }> = new Map();

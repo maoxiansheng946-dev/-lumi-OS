@@ -31,67 +31,77 @@ export function registerChatHandler(
   userIdFn: (s: Socket) => string,
 ) {
   socket.on("agent:chat", async (data: { text: string; history: any[]; personalityId?: string; category?: string; agentId?: string }) => {
+    console.log('[ChatHandler] agent:chat RECEIVED:', JSON.stringify(data).slice(0, 300));
     const { text, history, personalityId = "lumi", category, agentId } = data;
     const uid = userIdFn(socket);
-
-    // Look up agent record for memory/emotion isolation
-    const agentRecord = agentId
-      ? readDB().agents.find((a: any) => a.id === agentId) || null
-      : null;
-    const memoryScope = agentRecord?.memoryScope || 'shared';
-    const agentMemoryFilter = memoryScope === 'private' ? agentId : undefined;
-    const isSanctuary = agentRecord?.territory === 'sanctuary';
-
-    // Retrieve personality vector early to bias memory retrieval (cross-system fusion: vector→memory)
-    const personalityConfig = personalityRegistry.get(personalityId);
-    const retrievalBiases = personalityConfig?.personalityVector
-      ? vectorMemoryBias(personalityConfig.personalityVector)
-      : { typeWeights: {}, perspectiveWeights: {} };
-
-    const relevantMemories = queryMemories({
-      userId: uid, query: text, limit: 5, minConfidence: 0.4, agentId: agentMemoryFilter,
-      retrievalTypeWeights: retrievalBiases.typeWeights,
-      retrievalPerspectiveWeights: retrievalBiases.perspectiveWeights,
-    });
-
-    // RAG: retrieve relevant knowledge chunks from agent's ingested documents
-    let ragChunks: string[] = [];
-    if (agentId) {
-      const chunks = retrieveChunks(uid, agentId, text, 3);
-      ragChunks = chunks.map((c: any) => c.content);
-    }
-
-    const emotionKey = agentMemoryFilter ? `${uid}_agent_${agentId}` : uid;
-    const emotionalState = loadEmotionalState(emotionKey);
-    const isNovel = relevantMemories.length < 2;
-
-    const sensory = sensoryFn(uid);
-    const { config: personality, systemPrompt: systemInstruction } = personalityRegistry.buildSystemPrompt(
-      personalityId,
-      { mode: 'chat', sensory },
-      {
-        memories: relevantMemories.length > 0 ? relevantMemories : undefined,
-        ragKnowledge: ragChunks.length > 0 ? ragChunks : undefined,
-        emotionalState,
-      },
-    );
-
-    // Inject conversation summary for long-running conversations (anti-entropy)
-    let effectiveSystemPrompt = systemInstruction;
-    const conversationId = agentId
-      ? getOrCreateActiveConversation(uid, agentId).id
-      : undefined;
-    if (conversationId) {
-      const { conversation } = checkAutoSummary(conversationId);
-      if (conversation?.summary) {
-        effectiveSystemPrompt += `\n\n## Conversation Context\nPrevious conversation summary: ${conversation.summary}`;
-      }
-    }
-
-    const interactionId = crypto.randomUUID();
+    console.log('[ChatHandler] uid:', uid, 'agentId:', agentId);
 
     try {
+      // Look up agent record for memory/emotion isolation
+      const agentRecord = agentId
+        ? readDB().agents.find((a: any) => a.id === agentId) || null
+        : null;
+      console.log('[ChatHandler] agentRecord found:', !!agentRecord);
+      const memoryScope = agentRecord?.memoryScope || 'shared';
+      const agentMemoryFilter = memoryScope === 'private' ? agentId : undefined;
+      const isSanctuary = agentRecord?.territory === 'sanctuary';
+
+      // Retrieve personality vector early to bias memory retrieval (cross-system fusion: vector→memory)
+      const personalityConfig = personalityRegistry.get(personalityId);
+      console.log('[ChatHandler] personalityConfig:', !!personalityConfig);
+      const retrievalBiases = personalityConfig?.personalityVector
+        ? vectorMemoryBias(personalityConfig.personalityVector)
+        : { typeWeights: {}, perspectiveWeights: {} };
+
+      const relevantMemories = queryMemories({
+        userId: uid, query: text, limit: 5, minConfidence: 0.4, agentId: agentMemoryFilter,
+        retrievalTypeWeights: retrievalBiases.typeWeights,
+        retrievalPerspectiveWeights: retrievalBiases.perspectiveWeights,
+      });
+      console.log('[ChatHandler] relevantMemories:', relevantMemories.length);
+
+      // RAG: retrieve relevant knowledge chunks from agent's ingested documents
+      let ragChunks: string[] = [];
+      if (agentId) {
+        const chunks = retrieveChunks(uid, agentId, text, 3);
+        ragChunks = chunks.map((c: any) => c.content);
+      }
+
+      const emotionKey = agentMemoryFilter ? `${uid}_agent_${agentId}` : uid;
+      const emotionalState = loadEmotionalState(emotionKey);
+      console.log('[ChatHandler] emotionalState loaded');
+      const isNovel = relevantMemories.length < 2;
+
+      const sensory = sensoryFn(uid);
+      console.log('[ChatHandler] sensory loaded');
+      const { config: personality, systemPrompt: systemInstruction } = personalityRegistry.buildSystemPrompt(
+        personalityId,
+        { mode: 'chat', sensory },
+        {
+          memories: relevantMemories.length > 0 ? relevantMemories : undefined,
+          ragKnowledge: ragChunks.length > 0 ? ragChunks : undefined,
+          emotionalState,
+        },
+      );
+      console.log('[ChatHandler] systemPrompt built, personality name:', personality?.name);
+
+      // Inject conversation summary for long-running conversations (anti-entropy)
+      let effectiveSystemPrompt = systemInstruction;
+      const conversationId = agentId
+        ? getOrCreateActiveConversation(uid, agentId).id
+        : undefined;
+      console.log('[ChatHandler] conversationId:', conversationId);
+      if (conversationId) {
+        const { conversation } = checkAutoSummary(conversationId);
+        if (conversation?.summary) {
+          effectiveSystemPrompt += `\n\n## Conversation Context\nPrevious conversation summary: ${conversation.summary}`;
+        }
+      }
+
+      const interactionId = crypto.randomUUID();
+
       socket.emit("agent:status", { status: "thinking", agentName: personality.name });
+      console.log('[ChatHandler] emitted agent:status thinking');
 
       // Read user's LLM prefs from settings (synced from API Matrix)
       const userLLMPrefs = (() => {
@@ -155,6 +165,14 @@ export function registerChatHandler(
         isLLMAvailable: true,
       };
       const cognition = await processInput(text, cognitiveCtx);
+      console.log('[ChatHandler] cognition result:', cognition.intent.category, 'directToolExecuted:', cognition.directToolExecuted, 'responseText:', cognition.responseText?.slice(0, 100));
+
+      // Auto-select model: flash for simple chat, pro for complex/command/code
+      if (activeProvider === 'deepseek') {
+        const complexCategories = ['command', 'code', 'question', 'analysis'];
+        activeModel = complexCategories.includes(cognition.intent.category) ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+        console.log('[ChatHandler] DeepSeek model auto-selected:', activeModel, 'for category:', cognition.intent.category);
+      }
 
       let responseText = '';
       let llmWasCalled = false;
@@ -240,13 +258,16 @@ export function registerChatHandler(
           ? persistedHistory
           : (history ? history.map((m: any) => ({ role: m.role, content: m.content })) : []);
 
+        // Tell Lumi which model is currently active so it can self-identify correctly
+        const selfAwareness = `\n\n[System note: You are currently running on ${activeProvider} provider, model: ${activeModel}. If asked, mention this exact model.]`;
         const messages: NormalizedMessage[] = [
-          { role: 'system', content: effectiveSystemPrompt },
+          { role: 'system', content: effectiveSystemPrompt + selfAwareness },
           ...conversationHistory,
           { role: 'user', content: text },
         ];
 
         try {
+          console.log('[ChatHandler] Calling runWithTools (Path C) with provider:', activeProvider, 'model:', activeModel);
           const streamChunks: string[] = [];
           const onChunk: StreamCallback = (chunk) => {
             streamChunks.push(chunk);
@@ -306,10 +327,7 @@ export function registerChatHandler(
         }
       }
 
-      // Save to conversation via conversation manager
-      const conversationId = agentId
-        ? getOrCreateActiveConversation(uid, agentId).id
-        : undefined;
+      // Save to conversation via conversation manager (reuse conversationId from setup)
 
       if (conversationId) {
         addMessage({ userId: uid, agentId: agentId || '', conversationId, role: 'user', content: text, personality: personality.id });

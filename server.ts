@@ -820,7 +820,7 @@ apiRouter.get("/agents/:id/history", (req, res) => {
     const db = readDB();
 
     // Verify agent ownership or check if it's a default agent
-    const isDefaultAgent = ['lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
+    const isDefaultAgent = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
     const agent = isDefaultAgent ? true : db.agents.find((a: any) => a.id === id && a.ownerUid === decoded.uid);
     if (!agent) return res.status(404).json({ error: "Agent not found" });
 
@@ -848,7 +848,7 @@ apiRouter.post("/agents/:id/history", (req, res) => {
     const db = readDB();
 
     // Verify agent ownership or check if it's a default agent
-    const isDefaultAgent = ['lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
+    const isDefaultAgent = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'].includes(id);
     const agent = isDefaultAgent ? true : db.agents.find((a: any) => a.id === id && a.ownerUid === decoded.uid);
     if (!agent) return res.status(404).json({ error: "Agent not found" });
 
@@ -1921,6 +1921,13 @@ personalityRegistry.load();
 io.on("connection", (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
 
+  // DEBUG: log all incoming events
+  socket.onAny((event, ...args) => {
+    if (event !== 'device:register') {
+      console.log(`[Socket:${socket.id}] event: ${event} args:`, JSON.stringify(args).slice(0, 200));
+    }
+  });
+
   // Device registration
   socket.on("device:register", (data: {
     name?: string;
@@ -2125,6 +2132,30 @@ async function startServer() {
   } catch (error) {
     console.error('Failed to initialize database:', error);
     process.exit(1);
+  }
+
+  // Auto-create admin account for local development continuity
+  const adminPassword = process.env.AUTO_LOGIN_PASSWORD;
+  if (adminPassword) {
+    try {
+      const db = readDB();
+      const adminExists = db.users.find((u: any) => u.username === 'admin');
+      if (!adminExists) {
+        db.users.push({
+          uid: Math.random().toString(36).substring(2, 15),
+          username: 'admin',
+          password: await bcrypt.hash(adminPassword, 10),
+          phone: '+00000000000',
+          role: 'admin',
+          balance: 999.0,
+          createdAt: new Date().toISOString(),
+        });
+        writeDB(db);
+        console.log('[Bootstrap] Admin account created');
+      }
+    } catch (err) {
+      console.warn('[Bootstrap] Failed to ensure admin account:', (err as Error).message);
+    }
   }
 
   // Register all agent tools (with LLM getters for skill generation)

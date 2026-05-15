@@ -94,6 +94,55 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
     res.json({ success: true });
   });
 
+  // Bootstrap endpoint: auto-login for local admin account
+  // Only active when AUTO_LOGIN_PASSWORD env var is configured
+  router.get("/auth/bootstrap", async (req, res) => {
+    const adminPassword = process.env.AUTO_LOGIN_PASSWORD;
+    if (!adminPassword) {
+      return res.status(404).json({ error: "Bootstrap not available" });
+    }
+
+    const db = readDB();
+    let admin = db.users.find((u: any) => u.username === "admin");
+
+    if (!admin) {
+      // Create admin account on first bootstrap
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      admin = {
+        uid: Math.random().toString(36).substring(2, 15),
+        username: "admin",
+        password: hashedPassword,
+        phone: "+00000000000",
+        role: "admin",
+        balance: 999.0,
+        createdAt: new Date().toISOString(),
+      };
+      db.users.push(admin);
+      writeDB(db);
+    }
+
+    // Verify password matches current AUTO_LOGIN_PASSWORD
+    const pwMatch = await bcrypt.compare(adminPassword, admin.password);
+    if (!pwMatch) {
+      // Password changed in .env — update stored hash
+      admin.password = await bcrypt.hash(adminPassword, 10);
+      const idx = db.users.findIndex((u: any) => u.username === "admin");
+      if (idx >= 0) {
+        db.users[idx].password = admin.password;
+        writeDB(db);
+      }
+    }
+
+    const token = jwt.sign(
+      { uid: admin.uid, username: "admin", role: admin.role },
+      jwtSecret,
+      { expiresIn: "24h" },
+    );
+    res.cookie("token", token, getCookieOptions());
+    const { password: _, ...userWithoutPassword } = admin;
+    return res.json({ success: true, user: userWithoutPassword, token });
+  });
+
   router.post("/auth/change-password", async (req, res) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: "Unauthorized" });

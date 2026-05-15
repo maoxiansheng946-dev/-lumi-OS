@@ -180,7 +180,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       setLoading(true);
       try {
-        await refreshUser();
+        const me = await authService.getMe();
+        if (!me && !cancelled) {
+          // No valid token — try auto-login bootstrap (local admin account)
+          const result = await authService.bootstrap();
+          if (result.success && !cancelled) {
+            console.log('[Auth] Auto-logged in via bootstrap as', result.user?.username);
+          }
+        }
+        if (!cancelled) await refreshUser();
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -50,6 +50,17 @@ export async function login(username: string, password: string): Promise<{ succe
   }
 }
 
+export async function bootstrap(): Promise<{ success: boolean; user?: User; error?: string }> {
+  try {
+    const response = await fetch("/api/auth/bootstrap");
+    const data = await response.json();
+    if (data.token) storeToken(data.token);
+    return data;
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
 export async function getMe(): Promise<{ user: User } | null> {
   try {
     const response = await fetch("/api/auth/me");

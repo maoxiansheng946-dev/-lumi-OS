@@ -31,8 +31,9 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
   fileFilter: (_req, file, cb) => {
-    const allowed = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/wave', 'audio/ogg', 'audio/m4a'];
-    if (allowed.includes(file.mimetype)) {
+    const base = (file.mimetype || '').split(';')[0];
+    const allowed = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/wave', 'audio/ogg', 'audio/m4a', 'audio/x-wav', 'audio/x-pn-wav'];
+    if (allowed.includes(base)) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported audio format: ${file.mimetype}`));
@@ -48,13 +49,18 @@ function getUserId(req: Request): string {
 router.post('/voice/samples', upload.array('samples', 5), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
+    console.log('[Voice Upload] Received files:', files?.length, 'userId:', getUserId(req));
     if (!files || files.length === 0) {
+      console.log('[Voice Upload] No files — req.file:', req.file, 'req.files:', req.files, 'req.body:', req.body);
       return res.status(400).json({ error: 'No audio files provided' });
     }
+    files.forEach(f => console.log('[Voice Upload] File:', f.filename, f.size, f.mimetype, f.path));
 
     const urls = files.map(f => `/api/voice/samples/${getUserId(req)}/${f.filename}`);
+    console.log('[Voice Upload] Returning URLs:', urls);
     res.json({ urls, filenames: files.map(f => f.filename), count: files.length });
   } catch (err: any) {
+    console.log('[Voice Upload] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -97,12 +103,15 @@ router.post('/voice/clone', async (req: Request, res: Response) => {
     const absoluteUrls = sampleUrls.map((url: string) =>
       url.startsWith('http') ? url : `${baseUrl}${url}`
     );
+    console.log('[Voice Clone] sampleUrls:', sampleUrls, 'absoluteUrls:', absoluteUrls, 'name:', name, 'provider:', activeProvider);
 
     const voiceId = await cloneVoice({ sampleUrls: absoluteUrls, name }, activeProvider);
+    console.log('[Voice Clone] Got voiceId:', voiceId);
 
     // Store voice reference in user data
     const db = readDB();
     const userId = getUserId(req);
+    console.log('[Voice Clone] Writing to DB for userId:', userId);
     if (!db.voiceProfiles) db.voiceProfiles = {};
     if (!db.voiceProfiles[userId]) db.voiceProfiles[userId] = [];
     db.voiceProfiles[userId].push({
@@ -112,6 +121,7 @@ router.post('/voice/clone', async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
     });
     writeDB(db);
+    console.log('[Voice Clone] DB written, responding with voiceId:', voiceId);
 
     res.json({ voiceId, name, provider: activeProvider });
   } catch (err: any) {
