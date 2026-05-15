@@ -1,5 +1,6 @@
 import { ToolRegistry } from '../registry';
-import { saveWorkflow, listWorkflows, getWorkflow, deleteWorkflow } from '../../agents/workflows';
+import { saveWorkflow, listWorkflows, getWorkflow, deleteWorkflow, captureRecentAsWorkflow, autoGenerateWorkflows } from '../../agents/workflows';
+import { getRecentWorkflows } from '../../skills/worklog';
 
 async function handleSaveWorkflow(args: Record<string, any>, context?: any): Promise<string> {
   const userId = context?.userId || 'system';
@@ -37,6 +38,56 @@ async function handleDeleteWorkflow(args: Record<string, any>, context?: any): P
   const name: string = args.name || '';
   const ok = deleteWorkflow(userId, name);
   return ok ? `Deleted workflow "${name}"` : `Workflow "${name}" not found`;
+}
+
+async function handleCaptureRecentWorkflow(args: Record<string, any>, context?: any): Promise<string> {
+  const userId = context?.userId || 'system';
+  const name: string = args.name || '';
+  if (!name) throw new Error('Workflow name is required. Ask the user what to call this workflow.');
+
+  const recent = getRecentWorkflows(userId);
+  if (recent.length === 0) return 'No recent activity to capture. Try doing something first.';
+
+  const last = recent[recent.length - 1];
+  const toolTrace = last.toolSequence.map(s => ({
+    name: s.name,
+    args: s.args,
+    resultSummary: s.resultSummary,
+  }));
+
+  const wf = captureRecentAsWorkflow(userId, name, toolTrace);
+  if (!wf) return 'No tool calls found in recent activity.';
+
+  return `Workflow "${name}" captured with ${wf.steps.length} steps. You can now say "run ${name}" to execute it.`;
+}
+
+async function handleRunWorkflow(args: Record<string, any>, context?: any): Promise<string> {
+  const userId = context?.userId || 'system';
+  const name: string = args.name || '';
+  if (!name) throw new Error('Workflow name is required');
+
+  const wf = getWorkflow(userId, name);
+  if (!wf) throw new Error(`Workflow "${name}" not found. Use list_workflows to see available workflows.`);
+
+  const results: string[] = [`Running workflow "${wf.name}" — ${wf.steps.length} steps:`];
+
+  for (let i = 0; i < wf.steps.length; i++) {
+    const step = wf.steps[i];
+    results.push(`  Step ${i + 1}: ${step.tool || step.description}`);
+    if (step.tool && context?.toolRegistry) {
+      try {
+        const result = await context.toolRegistry.execute(step.tool, step.args || {}, context);
+        results.push(`    → ${(result || 'OK').slice(0, 200)}`);
+      } catch (e: any) {
+        results.push(`    → Error: ${e.message}`);
+        results.push(`Workflow "${name}" stopped at step ${i + 1} due to error.`);
+        break;
+      }
+    }
+  }
+
+  results.push(`Workflow "${name}" complete.`);
+  return results.join('\n');
 }
 
 export function registerWorkflowTools(registry: ToolRegistry): void {
@@ -110,5 +161,35 @@ export function registerWorkflowTools(registry: ToolRegistry): void {
     handler: handleDeleteWorkflow,
     permission: 'user',
     securityLevel: 'confirm',
+  });
+
+  registry.register({
+    name: 'capture_recent_workflow',
+    description: 'Capture the most recent tool execution as a named workflow. Use this when the user says "remember this", "记下这个流程", "保存这个流程", or wants to save what they just did as a reusable workflow.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'A descriptive name for this workflow (e.g., "morning briefing", "daily report")' },
+      },
+      required: ['name'],
+    },
+    handler: handleCaptureRecentWorkflow,
+    permission: 'user',
+    securityLevel: 'safe',
+  });
+
+  registry.register({
+    name: 'run_workflow',
+    description: 'Execute a saved named workflow by name. Use this when the user says "run my X routine", "执行XX流程", "跑XX流程", or asks to execute a previously saved workflow.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the workflow to run' },
+      },
+      required: ['name'],
+    },
+    handler: handleRunWorkflow,
+    permission: 'user',
+    securityLevel: 'safe',
   });
 }

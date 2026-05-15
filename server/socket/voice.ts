@@ -123,6 +123,10 @@ async function processVoiceInput(
   blocks.push('- **read_file / write_file** — Read and create files.');
   blocks.push('- **create_ppt** — Generate professional PowerPoint presentations with images.');
   blocks.push('- **generate_image** — Create AI-generated images.');
+  blocks.push('- **generate_video** — Create AI-generated videos from text (5s, 720p).');
+  blocks.push('- **save_workflow / list_workflows / get_workflow** — Save and manage named multi-step workflows.');
+  blocks.push('- **capture_recent_workflow** — When the user says "remember this" or "记住这个流程", capture their recent actions as a reusable workflow.');
+  blocks.push('- **run_workflow** — Execute a previously saved workflow by name. Use when the user says "run my X routine" or "执行XX流程".');
 
   // ── Voice conversation rules ──
   blocks.push('\n## Voice Conversation');

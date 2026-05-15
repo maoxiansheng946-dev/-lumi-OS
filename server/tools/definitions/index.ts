@@ -18,6 +18,7 @@ import { registerPdfTools } from './pdf_tools';
 import { registerDocumentTools } from './document_tools';
 import { registerWorkflowTools } from './workflow_tools';
 import { registerImageTools } from './image_tools';
+import { registerVideoTools } from './video_tools';
 import { registerUpgradeTools } from './upgrade_tools';
 
 export function registerAllTools(
@@ -49,6 +50,7 @@ export function registerAllTools(
   registerDocumentTools(registry);
   registerWorkflowTools(registry);
   registerImageTools(registry);
+  registerVideoTools(registry);
   registerUpgradeTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);

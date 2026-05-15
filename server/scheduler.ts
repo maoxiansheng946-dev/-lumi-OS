@@ -8,6 +8,7 @@ import { buildTree, ensureBranch, moveNode } from './memory/tree';
 import { makeLLMCall } from './llm/providers';
 import { getWeatherBrief, getTimeGreeting } from './services/weather';
 import { autoGenerateSkill } from './skills/generator';
+import { autoGenerateWorkflows } from './agents/workflows';
 import { readDB } from '../db_layer';
 import { AgentRuntime, AgentRecord } from './agents/runtime';
 import { personalityRegistry } from './personality';
@@ -523,6 +524,24 @@ Rules:
       );
       if (result && result.success) {
         return `I've learned a new skill: "${result.skillName}" — now I can handle this type of task more efficiently.`;
+      }
+      return null;
+    },
+  });
+
+  // Auto workflow generation (every hour) — detects repeated tool patterns and creates named workflows
+  scheduler.register({
+    id: 'auto_workflow_gen',
+    cron: 'every_hour',
+    lastRun: null,
+    handler: async () => {
+      try {
+        const created = await autoGenerateWorkflows();
+        if (created > 0) {
+          return `I noticed some patterns in how we work together and created ${created} new workflow${created > 1 ? 's' : ''}. You can say "run [name]" to use them.`;
+        }
+      } catch (err) {
+        console.error('[Scheduler] auto_workflow_gen failed:', err);
       }
       return null;
     },

@@ -19,6 +19,7 @@ import { processInput, handleLLMFailure, extractSentiment, CognitiveContext } fr
 import { checkLLMAccess, recordUsage, estimateTokens } from "../subscription/proxy";
 import { classifyComplexity, decomposeTask, matchWorkers, executeWorkflow, aggregateWithLLM, recordWorkflowPattern, shouldDistillSkill, buildSkillDescription } from "../agents/orchestrator";
 import { searchKnowledgeBase } from "../enterprise/kb";
+import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 
 export function registerChatHandler(
   socket: Socket,
@@ -212,6 +213,42 @@ export function registerChatHandler(
           socket.emit("agent:status", { status: "error" });
           return;
         }
+      }
+
+      // ── Named Workflow Quick-Path: "run my X" / "跑XX流程" ──
+      const runWorkflowMatch = text.match(/(?:run|执行|跑|运行)\s+(?:my\s+)?(.+?)(?:\s*(?:routine|workflow|流程|工作流))?\s*$/i);
+      let workflowQuickResult: string | null = null;
+      if (runWorkflowMatch) {
+        const wfName = runWorkflowMatch[1].trim().toLowerCase();
+        const allWfs = listWorkflows(uid);
+        const matched = allWfs.find(w => w.name.toLowerCase().includes(wfName));
+        if (matched) {
+          console.log('[ChatHandler] Workflow quick-path matched:', matched.name);
+          const steps: string[] = [];
+          for (let i = 0; i < matched.steps.length; i++) {
+            const step = matched.steps[i];
+            if (step.tool) {
+              try {
+                const result = await toolRegistry.execute(step.tool, step.args || {}, { userId: uid });
+                steps.push(`Step ${i + 1} (${step.tool}): ${(result || 'OK').slice(0, 200)}`);
+              } catch (e: any) {
+                steps.push(`Step ${i + 1} (${step.tool}): Error - ${e.message}`);
+                break;
+              }
+            } else {
+              steps.push(`Step ${i + 1}: ${step.description} (no tool bound — use this as a guide)`);
+            }
+          }
+          recordWorkflowRun(uid, matched.name);
+          workflowQuickResult = `Ran workflow "${matched.name}" (${matched.steps.length} steps):\n${steps.join('\n')}`;
+        }
+      }
+
+      if (workflowQuickResult) {
+        socket.emit("agent:status", { status: "responding" });
+        socket.emit("agent:response", { text: workflowQuickResult, agentName: personality.name, source: "chat" });
+        socket.emit("agent:status", { status: "idle" });
+        return;
       }
 
       // ── Lumi Cognitive Engine: classify intent BEFORE calling any LLM ──

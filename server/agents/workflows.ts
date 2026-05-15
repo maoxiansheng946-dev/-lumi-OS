@@ -122,3 +122,96 @@ export function captureFromOrchestration(
   }));
   return saveWorkflow(userId, name, taskDescription, steps, agentAssignments);
 }
+
+/**
+ * Auto-detect repeated behavior patterns from the worklog and create named workflows.
+ * Called periodically by the scheduler. When Lumi notices the user doing the same
+ * thing 3+ times, she auto-creates a workflow so the user can say "run my X routine".
+ *
+ * Returns the number of new workflows created.
+ */
+export async function autoGenerateWorkflows(): Promise<number> {
+  try {
+    const { findWorkflowClusters, getRecentWorkflows, removeWorkflows } = await import('../skills/worklog');
+
+    const all = getRecentWorkflows();
+    if (all.length < 3) return 0;
+
+    const clusters = findWorkflowClusters(3);
+    if (clusters.length === 0) return 0;
+
+    let created = 0;
+
+    for (const cluster of clusters) {
+      // Only auto-create if similarity is high enough (confident pattern)
+      if (cluster.avgSimilarity < 0.55) continue;
+
+      const wf = cluster.workflows[0];
+      const userId = wf.userId || 'anonymous';
+
+      // Check if a workflow with a similar name already exists
+      const existing = listWorkflows(userId);
+      const nameBase = generateWorkflowName(cluster.representativeIntent);
+      if (existing.some(e => e.name === nameBase)) continue;
+
+      const steps = wf.toolSequence.map(s => ({
+        description: s.name,
+        tool: s.name,
+        args: s.args,
+      }));
+
+      const autoDesc = `Auto-generated from ${cluster.workflows.length} similar sessions. Average similarity: ${(cluster.avgSimilarity * 100).toFixed(0)}%`;
+
+      saveWorkflow(userId, nameBase, autoDesc, steps, undefined, 'auto');
+      console.log(`[WorkflowGen] Auto-created workflow "${nameBase}" from ${cluster.workflows.length} sessions (similarity: ${cluster.avgSimilarity.toFixed(2)})`);
+      created++;
+
+      // Remove processed workflows so they don't re-trigger
+      removeWorkflows(cluster.workflows.map(w => w.id));
+    }
+
+    return created;
+  } catch (err) {
+    console.error('[WorkflowGen] Auto-generation failed:', err);
+    return 0;
+  }
+}
+
+/** Generate a short, memorable name from the user's intent text */
+function generateWorkflowName(intent: string): string {
+  // Take first 4 meaningful words, max 40 chars
+  const cleaned = intent
+    .replace(/[，,。.！!？?、；;：:（）()【】\[\]「」『』""'']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const words = cleaned.split(' ').filter(w => w.length >= 2);
+  if (words.length <= 3) return cleaned.slice(0, 40);
+
+  // Use first 2 + last 2 words to form a descriptive name
+  const first = words.slice(0, 2).join('');
+  const last = words.slice(-2).join('');
+  const name = (first + last).slice(0, 40);
+  return name || cleaned.slice(0, 40);
+}
+
+/**
+ * Capture the most recent tool execution trace as a named workflow.
+ * Called when the user says "remember this" or "记下这个流程".
+ */
+export function captureRecentAsWorkflow(
+  userId: string,
+  name: string,
+  toolTrace: Array<{ name: string; args: Record<string, any>; resultSummary: string }>,
+): WorkflowDefinition | null {
+  if (toolTrace.length === 0) return null;
+
+  const steps = toolTrace.map(t => ({
+    description: t.name,
+    tool: t.name,
+    args: t.args,
+  }));
+
+  const description = `Captured workflow: ${name} (${steps.length} steps). Created from recent tool execution.`;
+  return saveWorkflow(userId, name, description, steps, undefined, 'manual');
+}
