@@ -2831,6 +2831,10 @@ export const translations: TranslationMap = {
     addedFiles: "已添加文件",
     // ── Skill Center ──
     flagshipSkill: "旗舰技能",
+    featuredTab: "精选",
+    installedStatus: "已安装",
+    installingStatus: "安装中...",
+    installStatus: "安装",
     requiresApiKey: "需要",
     getApiKey: "获取 API Key",
     tryPrompt: "试试：",
