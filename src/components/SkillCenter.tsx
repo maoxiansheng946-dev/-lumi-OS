@@ -64,7 +64,7 @@ const FEATURED_SKILLS = [
   { id: 'code-sandbox', name: 'Code Sandbox', icon: 'Terminal', iconColor: 'from-green-500 to-emerald-400', desc: 'Secure cloud code execution. Run Python and JavaScript in isolated containers — safe, fast, unlimited.', prompt: '帮我写一段Python代码分析CSV数据并生成图表' },
 ];
 
-export function SkillCenter({ t }: { t: any }) {
+export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
   const [activeTab, setActiveTab] = useState<Tab>('featured');
   const [marketSkills, setMarketSkills] = useState<MarketplaceSkill[]>([]);
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([]);
@@ -78,12 +78,14 @@ export function SkillCenter({ t }: { t: any }) {
   const [generating, setGenerating] = useState(false);
   const socket = useSocket();
 
+  const [translationReady, setTranslationReady] = useState(false);
+
   const fetchMarketplace = useCallback(async () => {
     try {
-      const res = await fetch('/api/marketplace/skills');
+      const res = await fetch(`/api/marketplace/skills?lang=${lang}`);
       if (res.ok) setMarketSkills(await res.json());
     } catch {}
-  }, []);
+  }, [lang]);
 
   const fetchInstalled = useCallback(async () => {
     try {
@@ -98,12 +100,23 @@ export function SkillCenter({ t }: { t: any }) {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/marketplace/categories');
+      const res = await fetch(`/api/marketplace/categories?lang=${lang}`);
       if (res.ok) setCategories((await res.json()).map((c: any) => c.name));
     } catch {}
-  }, []);
+  }, [lang]);
 
   useEffect(() => { fetchMarketplace(); fetchInstalled(); fetchCategories(); }, [fetchMarketplace, fetchInstalled, fetchCategories]);
+
+  // Translate on first Chinese load, then re-fetch to show translated data
+  useEffect(() => {
+    let cancelled = false;
+    if (lang === 'zh' && !translationReady) {
+      fetch('/api/marketplace/translate?lang=zh', { method: 'POST' })
+        .then(() => { if (!cancelled) { setTranslationReady(true); fetchMarketplace(); } })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [lang, translationReady, fetchMarketplace]);
 
   // Socket events for real-time updates
   useEffect(() => {

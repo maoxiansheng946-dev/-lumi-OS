@@ -810,6 +810,7 @@ export function DesktopUI({
         // Rehydrate spritesheet from defaults if possible
         const defaults = getDefaultPets();
         const found = defaults.find(d => d.id === parsed.id);
+        if (!found?.atlas && !parsed?.atlas) return null;
         return found || parsed;
       }
     } catch {}
@@ -1136,8 +1137,10 @@ export function DesktopUI({
         if (pet) {
           const defaults = getDefaultPets();
           const found = defaults.find(d => d.id === pet.id);
-          setSelectedPet(found || pet);
-          localStorage.setItem('lumi_selected_pet', JSON.stringify(pet));
+          if (found || pet?.atlas) {
+            setSelectedPet(found || pet);
+            localStorage.setItem('lumi_selected_pet', JSON.stringify(pet));
+          }
         } else {
           setSelectedPet(null);
           localStorage.removeItem('lumi_selected_pet');
@@ -1169,7 +1172,9 @@ export function DesktopUI({
           if (data.pet) {
             const defaults = getDefaultPets();
             const found = defaults.find(d => d.id === data.pet.id);
-            setSelectedPet(found || data.pet);
+            if (found || data.pet?.atlas) {
+              setSelectedPet(found || data.pet);
+            }
             localStorage.setItem('lumi_selected_pet', JSON.stringify(data.pet));
           }
           if (data.accessories?.length > 0) {
@@ -1789,7 +1794,7 @@ export function DesktopUI({
                 gesture={gesture}
                 handVisible={handVisible}
                 facePresent={facePresent}
-                gesturesDisabled={viewMode === 'world' || isWallpaperMode}
+                gesturesDisabled={viewMode === 'world' || isWallpaperMode || chatOpen || callState !== 'idle'}
                 diffused={diffused}
               />
               {wakeWord.isListening && callState === 'idle' && (
@@ -2112,7 +2117,7 @@ export function DesktopUI({
                   ) : windowId === 'tokens' ? (
                     <TokenDashboard />
                   ) : windowId === 'skills' ? (
-                    <SkillCenter t={t} />
+                    <SkillCenter t={t} lang={lang} />
                   ) : windowId === 'subscription' ? (
                     <SubscriptionPanel t={t} />
                   ) : windowId === 'avatar-studio' ? (

@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { readDB, writeDB } from '../../db_layer';
+import { getTranslation } from '../skills/translations';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,8 +103,22 @@ function getCommunityRegistry(): MarketplaceSkill[] {
   }));
 }
 
+/** Apply cached translations to a skill list */
+function applyTranslations(skills: MarketplaceSkill[], lang?: string): MarketplaceSkill[] {
+  if (!lang || lang === 'en') return skills;
+  for (const s of skills) {
+    const t = getTranslation(s.id, lang);
+    if (t) {
+      if (t.displayName) s.name = t.displayName;
+      if (t.description) s.description = t.description;
+      if (t.setupNote && s.setupNote) s.setupNote = t.setupNote;
+    }
+  }
+  return skills;
+}
+
 /** Get all marketplace skills: bundled + community, with download counts & ratings from DB */
-export function getMarketplaceSkills(): MarketplaceSkill[] {
+export function getMarketplaceSkills(lang?: string): MarketplaceSkill[] {
   const bundled = discoverBundledSkills();
   const community = getCommunityRegistry();
   const db = readDB();
@@ -127,16 +142,19 @@ export function getMarketplaceSkills(): MarketplaceSkill[] {
     }
   }
 
-  return all;
+  return applyTranslations(all, lang);
 }
 
-export function getSkillById(id: string): MarketplaceSkill | undefined {
-  return getMarketplaceSkills().find(s => s.id === id);
+export function getSkillById(id: string, lang?: string): MarketplaceSkill | undefined {
+  const skill = getMarketplaceSkills().find(s => s.id === id);
+  if (!skill) return undefined;
+  return applyTranslations([skill], lang)[0];
 }
 
-export function searchSkills(query: string): MarketplaceSkill[] {
+export function searchSkills(query: string, lang?: string): MarketplaceSkill[] {
   const q = query.toLowerCase();
-  return getMarketplaceSkills().filter(s =>
+  const skills = applyTranslations(getMarketplaceSkills(), lang);
+  return skills.filter(s =>
     s.name.toLowerCase().includes(q) ||
     s.description.toLowerCase().includes(q) ||
     s.category.toLowerCase().includes(q)

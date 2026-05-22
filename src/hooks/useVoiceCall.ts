@@ -311,6 +311,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
           try { proactiveContext.current.close(); } catch {}
           proactiveContext.current = null;
         }
+        isTtsPlaying.current = true;
         const ctx = new AudioContext();
         proactiveContext.current = ctx;
         ctx.decodeAudioData(data.audioBuffer.slice(0), (decoded) => {
@@ -321,21 +322,27 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
           source.onended = () => {
             proactiveSource.current = null;
             proactiveContext.current = null;
+            isTtsPlaying.current = false;
             ctx.close();
           };
           source.start(0);
         }, () => {
           proactiveSource.current = null;
           proactiveContext.current = null;
+          isTtsPlaying.current = false;
           ctx.close();
         });
         // Briefly show speaking state for visual feedback
         const prev = prevCallState.current;
         setCallState('speaking');
         const duration = Math.max(2, (data.audioBuffer.byteLength / 16000) * 1000 + 500);
-        setTimeout(() => { setCallState(prev); }, duration);
+        setTimeout(() => {
+          setCallState(prev);
+          isTtsPlaying.current = false;
+        }, duration);
       } catch (err) {
         console.error('[ProactiveVoice] Playback failed:', err);
+        isTtsPlaying.current = false;
       }
     });
 

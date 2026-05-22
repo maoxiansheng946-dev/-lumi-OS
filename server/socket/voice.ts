@@ -455,12 +455,14 @@ async function processVoiceInput(
     if (!usedOrchestrator) {
       // ── Single-phase: stream LLM → TTS with tool iteration, all inline ──
       // Load recent conversation history for context continuity
-      // Only include USER messages — assistant history confuses the LLM (dual-voice effect)
+      // Include both user & assistant messages with correct roles
       const conv = getOrCreateActiveConversation(session.userId, session.agentId);
       const recentMsgs = getMessagesByTokenBudget(conv.id, 3000);
-      const voiceHistory: NormalizedMessage[] = recentMsgs
-        .filter((m: any) => m.message)
-        .map((m: any) => ({ role: m.role || 'user', content: m.message }));
+      const voiceHistory: NormalizedMessage[] = [];
+      for (const m of recentMsgs) {
+        if (m.message) voiceHistory.push({ role: 'user', content: m.message });
+        if (m.response) voiceHistory.push({ role: 'assistant', content: m.response });
+      }
 
       const messages: any[] = [
         { role: 'system', content: voiceSystemPrompt },
@@ -716,37 +718,17 @@ export function registerVoiceHandlers(
                 socket.emit("audio:interrupt-ack", {});
               } else {
                 // Processing but not speaking (LLM thinking / tool exec):
-                // Only explicit stop commands abort; new commands run in parallel
-                const isStop = /^(停|停下|别做了|别干了|不要了|取消|别|算了|别弄了)/.test(text);
-                if (isStop) {
-                  logger.info(`[Audio] Stop command during processing: "${text}"`);
-                  if (session.pipelineAbortController) {
-                    session.pipelineAbortController.abort();
-                    session.pipelineAbortController = null;
-                  }
-                  session.isProcessing = false;
-                  session.isSpeaking = false;
-                  session.isBackgroundWork = false;
-                  socket.emit("audio:status", { status: "listening" });
-                  socket.emit("agent:status", { status: "idle" });
-                  return; // Don't process stop command itself
-                } else {
-                  // Processing (LLM thinking / tool exec / orchestrator):
-                  // Non-stop input → tell user we're busy, don't interrupt
-                  logger.info(`[Audio] Status check during processing: "${text}"`);
-                  const ttsProvider = getTTSProvider();
-                  if (ttsProvider && session.currentVoiceId) {
-                    synthesizeSpeech("还在处理中，请稍等。", {
-                      provider: ttsProvider,
-                      voiceId: session.currentVoiceId,
-                    }).then(result => {
-                      addEchoText("还在处理中，请稍等。");
-                      const gain = computeVolumeGain();
-                      socket.emit("audio:response", { buffer: result.audioBuffer, volumeGain: gain });
-                    }).catch(() => {});
-                  }
-                  return;
+                // Any real speech → barge-in, abort current pipeline
+                logger.info(`[Audio] Barge-in during processing: "${text}" — aborting`);
+                if (session.pipelineAbortController) {
+                  session.pipelineAbortController.abort();
+                  session.pipelineAbortController = null;
                 }
+                session.isProcessing = false;
+                session.isSpeaking = false;
+                socket.emit("audio:status", { status: "interrupted" });
+                socket.emit("audio:interrupt-ack", {});
+                // Fall through to processInput with new speech
               }
             }
 
@@ -871,9 +853,13 @@ export function registerVoiceHandlers(
     const userId = getUserId(socket);
     if (!userId || !data.message) return;
 
+    session.isSpeaking = true;
+    const resetSpeaking = () => { session.isSpeaking = false; };
+
     // Gate: night/focus/meeting quiet mode
     const quietCheck = shouldStayQuiet(userId);
     if (quietCheck.quiet) {
+      resetSpeaking();
       logger.info(`[ProactiveVoice] Suppressed for ${userId}: ${quietCheck.reason}`);
       return;
     }
@@ -884,18 +870,18 @@ export function registerVoiceHandlers(
       const personalityCfg = personalityRegistry.get(session.personalityId || 'lumi');
       voiceId = personalityCfg?.ttsVoiceId || null;
     }
-    if (!voiceId) return;
+    if (!voiceId) { resetSpeaking(); return; }
 
     // Gate: check initiative level — Lumi only speaks first when comfortable enough
     const es = loadEmotionalState(userId);
-    if (es.initiative < 0.4) return;
+    if (es.initiative < 0.4) { resetSpeaking(); return; }
 
     // Gate: don't interrupt when environment is noisy (user likely in a meeting)
     const noise = getAmbientNoise();
-    if (noise !== null && noise > 0.08) return;
+    if (noise !== null && noise > 0.08) { resetSpeaking(); return; }
 
     const ttsProvider = getTTSProvider();
-    if (!ttsProvider) return;
+    if (!ttsProvider) { resetSpeaking(); return; }
 
     const proactiveVoice = resolveEmotionVoice(voiceId, es);
 
@@ -918,7 +904,9 @@ export function registerVoiceHandlers(
         volumeGain: proactiveGain,
       });
       logger.info(`[ProactiveVoice] Spoke to ${userId}: "${data.message.slice(0, 60)}"`);
+      resetSpeaking();
     } catch (err: any) {
+      resetSpeaking();
       logger.warn(`[ProactiveVoice] TTS failed: ${err.message}`);
     }
   });

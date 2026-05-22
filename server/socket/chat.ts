@@ -435,7 +435,7 @@ export function registerChatHandler(
           };
 
           // Sanctuary agents get zero tool access — they can only talk
-          const maxIterations = isSanctuary ? 0 : 3;
+          const maxIterations = isSanctuary ? 0 : (personality.toolPolicy.maxIterations || 25);
 
           const result = await runWithTools(
             messages,

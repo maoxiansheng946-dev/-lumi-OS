@@ -73,7 +73,7 @@ export function SpriteAnimator({
   const drawFrame = useCallback((frameIndex: number) => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
-    if (!canvas || !img) return;
+    if (!canvas || !img || !atlas) return;
 
     const { cellWidth, cellHeight, animations } = atlas;
     const anim = animations[animRef.current];
@@ -111,7 +111,7 @@ export function SpriteAnimator({
   }, [atlas, scale, onFrame, accessoryIds]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !atlas) return;
 
     const { animations } = atlas;
     const anim = animations[animRef.current];
@@ -156,8 +156,8 @@ export function SpriteAnimator({
     if (loaded) drawFrame(0);
   }, [loaded, drawFrame]);
 
-  const w = atlas.cellWidth * scale;
-  const h = atlas.cellHeight * scale;
+  const w = (atlas?.cellWidth || 192) * scale;
+  const h = (atlas?.cellHeight || 208) * scale;
 
   return (
     <canvas

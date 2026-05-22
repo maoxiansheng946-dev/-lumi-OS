@@ -122,7 +122,7 @@ export default function App() {
         return (
           <div className="space-y-24">
             <LumiEcosystem t={t} onChatAgent={(agent) => { setSelectedAgent(agent); setActiveTab('agent-chat'); }} />
-            <SkillMarketplace t={t} />
+            <SkillMarketplace t={t} lang={lang} />
           </div>
         );
       case 'agent-chat':
