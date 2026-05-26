@@ -104,8 +104,10 @@ npm run tauri dev    # 启动桌面客户端（需 Rust 环境）
 # 至少配置一个 LLM 提供商
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
-GOOGLE_API_KEY=
+GEMINI_API_KEY=
 DEEPSEEK_API_KEY=
+QWEN_API_KEY=
+DASHSCOPE_API_KEY=
 
 # 语音功能（可选）
 DEEPGRAM_API_KEY=
