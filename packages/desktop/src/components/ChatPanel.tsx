@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Send, Mic, MicOff, CheckCircle, XCircle, Loader2, MessageSquare, Plus, Square, Copy, Trash2, Wifi, WifiOff, Check, Sparkles, ChevronRight } from 'lucide-react';
 
 export interface ChatMessage {

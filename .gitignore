@@ -14,6 +14,7 @@ data/
 gpt-sovits-src/
 **/src-tauri/target/
 .claude/
+.astro/
 docs/
 gen_landing.py
 tools/
