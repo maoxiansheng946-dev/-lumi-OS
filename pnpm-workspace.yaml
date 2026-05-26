@@ -1,11 +1,6 @@
 packages:
   - 'packages/*'
-allowBuilds:
-  esbuild: true
-  msw: true
-  sharp: true
-  sqlite3: true
-allowedBuiltDependencies:
+onlyBuiltDependencies:
   - esbuild
   - msw
   - sharp
