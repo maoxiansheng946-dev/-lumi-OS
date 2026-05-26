@@ -45,6 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Tauri app
+        id: tauri-build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -55,7 +56,12 @@ jobs:
             linux)   bundles="deb" ;;
           esac
           cd packages/desktop
-          npx tauri build --bundles "$bundles" -c src-tauri/tauri.conf.json
+          npx tauri build --bundles "$bundles" -c src-tauri/tauri.conf.json 2>&1 | tee /tmp/tauri-build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Show build error
+        if: failure() && steps.tauri-build.outcome == 'failure'
+        run: tail -40 /tmp/tauri-build.log | while IFS= read -r line; do echo "::error::${line}"; done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
