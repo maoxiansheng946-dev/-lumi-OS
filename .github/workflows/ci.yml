@@ -17,6 +17,17 @@ jobs:
           node-version: 22
       - run: npm install -g pnpm@11.3.0
       - run: pnpm install --ignore-scripts
+      - name: Run tsc with trace
+        run: |
+          cd packages/server
+          npx tsc --noEmit --traceResolution 2>&1 | grep -A2 "tools/registry\|data/db_layer" | head -60 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          # Also capture the actual errors
+          npx tsc --noEmit 2>&1 | grep "Cannot find\|error TS" | head -20 | while IFS= read -r line; do
+            echo "::error file=index.ts::${line}"
+          done
+        continue-on-error: true
       - run: cd packages/server && npx tsc --noEmit
 
   desktop-typecheck:
