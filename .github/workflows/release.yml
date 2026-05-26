@@ -20,6 +20,12 @@ jobs:
       - run: corepack enable pnpm
       - run: pnpm install
       - uses: dtolnay/rust-toolchain@stable
+      - name: Sync version from git tag
+        run: |
+          $v = "${{ github.ref_name }}".Replace('v', '')
+          $conf = Get-Content packages/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $conf.version = $v
+          $conf | ConvertTo-Json -Depth 10 | Set-Content packages/desktop/src-tauri/tauri.conf.json -NoNewline
       - name: Build Tauri (Windows)
         run: |
           cd packages/desktop
@@ -50,6 +56,10 @@ jobs:
             libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev \
             libayatana-appindicator3-dev
       - uses: dtolnay/rust-toolchain@stable
+      - name: Sync version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "const{readFileSync,writeFileSync}=require('fs');const c=JSON.parse(readFileSync('packages/desktop/src-tauri/tauri.conf.json','utf8'));c.version='$VERSION';writeFileSync('packages/desktop/src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
       - name: Build Tauri (Linux)
         run: |
           cd packages/desktop
