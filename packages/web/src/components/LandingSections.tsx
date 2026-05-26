@@ -367,7 +367,7 @@ export function LandingSections({ t, onNavigateToSolutions, onSelectDesktop, onS
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
             <a
-              href="https://releases.lumiai.asia/lumi-os/latest/download"
+              href="https://github.com/maoxiansheng946-dev/-lumi-OS/releases/latest"
               className="px-8 py-4 bg-celestial-saturn text-black font-black rounded-2xl hover:scale-105 active:scale-95 transition-all inline-flex items-center gap-2 shadow-xl"
             >
               <Smartphone size={18} />
