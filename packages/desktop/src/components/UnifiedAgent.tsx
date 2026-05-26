@@ -364,20 +364,6 @@ Lumi Core Agent
 
           {/* Message Board (Simplified Chat) */}
           <div className="w-full lg:w-1/2 flex flex-col h-[500px] glass rounded-[2.5rem] border-white/10 overflow-hidden relative">
-            {/* Real-time Overlay for Transcript */}
-            <AnimatePresence>
-              {callState !== 'idle' && transcript && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-celestial-saturn text-black rounded-full shadow-2xl font-bold text-sm flex items-center gap-3 whitespace-nowrap"
-                >
-                  <div className="w-2 h-2 rounded-full bg-black animate-pulse" />
-                  {transcript}
-                </motion.div>
-              )}
-            </AnimatePresence>
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-celestial-mars animate-ping' : 'bg-celestial-saturn animate-pulse'}`} />

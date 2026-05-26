@@ -154,12 +154,12 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       try { proactiveContext.current.close(); } catch {}
       proactiveContext.current = null;
     }
-    // Reset streaming TTS context
+    // Stop streaming TTS context — close to kill all playing sources immediately
     if (ttsContext.current) {
+      try { ttsContext.current.close(); } catch {}
+      ttsContext.current = null;
+      ttsGainNode.current = null;
       nextStartTime.current = 0;
-      if (ttsGainNode.current) {
-        ttsGainNode.current.gain.value = 1.0;
-      }
     }
     isTtsPlaying.current = false;
   }, []);

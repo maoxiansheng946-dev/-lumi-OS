@@ -53,6 +53,12 @@
 }
 
 @layer base {
+  html {
+    font-size: clamp(15px, 1.25vw, 21px);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   :root {
     --background: oklch(0.145 0 0); /* Default to dark */
     --foreground: oklch(0.985 0 0);

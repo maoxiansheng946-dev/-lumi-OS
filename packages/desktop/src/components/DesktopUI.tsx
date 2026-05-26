@@ -80,7 +80,6 @@ const NexusGlobe = lazy(() => import('./NexusGlobe/NexusGlobe').then(m => ({ def
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
 import { useGestureDetector } from '../hooks/useGestureDetector';
-import { VoiceSubtitle } from './VoiceSubtitle';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ToolConfirmDialog } from './ToolConfirmDialog';
 import { PersonalityQuickSwitch } from './PersonalityQuickSwitch';
@@ -1933,25 +1932,6 @@ export function DesktopUI({
                      )}
                    </div>
 
-                   <AnimatePresence>
-                     {callState !== 'idle' && transcript && (
-                       <motion.div
-                         initial={{ opacity: 0, y: 20 }}
-                         animate={{ opacity: 1, y: 0 }}
-                         exit={{ opacity: 0, scale: 0.9 }}
-                         className="mt-6 max-w-sm px-6 py-4 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl text-center shadow-2xl"
-                       >
-                         <p className="text-white/80 text-sm font-medium leading-relaxed italic">
-                           "{transcript}"
-                         </p>
-                         <div className="mt-2 flex justify-center gap-1">
-                            <div className="w-1 h-1 rounded-full bg-celestial-saturn animate-pulse" />
-                            <div className="w-1 h-1 rounded-full bg-celestial-saturn animate-pulse delay-75" />
-                            <div className="w-1 h-1 rounded-full bg-celestial-saturn animate-pulse delay-150" />
-                         </div>
-                       </motion.div>
-                     )}
-                   </AnimatePresence>
                 </div>
               </motion.div>
             </div>
@@ -2104,14 +2084,6 @@ export function DesktopUI({
         t={t}
       />
 
-      {/* Voice Subtitle Overlay — shows real-time transcript & AI response */}
-      <VoiceSubtitle
-        transcript={transcript}
-        responseText={responseText}
-        callState={callState}
-        audioLevel={audioLevel}
-        t={t}
-      />
 
       <div className="absolute inset-0 z-[20] pointer-events-none">
         <DesktopOnboarding
