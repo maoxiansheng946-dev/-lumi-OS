@@ -90,8 +90,11 @@ jobs:
       - name: Verify pkg-config libs
         run: |
           for lib in x11 gtk+-3.0 webkit2gtk-4.1 glib-2.0 cairo pango atk gdk-3.0 gdk-x11-3.0; do
-            echo -n "pkg-config $lib: "
-            pkg-config --libs $lib 2>&1 || echo "NOT FOUND"
+            if pkg-config --exists $lib 2>&1; then
+              echo "::notice::pkg-config $lib: FOUND"
+            else
+              echo "::warning::pkg-config $lib: NOT FOUND - $(pkg-config --libs $lib 2>&1)"
+            fi
           done
       - name: Check Rust backend
         id: cargo-check
