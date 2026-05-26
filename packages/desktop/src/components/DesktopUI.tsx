@@ -780,7 +780,7 @@ export function DesktopUI({
   const personalScale = useTransform(cameraZ, [0, -1000], [1, 0.4]);
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
   const { isTauri } = usePlatform();
-  const { selectedVoiceId, unreadCount, notifications, orgConnection, workDomain, switchDomain } = useApp();
+  const { selectedVoiceId, unreadCount, notifications, orgConnection, workDomain, switchDomain, aiConfig } = useApp();
 
   const [openWindows, setOpenWindows] = useState<string[]>(activeTab !== 'home' && activeTab !== 'knowledge' ? [activeTab] : []);
   const [minimizedWindows, setMinimizedWindows] = useState<string[]>([]);
@@ -910,6 +910,12 @@ export function DesktopUI({
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('lumi_onboarding_seen') !== 'true';
   });
+
+  const hasAnyApiKey = (() => {
+    if (aiConfig?.apiKey) return true;
+    const providers = ['deepseek', 'openai', 'gemini', 'anthropic', 'qwen'];
+    return providers.some(p => localStorage.getItem(`lumi_${p}_key`));
+  })();
   const [mcpActivities, setMcpActivities] = useState<Array<{
     id: string; device: string; action: string; status: string;
     message?: string; title?: string; path?: string; slidesCount?: number; toolCalls?: number; error?: string;
@@ -2102,11 +2108,18 @@ export function DesktopUI({
       />
 
       <div className="absolute inset-0 z-[20] pointer-events-none">
-        <DesktopOnboarding 
-          isOpen={showOnboarding} 
+        <DesktopOnboarding
+          isOpen={showOnboarding}
+          hasApiKey={hasAnyApiKey}
           onFinish={() => {
             setShowOnboarding(false);
             localStorage.setItem('lumi_onboarding_seen', 'true');
+          }}
+          onConfigureApi={() => {
+            setShowOnboarding(false);
+            localStorage.setItem('lumi_onboarding_seen', 'true');
+            setSettingsSection('api');
+            toggleWindow('settings');
           }}
           t={t}
         />
