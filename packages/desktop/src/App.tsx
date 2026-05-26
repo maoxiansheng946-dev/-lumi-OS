@@ -6,6 +6,7 @@ import { AgentChatPage } from './components/AgentChatPage';
 import { SkillMarketplace } from './components/SkillMarketplace';
 import { LumiEcosystem } from './components/LumiEcosystem';
 import { EnterpriseHub } from './components/enterprise/EnterpriseHub';
+import { Profile } from './components/Profile';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProactiveNotifications } from './components/ProactiveNotifications';
 import { LoadingFallback } from './components/LoadingFallback';
@@ -80,6 +81,8 @@ export default function App() {
         return !user ? <LoginRequired t={t} onLogin={() => setIsLoginModalOpen(true)} /> : <EnterpriseHub />;
       case 'settings':
         return !user ? <LoginRequired t={t} onLogin={() => setIsLoginModalOpen(true)} /> : <Settings t={t} lang={lang} setLang={handleSetLang} />;
+      case 'profile':
+        return !user ? <LoginRequired t={t} onLogin={() => setIsLoginModalOpen(true)} /> : <Profile t={t} />;
       case 'voice':
       case 'memory':
       case 'mcp':

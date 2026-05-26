@@ -47,15 +47,16 @@ async function copyDir(src, dest, filter = shouldCopy) {
 async function prepareServer() {
   const src = serverDistDir;
   const dest = path.join(outDir, 'dist-server');
+  const isWindows = process.platform === 'win32';
 
   await fs.mkdir(dest, { recursive: true });
-  await copyIfExists(path.join(src, 'node.exe'), path.join(dest, 'node.exe'));
+  await copyIfExists(path.join(src, isWindows ? 'node.exe' : 'node'), path.join(dest, isWindows ? 'node.exe' : 'node'));
   await copyIfExists(path.join(src, 'entry.cjs'), path.join(dest, 'entry.cjs'));
   await copyIfExists(path.join(src, 'server.mjs'), path.join(dest, 'server.mjs'));
   await copyIfExists(path.join(src, 'server.cjs'), path.join(dest, 'server.cjs'));
   await copyIfExists(path.join(src, 'package.json'), path.join(dest, 'package.json'));
   await copyIfExists(path.join(src, '.env'), path.join(dest, '.env'));
-  await copyIfExists(path.join(src, 'hide-console.cjs'), path.join(dest, 'hide-console.cjs'));
+  if (isWindows) await copyIfExists(path.join(src, 'hide-console.cjs'), path.join(dest, 'hide-console.cjs'));
   await copyDir(path.join(src, 'server'), path.join(dest, 'server'));
 
   for (const moduleName of runtimeNodeModules) {

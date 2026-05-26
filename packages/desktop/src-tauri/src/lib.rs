@@ -1006,7 +1006,8 @@ pub fn run() {
 
             // Spawn Node.js backend
             let dist_server = resolve_resource_dir(&resource_dir, "dist-server");
-            let node_exe = dist_server.join("node.exe");
+            let node_name = if cfg!(target_os = "windows") { "node.exe" } else { "node" };
+            let node_exe = dist_server.join(node_name);
             let server_js = dist_server.join("entry.cjs");
             let server_bundle = dist_server.join("server.mjs");
 
@@ -1024,8 +1025,9 @@ pub fn run() {
                 node_cmd.arg(&normalized_entry)
                     .env("LUMI_DESKTOP", "1")
                     .env("HOST", "127.0.0.1")
-                    .env("NODE_OPTIONS", "--require ./hide-console.cjs")
                     .current_dir(&normalized_cwd);
+                #[cfg(target_os = "windows")]
+                node_cmd.env("NODE_OPTIONS", "--require ./hide-console.cjs");
                 match spawn_hidden(&mut node_cmd)
                 {
                     Ok(child) => {
@@ -1045,7 +1047,8 @@ pub fn run() {
                 }
             } else {
                 eprintln!(
-                    "[LumiOS] Backend not found. node.exe: {}, entry.cjs: {}, server.mjs: {}",
+                    "[LumiOS] Backend not found. {}: {}, entry.cjs: {}, server.mjs: {}",
+                    node_name,
                     node_exe.exists(),
                     server_js.exists(),
                     server_bundle.exists()
@@ -1054,9 +1057,15 @@ pub fn run() {
 
             // Spawn GPT-SoVITS Python API server
             let gpt_sovits_dir = resolve_resource_dir(&resource_dir, "gpt-sovits-src");
+            #[cfg(target_os = "windows")]
             let python_exe = gpt_sovits_dir.join("venv/Scripts/python.exe");
+            #[cfg(not(target_os = "windows"))]
+            let python_exe = gpt_sovits_dir.join("venv/bin/python");
             let api_py = gpt_sovits_dir.join("api_v2.py");
+            #[cfg(target_os = "windows")]
             let dev_python = std::path::PathBuf::from("../../gpt-sovits-src/venv/Scripts/python.exe");
+            #[cfg(not(target_os = "windows"))]
+            let dev_python = std::path::PathBuf::from("../../gpt-sovits-src/venv/bin/python");
             let dev_api = std::path::PathBuf::from("../../gpt-sovits-src/api_v2.py");
 
             let python_child = if python_exe.exists() && api_py.exists() {
@@ -1123,8 +1132,9 @@ pub fn run() {
                                 restart_cmd.arg(&cfg.entry)
                                     .env("LUMI_DESKTOP", "1")
                                     .env("HOST", "127.0.0.1")
-                                    .env("NODE_OPTIONS", "--require ./hide-console.cjs")
                                     .current_dir(&cfg.work_dir);
+                                #[cfg(target_os = "windows")]
+                                restart_cmd.env("NODE_OPTIONS", "--require ./hide-console.cjs");
                                 match spawn_hidden(&mut restart_cmd)
                                 {
                                     Ok(child) => {

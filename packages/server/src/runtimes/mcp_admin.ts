@@ -45,7 +45,7 @@ export function mountMcpAdminRuntime(router: Router) {
   // Remote devices
   router.get("/remote-devices", (_req, res) => {
     try {
-      const configPath = path.join(process.cwd(), 'server', 'mcp', 'config.json');
+      const configPath = path.join(process.cwd(), 'packages', 'server', 'src', 'mcp', 'config.json');
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       res.json({ devices: config.remoteDevices || {} });
     } catch (err: any) {
@@ -59,7 +59,7 @@ export function mountMcpAdminRuntime(router: Router) {
       if (!devices || typeof devices !== 'object') {
         return res.status(400).json({ error: 'Invalid devices config' });
       }
-      const configPath = path.join(process.cwd(), 'server', 'mcp', 'config.json');
+      const configPath = path.join(process.cwd(), 'packages', 'server', 'src', 'mcp', 'config.json');
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       config.remoteDevices = devices;
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

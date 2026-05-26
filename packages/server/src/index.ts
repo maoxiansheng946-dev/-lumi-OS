@@ -5,7 +5,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Walk up from packages/server/src/ to repo root where .env lives
 const repoRoot = path.join(__dirname, '..', '..', '..');
-dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env'), quiet: true });
+
+// Fallback: dotenv v17 dotenvx integration may fail to inject when CWD ≠ package dir.
+// Manually parse .env and set process.env for any keys that didn't load.
+const envPath = path.join(repoRoot, '.env');
+if (fs.existsSync(envPath) && !process.env.AUTO_LOGIN_PASSWORD) {
+  const raw = fs.readFileSync(envPath, 'utf-8');
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -103,12 +122,14 @@ function getQwen() {
 
 const llmGetters = { getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen };
 
+const ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'https://lumiai.asia', 'tauri://localhost'];
+
 // Express + HTTP + Socket.IO
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://lumiai.asia', 'tauri://localhost'],
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -118,7 +139,7 @@ const PORT = 3000;
 const HOST = process.env.HOST || (process.env.LUMI_DESKTOP === "1" ? "127.0.0.1" : "0.0.0.0");
 
 // Middleware
-app.use(cors({ origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://lumiai.asia', 'tauri://localhost'], credentials: true }));
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
@@ -245,7 +266,7 @@ if (fs.existsSync(mcpConfigPath)) {
 // ── Static / Vite ──
 const isProduction = process.env.NODE_ENV === "production" ||
                       isBundledServer ||
-                      (!isSourceServer && process.env.NODE_ENV !== "development" && fs.existsSync(path.join(process.cwd(), "dist")));
+                      (!isSourceServer && process.env.NODE_ENV !== "development" && fs.existsSync(path.join(repoRoot, "packages", "web", "dist")));
 
 // Serve landing page assets + download page
 const landingDist = path.join(repoRoot, 'packages', 'landing', 'dist');
@@ -273,10 +294,9 @@ if (!isProduction) {
   }
 } else {
   console.log("Starting in PRODUCTION mode (Static)...");
-  const distPath = fs.existsSync(path.join(process.cwd(), "dist"))
-    ? path.join(process.cwd(), "dist")
-    : path.join(process.cwd(), "..", "dist");
-  app.use(express.static(distPath));
+  const distPath = fs.existsSync(path.join(repoRoot, "packages", "web", "dist"))
+    ? path.join(repoRoot, "packages", "web", "dist")
+    : path.join(process.cwd(), "dist");
   app.use("/api/*", (_req, res) => { res.status(404).json({ error: "API route not found" }); });
   app.get("*", (_req, res) => { res.sendFile(path.join(distPath, "index.html")); });
 }

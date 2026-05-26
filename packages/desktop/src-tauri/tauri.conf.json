@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:5174",
     "beforeDevCommand": "pnpm --filter @lumios/server dev & pnpm --filter @lumios/desktop dev",
     "beforeBuildCommand": "pnpm --filter @lumios/desktop build && pnpm --filter @lumios/server build && node ../../scripts/prepare-desktop-resources.mjs",
-    "beforeBundleCommand": "node scripts/copy-webview2-dll.mjs"
+    "beforeBundleCommand": "node ../../scripts/copy-webview2-dll.mjs"
   },
   "app": {
     "windows": [
@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb", "appimage"],
+    "targets": ["nsis", "deb", "appimage", "dmg"],
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "resources": [
       "../desktop-resources/dist-server/**/*"

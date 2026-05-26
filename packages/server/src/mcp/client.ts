@@ -67,7 +67,7 @@ class MCPClientManager {
   private ioRef?: any;
 
   constructor(configPath?: string) {
-    this.configPath = configPath || path.join(process.cwd(), 'server', 'mcp', 'config.json');
+    this.configPath = configPath || path.join(process.cwd(), 'packages', 'server', 'src', 'mcp', 'config.json');
   }
 
   setSocketIO(io: any): void { this.ioRef = io; }

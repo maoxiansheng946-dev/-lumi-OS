@@ -20,23 +20,25 @@ class PersonalityRegistry {
   load(configPath?: string): void {
     if (this.loaded) return;
 
-    const filePath = configPath || path.join(process.cwd(), 'server', 'personality', 'personalities.json');
+    const cwd = process.cwd();
+    const candidates = configPath
+      ? [configPath]
+      : [
+          path.join(cwd, 'packages', 'server', 'src', 'personality', 'personalities.json'),
+        ];
 
-    // For bundled dist-server, try relative to entry
-    const altPath = path.join(process.cwd(), '..', 'server', 'personality', 'personalities.json');
-
-    let raw: string;
-    try {
-      raw = fs.readFileSync(filePath, 'utf-8');
-    } catch {
+    let raw: string | null = null;
+    for (const candidate of candidates) {
       try {
-        raw = fs.readFileSync(altPath, 'utf-8');
-      } catch {
-        console.warn(`[Personality] Config not found at ${filePath}, using built-in defaults`);
-        this.loadBuiltins();
-        this.loaded = true;
-        return;
-      }
+        raw = fs.readFileSync(candidate, 'utf-8');
+        break;
+      } catch {}
+    }
+    if (!raw) {
+      console.warn(`[Personality] Config not found at any candidate, using built-in defaults`);
+      this.loadBuiltins();
+      this.loaded = true;
+      return;
     }
 
     try {
@@ -205,20 +207,15 @@ class PersonalityRegistry {
 
   /** Persist the current registry state back to the JSON file */
   save(configPath?: string): void {
-    const filePath = configPath || path.join(process.cwd(), 'server', 'personality', 'personalities.json');
-    const altPath = path.join(process.cwd(), '..', 'server', 'personality', 'personalities.json');
+    const filePath = configPath || path.join(process.cwd(), 'packages', 'server', 'src', 'personality', 'personalities.json');
 
     const configs = Array.from(this.personalities.values());
     const json = JSON.stringify(configs, null, 2);
 
     try {
       fs.writeFileSync(filePath, json, 'utf-8');
-    } catch {
-      try {
-        fs.writeFileSync(altPath, json, 'utf-8');
-      } catch (err) {
-        console.error('[Personality] Failed to save config:', err);
-      }
+    } catch (err) {
+      console.error('[Personality] Failed to save config:', err);
     }
   }
 

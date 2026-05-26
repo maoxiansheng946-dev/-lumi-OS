@@ -8,10 +8,12 @@ on:
 
 env:
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  NODE_DIST_VERSION: v22.21.1
 
 jobs:
+  # ── Windows ──
   build-windows:
-    name: Windows installer (NSIS)
+    name: Windows (NSIS)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,18 +22,29 @@ jobs:
           node-version: 22
       - run: corepack enable pnpm
       - run: pnpm install
+
+      - name: Download standalone Node.js binary
+        run: |
+          $url = "https://nodejs.org/dist/$env:NODE_DIST_VERSION/win-x64/node.exe"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest $url -OutFile "packages/server/dist-server/node.exe"
+          Write-Host "node.exe size: $((Get-Item packages/server/dist-server/node.exe).Length) bytes"
+
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Sync version from git tag
         run: |
           $v = "${{ github.ref_name }}".Replace('v', '')
           $conf = Get-Content packages/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $conf.version = $v
           $conf | ConvertTo-Json -Depth 10 | Set-Content packages/desktop/src-tauri/tauri.conf.json -NoNewline
-      - name: Build Tauri (Windows)
+
+      - name: Build Tauri
         run: |
           cd packages/desktop
           pnpm tauri build --bundles nsis
-      - name: Upload installer + sig
+
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
@@ -40,8 +53,9 @@ jobs:
             packages/desktop/src-tauri/target/release/bundle/nsis/*.sig
           if-no-files-found: error
 
+  # ── Linux ──
   build-linux:
-    name: Linux packages (deb + AppImage)
+    name: Linux (deb + AppImage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,22 +64,39 @@ jobs:
           node-version: 22
       - run: corepack enable pnpm
       - run: pnpm install
-      - name: Install system dependencies
+
+      - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
             libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev libdbus-1-dev
+
+      - name: Download standalone Node.js binary
+        run: |
+          ARCH="x64"
+          TARBALL="node-${NODE_DIST_VERSION}-linux-${ARCH}.tar.xz"
+          URL="https://nodejs.org/dist/${NODE_DIST_VERSION}/${TARBALL}"
+          echo "Downloading $URL"
+          curl -fsSL "$URL" -o /tmp/node.tar.xz
+          tar -xJf /tmp/node.tar.xz -C /tmp
+          cp "/tmp/node-${NODE_DIST_VERSION}-linux-${ARCH}/bin/node" packages/server/dist-server/node
+          chmod +x packages/server/dist-server/node
+          echo "node binary ready: $(file packages/server/dist-server/node)"
+
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Sync version from git tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           node -e "const{readFileSync,writeFileSync}=require('fs');const c=JSON.parse(readFileSync('packages/desktop/src-tauri/tauri.conf.json','utf8'));c.version='$VERSION';writeFileSync('packages/desktop/src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
-      - name: Build Tauri (Linux)
+
+      - name: Build Tauri
         run: |
           cd packages/desktop
           pnpm tauri build --bundles deb,appimage
-      - name: Upload packages + sig
+
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
           name: installer-linux
@@ -76,9 +107,56 @@ jobs:
             packages/desktop/src-tauri/target/release/bundle/appimage/*.sig
           if-no-files-found: error
 
+  # ── macOS ──
+  build-macos:
+    name: macOS (dmg)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable pnpm
+      - run: pnpm install
+
+      - name: Download standalone Node.js binary
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then NODE_ARCH="arm64"; else NODE_ARCH="x64"; fi
+          TARBALL="node-${NODE_DIST_VERSION}-darwin-${NODE_ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/${NODE_DIST_VERSION}/${TARBALL}"
+          echo "Downloading $URL"
+          curl -fsSL "$URL" -o /tmp/node.tar.gz
+          tar -xzf /tmp/node.tar.gz -C /tmp
+          cp "/tmp/node-${NODE_DIST_VERSION}-darwin-${NODE_ARCH}/bin/node" packages/server/dist-server/node
+          chmod +x packages/server/dist-server/node
+          echo "node binary ready: $(file packages/server/dist-server/node)"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Sync version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "const{readFileSync,writeFileSync}=require('fs');const c=JSON.parse(readFileSync('packages/desktop/src-tauri/tauri.conf.json','utf8'));c.version='$VERSION';writeFileSync('packages/desktop/src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
+
+      - name: Build Tauri
+        run: |
+          cd packages/desktop
+          pnpm tauri build --bundles dmg
+
+      - name: Upload dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos
+          path: |
+            packages/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            packages/desktop/src-tauri/target/release/bundle/dmg/*.sig
+          if-no-files-found: error
+
+  # ── GitHub Release ──
   release:
-    name: Create GitHub Release
-    needs: [build-windows, build-linux]
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -87,6 +165,7 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
