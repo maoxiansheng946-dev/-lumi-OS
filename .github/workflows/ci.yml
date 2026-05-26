@@ -85,15 +85,12 @@ jobs:
         id: cargo-check
         run: cargo check --release 2>&1 | tee /tmp/cargo-check.log; exit ${PIPESTATUS[0]}
         working-directory: packages/desktop/src-tauri
-      - name: Show Rust errors
+      - name: Upload cargo error log
         if: failure() && steps.cargo-check.outcome == 'failure'
-        run: |
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -80 /tmp/cargo-check.log >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -20 /tmp/cargo-check.log | while IFS= read -r line; do
-            echo "::error::${line}"
-          done
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-check-error
+          path: /tmp/cargo-check.log
 
   test:
     name: Unit tests
