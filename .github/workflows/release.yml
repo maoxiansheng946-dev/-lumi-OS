@@ -45,13 +45,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: packages/desktop/src-tauri
-          installDependencies: false
-          args: --bundles ${{ matrix.target == 'windows' && 'msi' || matrix.target == 'macos' && 'dmg' || matrix.target == 'linux' && 'deb' || 'msi' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          case "${{ matrix.target }}" in
+            windows) bundles="msi" ;;
+            macos)   bundles="dmg" ;;
+            linux)   bundles="deb" ;;
+          esac
+          pnpm --filter @lumios/desktop tauri build --bundles "$bundles"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
