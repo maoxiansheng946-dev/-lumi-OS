@@ -17,17 +17,6 @@ jobs:
           node-version: 22
       - run: npm install -g pnpm@11.3.0
       - run: pnpm install --ignore-scripts
-      - name: Run tsc with trace
-        run: |
-          cd packages/server
-          npx tsc --noEmit --traceResolution 2>&1 | grep -A2 "tools/registry\|data/db_layer" | head -60 | while IFS= read -r line; do
-            echo "::error::${line}"
-          done
-          # Also capture the actual errors
-          npx tsc --noEmit 2>&1 | grep "Cannot find\|error TS" | head -20 | while IFS= read -r line; do
-            echo "::error file=index.ts::${line}"
-          done
-        continue-on-error: true
       - run: cd packages/server && npx tsc --noEmit
 
   desktop-typecheck:
@@ -91,9 +80,9 @@ jobs:
       - name: Install Tauri system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libdbus-1-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libdbus-1-dev libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-render0-dev libxcb-shm0-dev libxcb-xkb-dev
       - name: Check Rust backend
-        run: cargo check --release
+        run: cargo check --release 2>&1 | tee /tmp/cargo-check.log; if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "::error::$(tail -80 /tmp/cargo-check.log | tr '\n' ' ' | head -c 4000)"; exit 1; fi
         working-directory: packages/desktop/src-tauri
 
   test:
