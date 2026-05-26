@@ -89,7 +89,7 @@ LumiOS 是这个愿景的第一个落地形态。
 ### 安装
 
 ```bash
-git clone https://github.com/maoxiansheng946-dev/lumi-OS.git
+git clone https://github.com/maoxiansheng946-dev/-lumi-OS.git
 cd lumi-OS
 npm install
 npm run dev          # 启动 Web 版本
