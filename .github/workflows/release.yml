@@ -58,13 +58,20 @@ jobs:
       - name: Ensure .env stub exists (required by tauri bundle.resources)
         run: node -e "require('fs').writeFileSync('packages/desktop/desktop-resources/dist-server/.env','')"
 
-      - name: Skip beforeBuildCommand (already done above)
+      - name: Patch tauri.conf.json for CI
         run: |
           node -e "
             const fs = require('fs');
             const path = 'packages/desktop/src-tauri/tauri.conf.json';
             const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            cfg.build.beforeBuildCommand = 'echo tauri-build-already-done';
+            // Build steps already done manually; skip beforeBuildCommand
+            cfg.build.beforeBuildCommand = 'echo build-done';
+            cfg.build.beforeBundleCommand = 'echo bundle-done';
+            // Remove installerHooks — include-dll.nsh is auto-generated locally,
+            // but on CI the DLL may not exist, causing NSIS to fail
+            if (cfg.bundle.windows && cfg.bundle.windows.nsis) {
+              delete cfg.bundle.windows.nsis.installerHooks;
+            }
             fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
           "
 
