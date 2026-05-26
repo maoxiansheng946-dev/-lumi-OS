@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/server lint
 
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/desktop lint
 
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/web lint
 
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/mobile lint
 
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - name: Build frontend dist
         run: pnpm --filter @lumios/desktop build
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/server test
       - run: pnpm --filter @lumios/web test
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install -g pnpm@11
+      - run: npm install -g pnpm@10
       - run: pnpm install
       - run: pnpm --filter @lumios/web build
       - run: pnpm --filter @lumios/desktop build
