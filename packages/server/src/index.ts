@@ -3,28 +3,44 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// Walk up from packages/server/src/ to repo root where .env lives
+// Walk up from packages/server/src/ to repo root where .env lives (dev mode)
 const repoRoot = path.join(__dirname, '..', '..', '..');
-dotenv.config({ path: path.join(repoRoot, '.env'), quiet: true });
 
-// Fallback: dotenv v17 dotenvx integration may fail to inject when CWD ≠ package dir.
-// Manually parse .env and set process.env for any keys that didn't load.
-const envPath = path.join(repoRoot, '.env');
-if (fs.existsSync(envPath) && !process.env.AUTO_LOGIN_PASSWORD) {
-  const raw = fs.readFileSync(envPath, 'utf-8');
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
+// Try multiple locations for .env — bundled desktop app has it alongside server.mjs
+function loadEnv() {
+  const candidates = [
+    path.join(__dirname, '.env'),           // Bundled: dist-server/.env
+    path.join(process.cwd(), '.env'),       // CWD fallback
+    path.join(repoRoot, '.env'),            // Dev: monorepo root
+  ];
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      const result = dotenv.config({ path: envPath, quiet: true });
+      if (!result.error || process.env.JWT_SECRET) break;
     }
-    if (!process.env[key]) process.env[key] = val;
+  }
+  // Fallback: manually parse .env (handles dotenv v17 dotenvx quirks)
+  if (!process.env.JWT_SECRET) {
+    for (const envPath of candidates) {
+      if (!fs.existsSync(envPath)) continue;
+      const raw = fs.readFileSync(envPath, 'utf-8');
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx === -1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = val;
+      }
+      if (process.env.JWT_SECRET) break;
+    }
   }
 }
+loadEnv();
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -75,6 +91,23 @@ const isSourceServer =
   __filename.endsWith("index.ts") ||
   process.argv.some(arg => arg.replace(/\\/g, "/").endsWith("/index.ts") || arg === "index.ts");
 
+// JWT_SECRET must survive restarts (login tokens depend on it). If .env didn't
+// provide one, generate a random secret and persist it to the CWD .env so the
+// desktop app (which bundles node.exe) sees the same secret after restart.
+if (!process.env.JWT_SECRET) {
+  const crypto = await import('crypto');
+  const generated = crypto.randomBytes(32).toString('hex');
+  process.env.JWT_SECRET = generated;
+  try {
+    const localEnv = path.join(process.cwd(), '.env');
+    const existing = fs.existsSync(localEnv) ? fs.readFileSync(localEnv, 'utf-8') : '';
+    const hasSecret = /^JWT_SECRET=/m.test(existing);
+    fs.appendFileSync(localEnv, (hasSecret ? '' : (existing ? '\n' : '') + `JWT_SECRET=${generated}\n`));
+    console.log('[Server] Generated new JWT_SECRET — persisted to .env for future restarts');
+  } catch (e: any) {
+    console.warn('[Server] Could not persist JWT_SECRET to .env:', e.message);
+  }
+}
 const JWT_SECRET = process.env.JWT_SECRET!;
 
 // LLM provider getters (lazy init)
@@ -122,7 +155,7 @@ function getQwen() {
 
 const llmGetters = { getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen };
 
-const ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'https://lumiai.asia', 'tauri://localhost'];
+const ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'https://lumiai.asia', 'tauri://localhost', 'https://tauri.localhost'];
 
 // Express + HTTP + Socket.IO
 const app = express();

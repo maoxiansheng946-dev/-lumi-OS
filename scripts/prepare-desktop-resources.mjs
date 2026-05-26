@@ -9,7 +9,6 @@ const outDir = path.join(root, 'packages', 'desktop', 'desktop-resources');
 const serverDistDir = path.join(root, 'packages', 'server', 'dist-server');
 const includeLocalVoice = process.env.LUMI_DESKTOP_WITH_LOCAL_VOICE === '1';
 
-const runtimeNodeModules = ['sqlite3', 'bindings', 'file-uri-to-path'];
 const ignoredNames = new Set([
   '.git',
   '.github',
@@ -55,16 +54,20 @@ async function prepareServer() {
   await copyIfExists(path.join(src, 'server.mjs'), path.join(dest, 'server.mjs'));
   await copyIfExists(path.join(src, 'server.cjs'), path.join(dest, 'server.cjs'));
   await copyIfExists(path.join(src, 'package.json'), path.join(dest, 'package.json'));
-  await copyIfExists(path.join(src, '.env'), path.join(dest, '.env'));
+  // .env may be in dist-server/ or at repo root
+  const envSrc = path.join(src, '.env');
+  const envRepo = path.join(root, '.env');
+  if (existsSync(envSrc)) {
+    await fs.copyFile(envSrc, path.join(dest, '.env'));
+  } else if (existsSync(envRepo)) {
+    await fs.copyFile(envRepo, path.join(dest, '.env'));
+  }
   if (isWindows) await copyIfExists(path.join(src, 'hide-console.cjs'), path.join(dest, 'hide-console.cjs'));
   await copyDir(path.join(src, 'server'), path.join(dest, 'server'));
 
-  for (const moduleName of runtimeNodeModules) {
-    await copyDir(
-      path.join(src, 'node_modules', moduleName),
-      path.join(dest, 'node_modules', moduleName),
-    );
-  }
+  // dist-server/node_modules/ is now a complete flat install (npm install --omit=dev
+  // from build-server.mjs). Copy the whole thing so sqlite3 + transitive deps are available.
+  await copyDir(path.join(src, 'node_modules'), path.join(dest, 'node_modules'));
 }
 
 async function prepareGptSovits() {

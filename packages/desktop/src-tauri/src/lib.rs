@@ -1026,8 +1026,9 @@ pub fn run() {
                     .env("LUMI_DESKTOP", "1")
                     .env("HOST", "127.0.0.1")
                     .current_dir(&normalized_cwd);
-                #[cfg(target_os = "windows")]
-                node_cmd.env("NODE_OPTIONS", "--require ./hide-console.cjs");
+                // entry.cjs already monkey-patches child_process to hide windows;
+                // --require hide-console.cjs via NODE_OPTIONS is redundant and
+                // can cause startup failures if the file is missing from the bundle.
                 match spawn_hidden(&mut node_cmd)
                 {
                     Ok(child) => {
@@ -1134,7 +1135,7 @@ pub fn run() {
                                     .env("HOST", "127.0.0.1")
                                     .current_dir(&cfg.work_dir);
                                 #[cfg(target_os = "windows")]
-                                restart_cmd.env("NODE_OPTIONS", "--require ./hide-console.cjs");
+                                // hide-console.cjs already loaded via entry.cjs monkey-patch
                                 match spawn_hidden(&mut restart_cmd)
                                 {
                                     Ok(child) => {

@@ -38,7 +38,8 @@
     "targets": ["nsis", "deb", "appimage", "dmg"],
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "resources": [
-      "../desktop-resources/dist-server/**/*"
+      "../desktop-resources/dist-server/**/*",
+      "../desktop-resources/dist-server/.env"
     ],
     "windows": {
       "nsis": {

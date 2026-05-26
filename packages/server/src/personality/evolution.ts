@@ -171,9 +171,11 @@ ${memoryTexts}`;
     // Add remaining providers that have keys, using their saved models
     for (const p of VALID_PROVIDERS) {
       if (p === activeProvider) continue;
+      // Only add providers the user has actually configured a key for
+      if (!userModels[p]) continue;
       candidates.push({
         provider: p,
-        model: userModels[p] || DEFAULT_MODELS[p] || '',
+        model: userModels[p],
       });
     }
 

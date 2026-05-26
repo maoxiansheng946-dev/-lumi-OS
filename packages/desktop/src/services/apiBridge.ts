@@ -12,7 +12,6 @@ export function isTauriRuntime(): boolean {
 
 export function getBackendOrigin(): string {
   if (typeof window === 'undefined') return 'http://127.0.0.1:3000';
-  // In Tauri, the frontend is served by Vite (5174) but the API is on 3000
   if (isTauriRuntime()) return 'http://127.0.0.1:3000';
   return window.location.origin;
 }
@@ -25,6 +24,7 @@ export function installApiBridge(): void {
   if (typeof window === 'undefined' || window.__LUMI_API_BRIDGE_INSTALLED__) return;
 
   const nativeFetch = window.fetch.bind(window);
+
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
@@ -33,11 +33,15 @@ export function installApiBridge(): void {
       return nativeFetch(input, init);
     }
 
-    // In Tauri, API paths need credentials for cross-origin (localhost vs 127.0.0.1)
-    // But if same-origin, pass through untouched
+    // In Tauri, relative API paths must be rewritten to absolute backend URL
+    // because WebView2 runs on tauri://localhost but the API is on http://127.0.0.1:3000
     if (url.startsWith('/')) {
-      const needsCredentials = isTauriRuntime() && (url.startsWith('/api/') || url === '/api' || url.startsWith('/mcp/'));
-      if (!needsCredentials) return nativeFetch(input, init);
+      const isApiPath = url.startsWith('/api/') || url === '/api' || url.startsWith('/mcp/') || url.startsWith('/lap') || url.startsWith('/socket.io');
+      if (!isApiPath || !isTauriRuntime()) {
+        return nativeFetch(input, init);
+      }
+
+      const absoluteUrl = getBackendOrigin() + url;
       const patched: RequestInit = { ...init, credentials: 'include' };
 
       // WebView2 may not send httpOnly cookies — inject stored auth token as fallback
@@ -51,7 +55,7 @@ export function installApiBridge(): void {
         }
       } catch {}
 
-      return nativeFetch(input, patched);
+      return nativeFetch(absoluteUrl, patched);
     }
 
     return nativeFetch(input, init);

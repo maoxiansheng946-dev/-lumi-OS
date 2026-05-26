@@ -61,6 +61,9 @@ interface AppContextType {
   setSelectedVoiceId: (id: string) => void;
   favoriteVoices: string[];
   toggleFavoriteVoice: (id: string) => void;
+  // Personality
+  personalityId: string;
+  setPersonalityId: (id: string) => void;
   // Notifications
   notifications: NotificationItem[];
   unreadCount: number;
@@ -98,6 +101,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedVoiceId, setSelectedVoiceIdState] = useState<string | undefined>(() => {
     return localStorage.getItem('lumi_selected_voice_id') || undefined;
   });
+  // Personality state
+  const [personalityId, setPersonalityIdState] = useState<string>(() => {
+    return localStorage.getItem('lumi_personality_id') || 'lumi';
+  });
+  const setPersonalityId = (id: string) => {
+    setPersonalityIdState(id);
+    localStorage.setItem('lumi_personality_id', id);
+  };
   const [favoriteVoices, setFavoriteVoices] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('lumi_favorite_voices') || '[]'); } catch { return []; }
   });
@@ -333,6 +344,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedVoiceId,
       favoriteVoices,
       toggleFavoriteVoice,
+      personalityId,
+      setPersonalityId,
       notifications,
       unreadCount,
       addNotification,
