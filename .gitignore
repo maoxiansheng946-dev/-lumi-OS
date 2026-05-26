@@ -23,3 +23,5 @@ tools/
 $null
 packages/server/packages/
 ci_log.zip
+# Auto-generated NSIS hook — created by copy-webview2-dll.mjs at bundle time
+packages/desktop/src-tauri/includes/include-dll.nsh
