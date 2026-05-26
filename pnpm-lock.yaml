@@ -317,9 +317,6 @@ importers:
       '@types/node':
         specifier: ^22.14.0
         version: 22.19.17
-      '@types/sqlite3':
-        specifier: ^3.1.11
-        version: 3.1.11
       '@vitejs/plugin-react':
         specifier: ^5.0.4
         version: 5.2.0(vite@8.0.10(@types/node@22.19.17)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.9.0))
@@ -2229,9 +2226,6 @@ packages:
 
   '@types/slice-ansi@4.0.0':
     resolution: {integrity: sha512-+OpjSaq85gvlZAYINyzKpLeiFkSC4EsC6IIiT6v6TLSU5k5U83fHGj9Lel8oKEXM0HqgrMVCjXPDPVICtxF7EQ==}
-
-  '@types/sqlite3@3.1.11':
-    resolution: {integrity: sha512-KYF+QgxAnnAh7DWPdNDroxkDI3/MspH1NMx6m/N/6fT1G6+jvsw4/ZePt8R8cr7ta58aboeTfYFBDxTJ5yv15w==}
 
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
@@ -7036,10 +7030,6 @@ snapshots:
       '@types/send': 0.17.6
 
   '@types/slice-ansi@4.0.0': {}
-
-  '@types/sqlite3@3.1.11':
-    dependencies:
-      '@types/node': 22.19.17
 
   '@types/stats.js@0.17.4': {}
 
