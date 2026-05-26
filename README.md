@@ -85,15 +85,16 @@ LumiOS 是这个愿景的第一个落地形态。
 ### 环境要求
 - Node.js 18+
 - Rust（用于 Tauri 桌面端）
+- pnpm 11+（建议先运行 `corepack enable pnpm`）
 
 ### 安装
 
 ```bash
 git clone https://github.com/maoxiansheng946-dev/lumi-OS.git
 cd lumi-OS
-npm install
-npm run dev          # 启动 Web 版本
-npm run tauri dev    # 启动桌面客户端（需 Rust 环境）
+pnpm install
+pnpm dev             # 启动 Web 版本
+pnpm dev:desktop     # 启动桌面客户端（需 Rust 环境）
 ```
 
 ### 配置 API Key
