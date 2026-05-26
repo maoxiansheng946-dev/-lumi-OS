@@ -19,3 +19,5 @@ docs/
 gen_landing.py
 tools/
 $null
+packages/server/packages/
+ci_log.zip
