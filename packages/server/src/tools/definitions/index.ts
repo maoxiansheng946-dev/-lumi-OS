@@ -1,0 +1,58 @@
+import { ToolRegistry } from '../registry';
+import { registerFileOpsTools } from './file_ops';
+import { registerSystemOpsTools } from './system_ops';
+import { registerWebOpsTools } from './web_tools';
+import { registerCodeOpsTools } from './code_tools';
+import { registerDataOpsTools } from './data_tools';
+import { registerDesktopTools } from './desktop_tools';
+import { registerGitTools } from './git_tools';
+import { registerVerifyTools } from './verify_tools';
+import { registerSkillTools, setSkillLLMGetters } from './skill_tools';
+import { registerOfficeTools } from './office_tools';
+import { registerCalendarTools } from './calendar_tools';
+import { registerAgentTools } from './agent_tools';
+import { registerScreenMonitorTools } from './screen_monitor';
+import { registerClipboardTools } from './clipboard_tools';
+import { registerOCRTools } from './ocr_tools';
+import { registerPdfTools } from './pdf_tools';
+import { registerDocumentTools } from './document_tools';
+import { registerWorkflowTools } from './workflow_tools';
+import { registerImageTools } from './image_tools';
+import { registerVideoTools } from './video_tools';
+import { registerUpgradeTools } from './upgrade_tools';
+
+export function registerAllTools(
+  registry: ToolRegistry,
+  llmGetters?: {
+    getDeepSeek: () => any;
+    getGemini: () => any;
+    getOpenAI?: () => any;
+    getAnthropic?: () => any;
+    getQwen?: () => any;
+  },
+): void {
+  registerFileOpsTools(registry);
+  registerSystemOpsTools(registry);
+  registerWebOpsTools(registry);
+  registerCodeOpsTools(registry);
+  registerDataOpsTools(registry);
+  registerDesktopTools(registry);
+  registerGitTools(registry);
+  registerVerifyTools(registry);
+  registerSkillTools(registry);
+  registerOfficeTools(registry);
+  registerCalendarTools(registry);
+  registerAgentTools(registry);
+  registerScreenMonitorTools(registry);
+  registerClipboardTools(registry);
+  registerOCRTools(registry);
+  registerPdfTools(registry);
+  registerDocumentTools(registry);
+  registerWorkflowTools(registry);
+  registerImageTools(registry);
+  registerVideoTools(registry);
+  registerUpgradeTools(registry);
+  if (llmGetters) {
+    setSkillLLMGetters(llmGetters);
+  }
+}
