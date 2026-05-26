@@ -12,13 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/server lint
 
@@ -27,13 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/desktop lint
 
@@ -42,13 +40,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/web lint
 
@@ -57,13 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/mobile lint
 
@@ -72,13 +68,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - name: Build frontend dist
         run: pnpm --filter @lumios/desktop build
@@ -105,13 +100,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/server test
       - run: pnpm --filter @lumios/web test
@@ -121,13 +115,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - run: pnpm install
       - run: pnpm --filter @lumios/web build
       - run: pnpm --filter @lumios/desktop build
