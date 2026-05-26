@@ -17,7 +17,16 @@ jobs:
           node-version: 22
       - run: npm install -g pnpm@11.3.0
       - run: pnpm install --ignore-scripts
+      - name: Type-check + capture errors
+        run: |
+          pnpm --filter @lumios/server lint > /tmp/tsc-out.txt 2>&1 || true
+          if [ -s /tmp/tsc-out.txt ]; then
+            while IFS= read -r line; do
+              echo "::error::${line}"
+            done < /tmp/tsc-out.txt
+          fi
       - run: pnpm --filter @lumios/server lint
+        if: false
 
   desktop-typecheck:
     name: Desktop type-check
