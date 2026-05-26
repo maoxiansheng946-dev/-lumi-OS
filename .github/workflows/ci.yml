@@ -7,63 +7,89 @@ on:
     branches: [main]
 
 jobs:
-  server-typecheck:
-    name: Server type-check
+  # Single debug job first — remove once CI is stable
+  debug-install:
+    name: Debug pnpm install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
+      - run: pnpm --version
+      - run: node --version
+      - run: cat .npmrc 2>/dev/null || true
+      - run: pnpm install 2>&1 || true
+      - run: pnpm install --frozen-lockfile 2>&1 || true
+
+  server-typecheck:
+    name: Server type-check
+    runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/server lint
 
   desktop-typecheck:
     name: Desktop type-check
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/desktop lint
 
   web-typecheck:
     name: Web type-check
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/web lint
 
   mobile-typecheck:
     name: Mobile type-check
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/mobile lint
 
   rust-check:
     name: Rust backend check
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - name: Build frontend dist
         run: pnpm --filter @lumios/desktop build
@@ -88,12 +114,14 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/server test
       - run: pnpm --filter @lumios/web test
@@ -101,12 +129,14 @@ jobs:
   frontend-build:
     name: Frontend Vite build
     runs-on: ubuntu-latest
+    needs: debug-install
+    if: always()
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: corepack enable
+      - run: npm install -g pnpm
       - run: pnpm install
       - run: pnpm --filter @lumios/web build
       - run: pnpm --filter @lumios/desktop build
