@@ -19,7 +19,6 @@ import Base from '../layouts/Base.astro';
 </Base>
 
 <script>
-  const API = 'https://api.github.com/repos/maoxiansheng946-dev/-lumi-OS/releases/latest';
   const container = document.getElementById('download-buttons');
 
   function formatSize(bytes: number): string {
@@ -39,8 +38,25 @@ import Base from '../layouts/Base.astro';
     return a;
   }
 
-  fetch(API)
-    .then(res => res.json())
+  async function fetchRelease() {
+    const res = await fetch('/api/release/latest');
+    if (!res.ok) throw new Error(`API returned ${res.status}`);
+    return res.json();
+  }
+
+  function renderError() {
+    container.innerHTML = `
+      <div class="flex flex-col gap-4 items-center">
+        <p class="text-red-400 text-sm">Unable to load release information. Please try again later.</p>
+        <a href="https://github.com/maoxiansheng946-dev/-lumi-OS/releases/latest"
+           class="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition w-64">
+          View Releases on GitHub
+        </a>
+      </div>
+    `;
+  }
+
+  fetchRelease()
     .then(release => {
       const assets = release.assets || [];
       const exe = assets.find((a: any) => a.name.endsWith('.exe'));
@@ -50,7 +66,6 @@ import Base from '../layouts/Base.astro';
       if (!exe && !deb && !appimage) throw new Error('No assets found');
 
       container.innerHTML = '';
-
       const wrapper = document.createElement('div');
       wrapper.className = 'flex flex-col gap-4 items-center';
 
@@ -65,19 +80,5 @@ import Base from '../layouts/Base.astro';
       version.textContent = `Version ${release.tag_name || 'latest'} — automatic updates included.`;
       container.appendChild(version);
     })
-    .catch(() => {
-      container.innerHTML = `
-        <div class="flex flex-col gap-4 items-center">
-          <a href="https://github.com/maoxiansheng946-dev/-lumi-OS/releases/latest"
-             class="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition w-64">
-            Download for Windows
-          </a>
-          <a href="https://github.com/maoxiansheng946-dev/-lumi-OS/releases/latest"
-             class="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition w-64 border border-white/20">
-            Download for Linux (.deb / .AppImage)
-          </a>
-          <p class="text-sm text-gray-500 mt-4">Latest version with automatic updates included.</p>
-        </div>
-      `;
-    });
+    .catch(() => renderError());
 </script>

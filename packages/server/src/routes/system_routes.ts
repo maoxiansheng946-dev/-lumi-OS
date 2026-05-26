@@ -9,6 +9,33 @@ import { loadKeys, saveKeys, getKey, getAllKeyNames } from "../config/keys";
 import { getLatencyStats } from "../monitor/latency_store";
 
 export function mountSystemRoutes(router: Router, jwtSecret: string) {
+  // GitHub release proxy — avoids browser rate limits (60/hr vs 5000/hr with token)
+  router.get("/release/latest", async (_req, res) => {
+    try {
+      const repo = process.env.RELEASE_REPO || 'maoxiansheng946-dev/-lumi-OS';
+      const url = `https://api.github.com/repos/${repo}/releases/latest`;
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'LumiOS',
+      };
+      const token = process.env.GITHUB_TOKEN;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const ghRes = await fetch(url, { headers });
+      if (!ghRes.ok) throw new Error(`GitHub API returned ${ghRes.status}`);
+      const data = await ghRes.json();
+
+      const assets = (data.assets || []).map((a: any) => ({
+        name: a.name,
+        size: a.size,
+        browser_download_url: a.browser_download_url,
+      }));
+      res.json({ tag_name: data.tag_name, assets });
+    } catch (err: any) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
   // Health Check
   router.get("/health", (req, res) => {
     try {

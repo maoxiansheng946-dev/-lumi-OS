@@ -1,11 +1,13 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { Navbar } from '../../components/Navbar';
 import { Footer } from '../../components/Footer';
 import { LandingSections } from '../../components/LandingSections';
 import { LocalAgentSphere } from '../../components/LocalAgentSphere';
 import { UnifiedAgent } from '../../components/UnifiedAgent';
+import { DesktopIntro } from '../desktop/DesktopIntro';
+import { MobileIntro } from '../mobile/MobileIntro';
 
 interface WebPlatformProps {
   user: any;
@@ -34,6 +36,46 @@ export function WebPlatform({
   isDesktop,
   setUiMode
 }: WebPlatformProps) {
+  const [introView, setIntroView] = useState<'none' | 'desktop' | 'mobile'>('none');
+
+  if (introView !== 'none') {
+    return (
+      <div className="min-h-screen bg-black">
+        <Navbar
+          user={user}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setIntroView('none');
+            setActiveTab(tab);
+          }}
+          lang={lang}
+          setLang={setLang}
+          t={t}
+        />
+        <div className="pt-24 min-h-screen">
+          <AnimatePresence mode="wait">
+            {introView === 'desktop' ? (
+              <DesktopIntro
+                key="desktop-intro"
+                t={t}
+                onBack={() => setIntroView('none')}
+              />
+            ) : (
+              <MobileIntro
+                key="mobile-intro"
+                t={t}
+                onBack={() => setIntroView('none')}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+        <Footer t={t} />
+      </div>
+    );
+  }
+
   return (
     <motion.div
       key="web-mode"
@@ -118,6 +160,8 @@ export function WebPlatform({
             <LandingSections
               t={t}
               onNavigateToSolutions={() => setActiveTab('solutions')}
+              onSelectDesktop={() => setIntroView('desktop')}
+              onSelectMobile={() => setIntroView('mobile')}
             />
           </div>
         ) : (
