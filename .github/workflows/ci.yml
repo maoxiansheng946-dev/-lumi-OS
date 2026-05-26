@@ -15,9 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/server lint
 
@@ -29,9 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/desktop lint
 
@@ -43,9 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/web lint
 
@@ -57,9 +51,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/mobile lint
 
@@ -71,9 +63,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - name: Build frontend dist
         run: pnpm --filter @lumios/desktop build
@@ -103,9 +93,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/server test
       - run: pnpm --filter @lumios/web test
@@ -118,9 +106,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
+      - run: npm install -g pnpm@latest
       - run: pnpm install
       - run: pnpm --filter @lumios/web build
       - run: pnpm --filter @lumios/desktop build
