@@ -54,7 +54,8 @@ jobs:
             macos)   bundles="dmg" ;;
             linux)   bundles="deb" ;;
           esac
-          pnpm --filter @lumios/desktop tauri build --bundles "$bundles"
+          cd packages/desktop
+          npx tauri build --bundles "$bundles" -c src-tauri/tauri.conf.json
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
