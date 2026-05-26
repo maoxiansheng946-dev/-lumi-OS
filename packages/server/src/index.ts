@@ -247,12 +247,14 @@ const isProduction = process.env.NODE_ENV === "production" ||
                       isBundledServer ||
                       (!isSourceServer && process.env.NODE_ENV !== "development" && fs.existsSync(path.join(process.cwd(), "dist")));
 
-// Serve landing download page at /download
+// Serve landing page assets + download page
 const landingDist = path.join(repoRoot, 'packages', 'landing', 'dist');
-const downloadPage = path.join(landingDist, 'download', 'index.html');
-if (fs.existsSync(downloadPage)) {
-  app.get('/download', (_req, res) => res.sendFile(downloadPage));
-  app.use('/download', express.static(path.join(landingDist, 'download')));
+if (fs.existsSync(landingDist)) {
+  app.use('/_astro', express.static(path.join(landingDist, '_astro')));
+  const downloadPage = path.join(landingDist, 'download', 'index.html');
+  if (fs.existsSync(downloadPage)) {
+    app.get('/download', (_req, res) => res.sendFile(downloadPage));
+  }
 }
 
 if (!isProduction) {
