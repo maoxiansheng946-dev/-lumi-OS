@@ -247,8 +247,14 @@ const isProduction = process.env.NODE_ENV === "production" ||
                       isBundledServer ||
                       (!isSourceServer && process.env.NODE_ENV !== "development" && fs.existsSync(path.join(process.cwd(), "dist")));
 
+// Serve landing page (download page etc.) before web app SPA
+const landingDist = path.join(repoRoot, 'packages', 'landing', 'dist');
+if (fs.existsSync(landingDist)) {
+  app.use(express.static(landingDist));
+}
+
 if (!isProduction) {
-  // Web frontend served by Vite middleware (the landing page / 官网)
+  // Web frontend served by Vite middleware
   const webRoot = path.join(repoRoot, 'packages', 'web');
   if (fs.existsSync(path.join(webRoot, 'index.html'))) {
     console.log(`Starting in DEVELOPMENT mode (Vite + API) — web root: ${webRoot}`);
