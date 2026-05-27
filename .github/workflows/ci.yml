@@ -89,10 +89,15 @@ jobs:
         include:
           - target: windows-x64
             runner: windows-latest
+            artifact-path: src-tauri/target/release/bundle/nsis/*
           - target: macos-arm64
             runner: macos-latest
+            artifact-path: src-tauri/target/release/bundle/dmg/*
           - target: linux-x64
             runner: ubuntu-latest
+            artifact-path: |
+              src-tauri/target/release/bundle/deb/*
+              src-tauri/target/release/bundle/appimage/*
 
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lumi-os-${{ matrix.target }}
-          path: src-tauri/target/release/bundle/**/*
+          path: ${{ matrix.artifact-path }}
           if-no-files-found: error
 
   # ── GitHub Release ──
