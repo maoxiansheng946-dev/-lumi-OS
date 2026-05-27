@@ -920,7 +920,7 @@ export function DesktopUI({
 
   const socket = useSocket();
   useAmbientPoller(socket); // Ambient awareness: polls window, clipboard, idle state
-  const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, responseText, interrupt, toggleMute } = useVoiceCall({
+  const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, interrupt, toggleMute } = useVoiceCall({
     socket,
   });
 
