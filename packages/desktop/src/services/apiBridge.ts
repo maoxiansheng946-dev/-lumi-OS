@@ -33,7 +33,10 @@ export async function waitForServer(timeoutMs = 15000): Promise<boolean> {
   let delay = 300;
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(origin + '/api/health', { signal: AbortSignal.timeout(3000) });
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 3000);
+      const res = await fetch(origin + '/api/health', { signal: ctrl.signal });
+      clearTimeout(t);
       if (res.ok) return true;
     } catch {}
     await new Promise(r => setTimeout(r, delay));

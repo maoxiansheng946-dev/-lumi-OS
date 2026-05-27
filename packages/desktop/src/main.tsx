@@ -10,28 +10,31 @@ import { installApiBridge, waitForServer } from './services/apiBridge';
 installApiBridge();
 
 const root = document.getElementById('root')!;
+root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888;font-size:14px">Starting LumiOS...</div>';
 
-// Show a brief loading indicator while waiting for the backend (Tauri spawns it on-demand)
 async function boot() {
-  const serverReady = await waitForServer(12000);
-  if (!serverReady) {
-    root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888"><p>Waiting for LumiOS server...</p></div>';
-    // Keep retrying — the server may take longer on first launch
-    const ok = await waitForServer(30000);
-    if (!ok) {
-      root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#c44"><p>Server unreachable.<br/><small>Check that LumiOS is allowed through your firewall.</small></p></div>';
-      return;
+  try {
+    const serverReady = await waitForServer(12000);
+    if (!serverReady) {
+      root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888"><p>Waiting for LumiOS server...</p></div>';
+      const ok = await waitForServer(30000);
+      if (!ok) {
+        root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#c44"><p>Server unreachable.<br/><small>Check that LumiOS is allowed through your firewall.</small></p></div>';
+        return;
+      }
     }
+    createRoot(root).render(
+      <StrictMode>
+        <ErrorBoundary>
+          <AppProvider>
+            <App />
+          </AppProvider>
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+  } catch (e: any) {
+    root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#c44"><p>Startup error: ' + (e.message || e) + '</p></div>';
   }
-  createRoot(root).render(
-    <StrictMode>
-      <ErrorBoundary>
-        <AppProvider>
-          <App />
-        </AppProvider>
-      </ErrorBoundary>
-    </StrictMode>,
-  );
 }
 
 boot();
