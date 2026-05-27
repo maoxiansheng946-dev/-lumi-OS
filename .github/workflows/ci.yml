@@ -95,7 +95,7 @@ jobs:
             artifact: '*.dmg'
           - target: linux-x64
             runner: ubuntu-latest
-            artifact: '*.deb *.AppImage*'
+            artifact: '*.{deb,AppImage}*'
 
     steps:
       - uses: actions/checkout@v4
