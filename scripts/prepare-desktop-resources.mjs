@@ -80,6 +80,13 @@ async function prepareServer() {
   if (existsSync(desktopDist)) {
     await copyDir(desktopDist, path.join(dest, 'dist'));
     console.log('Copied desktop frontend to dist-server/dist/');
+
+    // Replace frontendDist entry with meta-refresh redirect — the real app
+    // is served by Express from dist-server/dist/. This avoids tauri://
+    // protocol blocking HTTP requests and eliminates flickering.
+    const redirectHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=http://127.0.0.1:3000"><title>Lumi OS</title></head><body></body></html>';
+    await fs.writeFile(path.join(desktopDist, 'index.html'), redirectHtml);
+    console.log('Replaced frontendDist/index.html with meta-refresh redirect');
   }
 }
 
