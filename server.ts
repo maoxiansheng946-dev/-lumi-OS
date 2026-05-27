@@ -179,7 +179,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ error: err?.message || 'Internal server error' });
 });
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
 // Serialize personality file writes to prevent concurrent overwrites
 // SameSite=None requires Secure (Chromium silently rejects otherwise).
@@ -1993,8 +1993,8 @@ async function startServer() {
     process.exit(1);
   }
 
-  // Auto-create admin account for local development continuity
-  const adminPassword = process.env.AUTO_LOGIN_PASSWORD;
+  // Auto-create admin account for local/desktop use
+  const adminPassword = process.env.AUTO_LOGIN_PASSWORD || 'lumi_admin_2026';
   if (adminPassword) {
     try {
       const db = readDB();
