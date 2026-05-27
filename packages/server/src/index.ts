@@ -348,6 +348,7 @@ if (!isProduction) {
   const distPath = fs.existsSync(path.join(repoRoot, "packages", "web", "dist"))
     ? path.join(repoRoot, "packages", "web", "dist")
     : path.join(process.cwd(), "dist");
+  app.use(express.static(distPath));
   app.use("/api/*", (_req, res) => { res.status(404).json({ error: "API route not found" }); });
   app.get("*", (_req, res) => { res.sendFile(path.join(distPath, "index.html")); });
 }

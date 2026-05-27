@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lumi OS</title>
+    <script>
+      if (location.protocol !== 'http:' && location.protocol !== 'https:') (function p(i) {
+        if (i > 60) return;
+        fetch('http://127.0.0.1:3000/api/health', { mode: 'no-cors' })
+          .then(function() { location.replace('http://127.0.0.1:3000'); })
+          .catch(function() { setTimeout(function() { p(i + 1); }, 500); });
+      })(0);
+    </script>
   </head>
   <body>
     <div id="root"></div>

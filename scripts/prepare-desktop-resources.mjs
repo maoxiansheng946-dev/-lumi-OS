@@ -54,12 +54,18 @@ async function prepareServer() {
   await copyIfExists(path.join(src, 'server.mjs'), path.join(dest, 'server.mjs'));
   await copyIfExists(path.join(src, 'server.cjs'), path.join(dest, 'server.cjs'));
   await copyIfExists(path.join(src, 'package.json'), path.join(dest, 'package.json'));
-  // .env may be in dist-server/ or at repo root
+  // .env: prefer .env.production (safe for distribution), fall back to local .env
+  const envProd = path.join(root, '.env.production');
   const envSrc = path.join(src, '.env');
   const envRepo = path.join(root, '.env');
-  if (existsSync(envSrc)) {
+  if (existsSync(envProd)) {
+    await fs.copyFile(envProd, path.join(dest, '.env'));
+    console.log('Bundled .env.production (no real keys)');
+  } else if (existsSync(envSrc)) {
+    console.warn('⚠️  WARNING: Copying local .env with real keys to installer! Create .env.production to fix this.');
     await fs.copyFile(envSrc, path.join(dest, '.env'));
   } else if (existsSync(envRepo)) {
+    console.warn('⚠️  WARNING: Copying local .env with real keys to installer! Create .env.production to fix this.');
     await fs.copyFile(envRepo, path.join(dest, '.env'));
   }
   if (isWindows) await copyIfExists(path.join(src, 'hide-console.cjs'), path.join(dest, 'hide-console.cjs'));
@@ -68,6 +74,13 @@ async function prepareServer() {
   // dist-server/node_modules/ is now a complete flat install (npm install --omit=dev
   // from build-server.mjs). Copy the whole thing so sqlite3 + transitive deps are available.
   await copyDir(path.join(src, 'node_modules'), path.join(dest, 'node_modules'));
+
+  // Copy desktop frontend to server's static dir so 127.0.0.1:3000 serves the UI
+  const desktopDist = path.join(root, 'packages', 'desktop', 'dist');
+  if (existsSync(desktopDist)) {
+    await copyDir(desktopDist, path.join(dest, 'dist'));
+    console.log('Copied desktop frontend to dist-server/dist/');
+  }
 }
 
 async function prepareGptSovits() {

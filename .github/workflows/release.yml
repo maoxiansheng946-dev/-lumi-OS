@@ -55,9 +55,6 @@ jobs:
       - name: Prepare desktop resources
         run: node scripts/prepare-desktop-resources.mjs
 
-      - name: Ensure .env stub exists (required by tauri bundle.resources)
-        run: node -e "require('fs').writeFileSync('packages/desktop/desktop-resources/dist-server/.env','')"
-
       - name: Patch tauri.conf.json for CI
         run: |
           node -e "

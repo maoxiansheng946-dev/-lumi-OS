@@ -34,7 +34,7 @@ export function installApiBridge(): void {
       }
 
       const absoluteUrl = getBackendOrigin() + url;
-      const patched: RequestInit = { ...init, credentials: 'include' };
+      const patched: RequestInit = { ...init };
 
       try {
         const storedToken = localStorage.getItem('lumi_auth_token');
