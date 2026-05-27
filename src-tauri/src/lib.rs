@@ -1053,7 +1053,7 @@ pub fn run() {
             } else {
                 eprintln!(
                     "[LumiOS] Backend not found. node.exe: {}, entry.cjs: {}, server.mjs: {}",
-                    node_exe.exists(),
+                    node_bin.exists(),
                     server_js.exists(),
                     server_bundle.exists()
                 );
