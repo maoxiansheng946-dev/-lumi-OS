@@ -117,17 +117,14 @@ DASHSCOPE_API_KEY=
 ### 启动
 
 ```bash
-# 启动后端（端口 3000）
-pnpm --filter @lumios/server dev
+# Web 版（一键启动后端 + 前端）
+pnpm dev
 
-# 另开终端，启动 Web 版（端口 5173）
-pnpm --filter @lumios/web dev
-
-# 或启动桌面客户端（需 Rust）
-pnpm --filter @lumios/desktop dev
+# 或桌面客户端（需 Rust）
+pnpm dev:desktop
 ```
 
-访问 `http://localhost:5173` 即可使用。
+访问 `http://localhost:5173`（Web）或 `http://localhost:5174`（桌面）。
 
 ---
 
