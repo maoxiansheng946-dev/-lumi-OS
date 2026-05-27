@@ -94,20 +94,30 @@ const isSourceServer =
   process.argv.some(arg => arg.replace(/\\/g, "/").endsWith("/index.ts") || arg === "index.ts");
 
 // JWT_SECRET must survive restarts (login tokens depend on it). If .env didn't
-// provide one, generate a random secret and persist it to the CWD .env so the
-// desktop app (which bundles node.exe) sees the same secret after restart.
+// provide one, check the writable data dir first, then generate a new one.
+if (!process.env.JWT_SECRET) {
+  try {
+    const { getDataDir } = await import('./utils/paths');
+    const envFile = path.join(getDataDir(), '.env');
+    if (fs.existsSync(envFile)) {
+      const content = fs.readFileSync(envFile, 'utf-8');
+      const match = content.match(/^JWT_SECRET=(.+)$/m);
+      if (match) process.env.JWT_SECRET = match[1].trim();
+    }
+  } catch {}
+}
 if (!process.env.JWT_SECRET) {
   const crypto = await import('crypto');
   const generated = crypto.randomBytes(32).toString('hex');
   process.env.JWT_SECRET = generated;
+  // Persist to writable data directory so it survives restarts
   try {
-    const localEnv = path.join(process.cwd(), '.env');
-    const existing = fs.existsSync(localEnv) ? fs.readFileSync(localEnv, 'utf-8') : '';
-    const hasSecret = /^JWT_SECRET=/m.test(existing);
-    fs.appendFileSync(localEnv, (hasSecret ? '' : (existing ? '\n' : '') + `JWT_SECRET=${generated}\n`));
-    console.log('[Server] Generated new JWT_SECRET — persisted to .env for future restarts');
+    const { getDataDir } = await import('./utils/paths');
+    const envFile = path.join(getDataDir(), '.env');
+    fs.appendFileSync(envFile, `JWT_SECRET=${generated}\n`);
+    console.log('[Server] Generated new JWT_SECRET — persisted to data dir');
   } catch (e: any) {
-    console.warn('[Server] Could not persist JWT_SECRET to .env:', e.message);
+    console.warn('[Server] Could not persist JWT_SECRET to data dir:', e.message);
   }
 }
 const JWT_SECRET = process.env.JWT_SECRET!;
