@@ -1011,6 +1011,21 @@ pub fn run() {
             let server_js = dist_server.join("entry.cjs");
             let server_bundle = dist_server.join("server.mjs");
 
+            // Build data dir path for crash log (matches server's getDataDir)
+            let data_dir = if cfg!(target_os = "windows") {
+                std::env::var("APPDATA").map(|p| PathBuf::from(p).join("LumiOS")).unwrap_or_else(|_| {
+                    dirs_next::home_dir().unwrap_or_default().join("AppData").join("Roaming").join("LumiOS")
+                })
+            } else if cfg!(target_os = "macos") {
+                dirs_next::home_dir().unwrap_or_default().join("Library").join("Application Support").join("LumiOS")
+            } else {
+                std::env::var("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|_| {
+                    dirs_next::home_dir().unwrap_or_default().join(".local").join("share").join("LumiOS")
+                })
+            };
+            let _ = std::fs::create_dir_all(&data_dir);
+            let crash_log = data_dir.join("crash.log");
+
             if node_exe.exists() && server_js.exists() && server_bundle.exists() {
                 let normalized_node = normalize_unc(&node_exe);
                 let normalized_entry = normalize_unc(&server_js);
@@ -1026,11 +1041,18 @@ pub fn run() {
                     .env("LUMI_DESKTOP", "1")
                     .env("HOST", "127.0.0.1")
                     .current_dir(&normalized_cwd);
-                // entry.cjs already monkey-patches child_process to hide windows;
-                // --require hide-console.cjs via NODE_OPTIONS is redundant and
-                // can cause startup failures if the file is missing from the bundle.
-                match spawn_hidden(&mut node_cmd)
+                // Redirect stderr to crash log so we can diagnose startup failures
+                if let Ok(log_file) = std::fs::File::create(&crash_log) {
+                    node_cmd.stderr(std::process::Stdio::from(log_file));
+                }
+                #[cfg(target_os = "windows")]
                 {
+                    use std::os::windows::process::CommandExt;
+                    node_cmd.creation_flags(0x08000000u32); // CREATE_NO_WINDOW
+                }
+                node_cmd.stdin(std::process::Stdio::null());
+                node_cmd.stdout(std::process::Stdio::null());
+                match node_cmd.spawn() {
                     Ok(child) => {
                         println!("[LumiOS] Backend PID: {}", child.id());
                         let app_state = app.state::<Mutex<BackendProcesses>>();
@@ -1043,10 +1065,15 @@ pub fn run() {
                         state.node = Some(child);
                     }
                     Err(e) => {
+                        let _ = std::fs::write(&crash_log, format!("spawn error: {}\nnode: {}\nentry: {}\n", e, normalized_node.display(), normalized_entry.display()));
                         eprintln!("[LumiOS] Failed to start backend: {}", e);
                     }
                 }
             } else {
+                let _ = std::fs::write(&crash_log, format!(
+                    "Backend files not found.\n{} exists: {}\nentry.cjs exists: {}\nserver.mjs exists: {}\n",
+                    node_name, node_exe.exists(), server_js.exists(), server_bundle.exists()
+                ));
                 eprintln!(
                     "[LumiOS] Backend not found. {}: {}, entry.cjs: {}, server.mjs: {}",
                     node_name,
