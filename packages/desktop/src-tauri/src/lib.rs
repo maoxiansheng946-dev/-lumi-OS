@@ -1128,21 +1128,14 @@ pub fn run() {
             }
             } // end else (release mode spawns backend)
 
-            // ── Wait for backend to be ready, then navigate to HTTP server ──
+            // ── Wait for backend to be ready (meta-refresh in frontend redirects to HTTP) ──
             if !cfg!(debug_assertions) {
                 for i in 0..60 {
-                    match std::net::TcpStream::connect("127.0.0.1:3000") {
-                        Ok(_) => {
-                            println!("[LumiOS] Backend ready after {}ms", i * 500);
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.eval("window.location.replace('http://127.0.0.1:3000')");
-                            }
-                            break;
-                        }
-                        Err(_) => {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
+                    if std::net::TcpStream::connect("127.0.0.1:3000").is_ok() {
+                        println!("[LumiOS] Backend ready after {}ms", i * 500);
+                        break;
                     }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }
 

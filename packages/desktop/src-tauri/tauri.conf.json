@@ -26,7 +26,8 @@
         "alwaysOnTop": true,
         "alwaysOnBottom": false,
         "skipTaskbar": false,
-        "shadow": false
+        "shadow": false,
+        "url": "http://127.0.0.1:3000"
       }
     ],
     "security": {
