@@ -2,8 +2,9 @@ import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { getDataDir } from '../utils/paths';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'lumi.db');
+const DB_PATH = path.join(getDataDir(), 'lumi.db');
 const DB_DIR = path.dirname(DB_PATH);
 
 if (!fs.existsSync(DB_DIR)) {

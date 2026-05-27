@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import os from 'os';
 import { TTSResult, VoiceListItem } from '../types';
 import { getKey } from '../../config/keys';
+import { getDataDir } from '../../utils/paths';
 
 const BASE_URL = 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer';
 
@@ -113,7 +114,7 @@ export async function cloneVoice(sampleUrls: string[], name: string): Promise<st
   try {
     const u = new URL(firstUrl);
     const relativePath = u.pathname.replace(/^\/api\/voice\/samples\//, '');
-    localPath = path.join(process.cwd(), 'data', 'voice_samples', relativePath);
+    localPath = path.join(getDataDir(), 'voice_samples', relativePath);
     if (!fs.existsSync(localPath)) {
       throw new Error(`Sample file not found: ${localPath}`);
     }
