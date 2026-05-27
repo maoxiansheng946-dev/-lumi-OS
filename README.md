@@ -82,13 +82,21 @@ LumiOS 是这个愿景的第一个落地形态。
 
 ## 快速开始
 
-### 环境要求
+### Windows 一键启动（推荐）
+
+1. [下载 ZIP](https://github.com/maoxiansheng946-dev/-lumi-OS/archive/refs/heads/main.zip) 并解压
+2. 双击 `setup.bat`
+3. 按提示填写 API Key，再次双击启动
+
+### 开发者 / 命令行方式
+
+#### 环境要求
 - Node.js 22+
 - pnpm 11+
 - Rust（用于 Tauri 桌面端）
 - Tauri 系统依赖（Linux：[webkit2gtk-4.1](https://v2.tauri.app/start/prerequisites/#linux)）
 
-### 安装
+#### 安装
 
 ```bash
 git clone https://github.com/maoxiansheng946-dev/-lumi-OS.git
