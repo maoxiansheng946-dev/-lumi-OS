@@ -48,13 +48,6 @@
         "installerHooks": "./includes/include-dll.nsh"
       }
     },
-    "macOS": {
-      "entitlements": "./entitlements.plist",
-      "info": {
-        "NSMicrophoneUsageDescription": "Lumi OS needs microphone access for voice interaction",
-        "NSCameraUsageDescription": "Lumi OS needs camera access for video calls"
-      }
-    },
     "linux": {
       "deb": {
         "depends": [
