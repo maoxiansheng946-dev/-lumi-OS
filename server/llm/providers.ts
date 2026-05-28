@@ -23,6 +23,11 @@ interface ToolDeclaration {
   };
 }
 
+interface MimoTokenPlanClient {
+  apiKey: string;
+  baseURL: string;
+}
+
 // ── DeepSeek (OpenAI-compatible) ──
 
 export function formatDeepSeekRequest(params: {
@@ -271,6 +276,46 @@ export function formatQwenRequest(params: {
   };
 }
 
+function buildMimoHeaders(apiKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'api-key': apiKey,
+  };
+}
+
+async function callMimoTokenPlan(
+  client: MimoTokenPlanClient,
+  params: ReturnType<typeof formatQwenRequest>,
+): Promise<any> {
+  const response = await fetch(`${client.baseURL}/chat/completions`, {
+    method: 'POST',
+    headers: buildMimoHeaders(client.apiKey),
+    body: JSON.stringify({
+      ...params,
+      max_completion_tokens: params.max_tokens,
+      thinking: { type: 'disabled' },
+    }),
+  });
+
+  const rawText = await response.text();
+  let parsed: any = null;
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    parsed = { error: { message: rawText || `HTTP ${response.status}` } };
+  }
+
+  if (!response.ok) {
+    const message = parsed?.error?.message || `Mimo request failed with HTTP ${response.status}`;
+    const err: any = new Error(message);
+    err.status = response.status;
+    err.response = parsed;
+    throw err;
+  }
+
+  return parsed;
+}
+
 // ── Anthropic ──
 
 export function formatAnthropicRequest(params: {
@@ -359,15 +404,34 @@ export function parseAnthropicResponse(rawResponse: any): NormalizedLLMResponse 
 export async function makeLLMCall(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'mimo'; model: string; maxTokens?: number; userId?: string },
   getDeepSeek: () => any,
   getGemini: () => any,
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
+  getMimo?: () => any,
 ): Promise<NormalizedLLMResponse> {
+  if (config.provider === 'mimo') {
+    const client = getMimo?.();
+    if (!client) throw new Error('mimo not configured (API key missing)');
+
+    const params = formatQwenRequest({
+      model: config.model,
+      messages,
+      toolDeclarations,
+      maxTokens: config.maxTokens,
+      userId: config.userId,
+    });
+
+    const response = await callMimoTokenPlan(client, params);
+    return parseDeepSeekResponse(response);
+  }
+
   if (config.provider === 'deepseek' || config.provider === 'qwen') {
-    const client = config.provider === 'deepseek' ? getDeepSeek() : getQwen?.();
+    const client = config.provider === 'deepseek'
+      ? getDeepSeek()
+      : getQwen?.();
     if (!client) throw new Error(`${config.provider} not configured (API key missing)`);
 
     const formatFn = config.provider === 'qwen' ? formatQwenRequest : formatDeepSeekRequest;
@@ -440,14 +504,31 @@ export type StreamCallback = (chunk: string) => void;
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'mimo'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
   onChunk: StreamCallback,
   getDeepSeek: () => any,
   getGemini: () => any,
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
+  getMimo?: () => any,
 ): Promise<NormalizedLLMResponse> {
+  if (config.provider === 'mimo') {
+    const result = await makeLLMCall(
+      messages,
+      toolDeclarations,
+      { provider: 'mimo', model: config.model, maxTokens: config.maxTokens, userId: config.userId },
+      getDeepSeek,
+      getGemini,
+      getOpenAI,
+      getAnthropic,
+      getQwen,
+      getMimo,
+    );
+    if (result.text) onChunk(result.text);
+    return result;
+  }
+
   // ── DeepSeek / OpenAI / Qwen (OpenAI-compatible streaming) ──
   if (config.provider === 'deepseek' || config.provider === 'openai' || config.provider === 'qwen') {
     const client = config.provider === 'deepseek' ? getDeepSeek()

@@ -8,6 +8,15 @@ import { scheduler } from "../scheduler";
 import { loadKeys, saveKeys, getKey, getAllKeyNames } from "../config/keys";
 import { getLatencyStats } from "../monitor/latency_store";
 
+const DEFAULT_MODELS: Record<string, string> = {
+  deepseek: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
+  gemini: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  openai: process.env.OPENAI_MODEL || 'gpt-4o',
+  anthropic: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+  qwen: process.env.QWEN_MODEL || 'qwen3.6-plus',
+  mimo: process.env.MIMO_MODEL || 'mimo-v2.5-pro',
+};
+
 export function mountSystemRoutes(router: Router, jwtSecret: string) {
   // Health Check
   router.get("/health", (req, res) => {
@@ -107,11 +116,12 @@ export function mountSystemRoutes(router: Router, jwtSecret: string) {
       !!(process.env[envKey] && process.env[envKey]!.length > 0) || !!stored[storeKey as keyof typeof stored];
     res.json({
       providers: {
-        deepseek: { available: envOrStore('DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY'), model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' },
-        gemini: { available: envOrStore('GEMINI_API_KEY', 'GEMINI_API_KEY'), model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' },
-        openai: { available: envOrStore('OPENAI_API_KEY', 'OPENAI_API_KEY'), model: process.env.OPENAI_MODEL || 'gpt-4o' },
-        anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' },
-        qwen: { available: envOrStore('QWEN_API_KEY', 'DASHSCOPE_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: process.env.QWEN_MODEL || 'qwen-plus' },
+        deepseek: { available: envOrStore('DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY'), model: DEFAULT_MODELS.deepseek },
+        gemini: { available: envOrStore('GEMINI_API_KEY', 'GEMINI_API_KEY'), model: DEFAULT_MODELS.gemini },
+        openai: { available: envOrStore('OPENAI_API_KEY', 'OPENAI_API_KEY'), model: DEFAULT_MODELS.openai },
+        anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: DEFAULT_MODELS.anthropic },
+        qwen: { available: envOrStore('QWEN_API_KEY', 'QWEN_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: DEFAULT_MODELS.qwen },
+        mimo: { available: envOrStore('MIMO_API_KEY', 'MIMO_API_KEY'), model: DEFAULT_MODELS.mimo },
       },
     });
   });
@@ -127,6 +137,7 @@ export function mountSystemRoutes(router: Router, jwtSecret: string) {
         openai: apiKey || process.env.OPENAI_API_KEY || stored.OPENAI_API_KEY,
         anthropic: apiKey || process.env.ANTHROPIC_API_KEY || stored.ANTHROPIC_API_KEY,
         qwen: apiKey || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || stored.QWEN_API_KEY || stored.DASHSCOPE_API_KEY,
+        mimo: apiKey || process.env.MIMO_API_KEY || stored.MIMO_API_KEY,
       };
       const key = keyMap[provider];
       if (!key) {
