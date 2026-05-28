@@ -1,4 +1,13 @@
-name: LumiOS CI
+# =============================================================================
+# LumiOS CI/CD Pipeline
+# =============================================================================
+# Triggers:
+#   push/PR to main   → typecheck, test, build, Docker image
+#   push to main      → + Docker push
+#   workflow_dispatch → manual trigger
+# =============================================================================
+
+name: LumiOS CI/CD
 
 on:
   push:
@@ -7,8 +16,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Docker image registry — set these in GitHub repo secrets:
+#   DOCKER_REGISTRY  (e.g. ghcr.io or docker.io)
+#   DOCKER_USERNAME
+#   DOCKER_PASSWORD
+env:
+  DOCKER_IMAGE_NAME: lumi-os
+
 jobs:
-  # ── PR checks (unchanged) ──
+  # ── PR verification jobs ──────────────────────────────────────────────────
 
   typecheck:
     name: TypeScript type-check
@@ -17,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
@@ -29,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
       - run: npm ci
       - name: Build frontend dist
@@ -47,7 +63,9 @@ jobs:
       - name: Install Tauri system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libdbus-1-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev libdbus-1-dev
       - name: Check Rust backend
         run: cargo check --release
         working-directory: src-tauri
@@ -59,7 +77,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
       - run: npm ci
       - run: npm test
@@ -71,92 +89,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
       - run: npm ci
       - run: npx vite build
 
-  # ── Cross-platform installer builds ──
+  # ── Docker image build & push ─────────────────────────────────────────────
 
-  build:
-    name: Build (${{ matrix.target }})
-    needs: [typecheck, rust-check, test, frontend-build]
+  docker:
+    name: Docker build & push
+    needs: [typecheck, test, frontend-build]
+    # Push to registry only on main branch pushes (not PRs)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: windows-x64
-            runner: windows-latest
-            artifact-path: src-tauri/target/release/bundle/nsis/*
-          - target: macos-arm64
-            runner: macos-latest
-            artifact-path: src-tauri/target/release/bundle/dmg/*
-          - target: linux-x64
-            runner: ubuntu-latest
-            artifact-path: |
-              src-tauri/target/release/bundle/deb/*
-              src-tauri/target/release/bundle/appimage/*
-
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # needed for ghcr.io push
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          node-version: 20
-          cache: 'npm'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Linux system deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libdbus-1-dev
-
-      - run: npm ci
-
-      - name: Download Node.js binary
-        run: node scripts/download-node-binary.mjs
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          workspaces: src-tauri
+          images: ghcr.io/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build Tauri app
-        run: npm run tauri:build
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
-          name: lumi-os-${{ matrix.target }}
-          path: ${{ matrix.artifact-path }}
-          if-no-files-found: error
-
-  # ── GitHub Release ──
-
-  release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: lumi-os-*
-          path: artifacts
-          merge-multiple: true
-
-      - name: Generate release tag
-        id: tag
-        run: echo "tag=v$(date +'%Y.%m.%d')-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Release ${{ steps.tag.outputs.tag }}
-          files: artifacts/**
-          draft: false
-          prerelease: true
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # ── Build-time secrets (not baked into image layers) ──
+          # These are passed as --mount=type=secret in Dockerfile
+          # secrets: |
+          #   NPM_TOKEN=${{ secrets.NPM_TOKEN }}
