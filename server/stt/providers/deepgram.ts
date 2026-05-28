@@ -36,10 +36,7 @@ export function createStream(
 
   const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
 
-  const WebSocketImpl = (globalThis as any).WebSocket;
-  if (!WebSocketImpl) {
-    throw new Error('WebSocket not available. Requires Node.js 22+ or install ws package.');
-  }
+  const WebSocketImpl = (globalThis as any).WebSocket || require('ws');
   const ws = new WebSocketImpl(url, {
     headers: { Authorization: `Token ${apiKey}` },
   });

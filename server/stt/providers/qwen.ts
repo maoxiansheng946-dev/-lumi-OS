@@ -24,10 +24,7 @@ export function createStream(
   const model = 'qwen3-asr-flash-realtime';
   const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`;
 
-  const WebSocketImpl = (globalThis as any).WebSocket;
-  if (!WebSocketImpl) {
-    throw new Error('WebSocket not available. Requires Node.js 22+ or install ws package.');
-  }
+  const WebSocketImpl = (globalThis as any).WebSocket || require('ws');
 
   const ws = new WebSocketImpl(url, {
     headers: { Authorization: `bearer ${apiKey}` },
