@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Socket } from 'socket.io-client';
+import { isTauriRuntime } from '../services/apiBridge';
+
+const isMacOS = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
+const isTauri = isTauriRuntime();
+const useServerMic = isMacOS && isTauri;
 
 interface UseWakeWordOptions {
   /** Socket.IO connection for server-side Qwen ASR wake word detection */
@@ -177,6 +182,55 @@ export function useWakeWord({
     }
   }, [voiceId, personalityId, agentId, startCallRef, cleanupAudio, onDetection, isCallActive, onInterrupt]);
 
+  // ── Server-side mic wake detection (macOS unsigned app fallback) ──
+  // When getUserMedia fails on macOS (unsigned Tauri app can't trigger TCC),
+  // the server captures mic via ffmpeg/avfoundation and runs wake detection.
+
+  const enableServerMicWake = useCallback(async () => {
+    const s = socketRef.current;
+    if (!s?.connected) {
+      setError('Socket not connected — retrying...');
+      return;
+    }
+
+    try {
+      setError(null);
+      console.log('[WakeWord-ServerMic] Using server-side microphone capture');
+
+      s.off('wake:detected');
+      s.off('wake:started');
+      s.off('wake:error');
+
+      s.on('wake:detected', (data: { keyword: string; timestamp: string }) => {
+        console.log('[WakeWord-ServerMic] Detected:', data.keyword);
+        setLastDetection(data.timestamp);
+        onDetection?.();
+
+        if (isCallActive?.()) {
+          onInterrupt?.();
+        } else {
+          startCallRef.current?.(voiceId, personalityId, agentId);
+        }
+      });
+
+      s.on('wake:started', () => {
+        console.log('[WakeWord-ServerMic] Server confirmed, listening');
+        setIsListening(true);
+        setIsSupported(true);
+      });
+
+      s.on('wake:error', (data: { message: string }) => {
+        console.warn('[WakeWord-ServerMic] Server error:', data.message);
+        setError(data.message);
+      });
+
+      console.log('[WakeWord-ServerMic] Emitting wake:start_server_mic');
+      s.emit('wake:start_server_mic');
+    } catch (err: any) {
+      setError(err.message || 'Failed to start server mic wake detection');
+    }
+  }, [voiceId, personalityId, agentId, startCallRef, onDetection, isCallActive, onInterrupt]);
+
   // ── Picovoice on-device detection (fallback) ──
 
   const enablePicovoice = useCallback(async () => {
@@ -278,7 +332,10 @@ export function useWakeWord({
     // Stop any existing session first
     disable();
 
-    if (accessKey) {
+    if (useServerMic) {
+      console.log('[WakeWord] Using server mic (macOS Tauri workaround)');
+      await enableServerMicWake();
+    } else if (accessKey) {
       console.log('[WakeWord] Using Picovoice (on-device)');
       await enablePicovoice();
     } else if (socketRef.current?.connected) {
@@ -288,7 +345,7 @@ export function useWakeWord({
       console.log('[WakeWord] No Picovoice key and socket not connected, waiting...');
       setError('Waiting for connection...');
     }
-  }, [accessKey, disable, enablePicovoice, enableQwenWake]);
+  }, [accessKey, disable, enablePicovoice, enableQwenWake, enableServerMicWake]);
 
   // Auto-start / stop — includes socket state so it retries when connection becomes available
   useEffect(() => {

@@ -63,6 +63,7 @@ import { registerChatHandler } from "./server/socket/chat";
 import { registerTaskHandler } from "./server/socket/task";
 import { registerVoiceHandlers, isEchoText, isTtsPlaying } from "./server/socket/voice";
 import { createWakeDetector, isWakeWord } from "./server/stt/wake_detector";
+import { createSystemMic, type SystemMic } from "./server/audio/system_mic";
 import { getSensory, perceptionEvents, MAX_PERCEPTION_EVENTS } from "./server/socket/shared";
 import { loadKeys, saveKeys, getKey, getAllKeyNames } from "./server/config/keys";
 import { getLatencyStats, recordLatency } from "./server/monitor/latency_store";
@@ -1927,11 +1928,11 @@ io.on("connection", (socket) => {
 
   // ── Wake Word Detection via Qwen ASR (server-side, works in WebView2) ──
   let wakeDetector: ReturnType<typeof createWakeDetector> | null = null;
+  let wakeSystemMic: SystemMic | null = null;
 
   socket.on("wake:start", async () => {
     const uid = getUserIdFromSocket(socket);
     try {
-      // Stop any existing detector
       if (wakeDetector) { try { wakeDetector.stop(); } catch {} }
       wakeDetector = createWakeDetector(undefined, isEchoText);
 
@@ -1952,9 +1953,48 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("wake:start_server_mic", async () => {
+    const uid = getUserIdFromSocket(socket);
+    try {
+      if (wakeDetector) { try { wakeDetector.stop(); } catch {} }
+      if (wakeSystemMic) { wakeSystemMic.stop(); wakeSystemMic.removeAllListeners(); }
+
+      wakeDetector = createWakeDetector(undefined, isEchoText);
+      wakeSystemMic = createSystemMic();
+
+      wakeDetector.onWake((keyword: string) => {
+        logger.info(`[Wake] "${keyword}" detected for user ${uid}`);
+        socket.emit("wake:detected", { keyword, timestamp: new Date().toISOString() });
+      });
+
+      wakeDetector.onError((err: Error) => {
+        logger.error(`[Wake] Error for user ${uid}:`, err.message);
+        socket.emit("wake:error", { message: err.message });
+      });
+
+      wakeSystemMic.on('data', (chunk: Buffer) => {
+        if (!wakeDetector || isTtsPlaying()) return;
+        try {
+          wakeDetector.sendAudio(chunk);
+        } catch {}
+      });
+
+      wakeSystemMic.on('error', (err: Error) => {
+        logger.error(`[Wake] SystemMic error: ${err.message}`);
+        socket.emit("wake:error", { message: `System mic: ${err.message}` });
+      });
+
+      await wakeSystemMic.start();
+      socket.emit("wake:started");
+      logger.info(`[Wake] Started (server mic) for user ${uid}`);
+    } catch (err: any) {
+      socket.emit("wake:error", { message: err.message || 'Failed to start server mic wake detector' });
+    }
+  });
+
   socket.on("wake:audio", (data: { audio: number[] }) => {
     if (!wakeDetector) return;
-    if (isTtsPlaying()) return; // suppress echo during TTS playback
+    if (isTtsPlaying()) return;
     try {
       const buf = Buffer.from(new Int16Array(data.audio).buffer);
       wakeDetector.sendAudio(buf);
@@ -1965,6 +2005,11 @@ io.on("connection", (socket) => {
     if (wakeDetector) {
       try { wakeDetector.stop(); } catch {}
       wakeDetector = null;
+    }
+    if (wakeSystemMic) {
+      wakeSystemMic.stop();
+      wakeSystemMic.removeAllListeners();
+      wakeSystemMic = null;
     }
   });
 

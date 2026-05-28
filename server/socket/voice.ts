@@ -18,6 +18,7 @@ import { runOrchestratedTask, classifyComplexity } from "../agents/orchestrator"
 import { queryMemories, addMemory } from "../memory/store";
 import { matchQuickCommand } from "../cognition/quick_commands";
 import { recordTokenUsage } from "../llm/token_tracker";
+import { createSystemMic, type SystemMic } from "../audio/system_mic";
 
 interface AudioSession {
   sttSession: ReturnType<typeof createStreamingSession> | null;
@@ -46,6 +47,8 @@ interface AudioSession {
   lastChunkTime: number;
   /** Timer to auto-close STT session after prolonged silence (5min) */
   silenceTimer: ReturnType<typeof setTimeout> | null;
+  /** Server-side system mic capture (macOS unsigned app fallback) */
+  systemMic: SystemMic | null;
 }
 
 // Module-level ambient noise tracking — used by both processVoiceInput and registerVoiceHandlers
@@ -132,6 +135,7 @@ function getAudioSession(socket: Socket): AudioSession {
       silenceTimer: null,
       userId: '',
       agentId: 'lumi',
+      systemMic: null,
     };
   }
   return socket.data.audioSession as AudioSession;
@@ -637,8 +641,8 @@ export function registerVoiceHandlers(
   sensoryFn: (uid: string) => any,
   getUserId: (s: Socket) => string,
 ) {
-  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string }) => {
-    logger.info(`[Audio] Voice call started by ${socket.id}`);
+  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string; useServerMic?: boolean }) => {
+    logger.info(`[Audio] Voice call started by ${socket.id}${data.useServerMic ? ' (server mic)' : ''}`);
     const session = getAudioSession(socket);
     session.isActive = true;
     session.accumulatedText = '';
@@ -764,6 +768,24 @@ export function registerVoiceHandlers(
       socket.emit("audio:status", { status: "listening" });
       socket.emit("audio:error", { message: "No STT provider configured. Set DASHSCOPE_API_KEY or DEEPGRAM_API_KEY." });
     }
+
+    // Server-side mic capture (macOS unsigned app fallback)
+    if (data.useServerMic && !session.systemMic) {
+      session.systemMic = createSystemMic();
+      session.systemMic.on('data', (chunk: Buffer) => {
+        if (session.sttSession && session.isActive) {
+          session.sttSession.sendAudio(chunk);
+          session.lastChunkTime = Date.now();
+          resetSilenceTimer(session, socket);
+        }
+      });
+      session.systemMic.on('error', (err: Error) => {
+        logger.error(`[Audio] SystemMic error: ${err.message}`);
+        socket.emit("audio:error", { message: `System mic: ${err.message}` });
+      });
+      session.systemMic.start();
+      logger.info(`[Audio] System mic started for ${socket.id}`);
+    }
   });
 
   let chunkCount = 0;
@@ -813,6 +835,11 @@ export function registerVoiceHandlers(
     if (session.sttSession) {
       session.sttSession.end();
       session.sttSession = null;
+    }
+    if (session.systemMic) {
+      session.systemMic.stop();
+      session.systemMic.removeAllListeners();
+      session.systemMic = null;
     }
     socket.emit("audio:status", { status: "idle" });
   });
@@ -1057,6 +1084,11 @@ export function registerVoiceHandlers(
       if (session.sttSession) {
         session.sttSession.end();
         session.sttSession = null;
+      }
+      if (session.systemMic) {
+        session.systemMic.stop();
+        session.systemMic.removeAllListeners();
+        session.systemMic = null;
       }
     }
     console.log(`[Socket] Client disconnected: ${socket.id}`);

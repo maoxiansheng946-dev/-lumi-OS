@@ -1,4 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { isTauriRuntime } from '../services/apiBridge';
+
+const isMacOS = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
+const isTauri = isTauriRuntime();
+const useServerMic = isMacOS && isTauri;
 
 export type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'queued' | 'passive';
 
@@ -384,56 +389,62 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       setError(null);
       setCallState('connecting');
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      streamRef.current = stream;
+      if (useServerMic) {
+        // macOS unsigned Tauri app can't access getUserMedia.
+        // Server captures mic via ffmpeg/avfoundation and pipes to STT.
+        console.log('[VoiceCall] Using server-side mic capture');
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        streamRef.current = stream;
 
-      // Set up audio level monitoring (16000 Hz matches Deepgram linear16 config)
-      audioContext.current = new AudioContext({ sampleRate: 16000 });
-      const source = audioContext.current.createMediaStreamSource(stream);
-      analyser.current = audioContext.current.createAnalyser();
-      analyser.current.fftSize = 256;
-      source.connect(analyser.current);
-      updateAudioLevel();
+        // Set up audio level monitoring (16000 Hz matches Deepgram linear16 config)
+        audioContext.current = new AudioContext({ sampleRate: 16000 });
+        const source = audioContext.current.createMediaStreamSource(stream);
+        analyser.current = audioContext.current.createAnalyser();
+        analyser.current.fftSize = 256;
+        source.connect(analyser.current);
+        updateAudioLevel();
 
-      // Set up ScriptProcessorNode to capture raw PCM (linear16) for Deepgram
-      const bufferSize = 4096;
-      const scriptProcessor = audioContext.current.createScriptProcessor(bufferSize, 1, 1);
+        // Set up ScriptProcessorNode to capture raw PCM (linear16) for Deepgram
+        const bufferSize = 4096;
+        const scriptProcessor = audioContext.current.createScriptProcessor(bufferSize, 1, 1);
 
-      scriptProcessor.onaudioprocess = (event) => {
-        if (!socket?.connected) return;
-        // Always send mic audio — server STT handles barge-in detection
-        // Echo cancellation is in getUserMedia (echoCancellation: true)
-        const input = event.inputBuffer.getChannelData(0);
-        // Convert float32 [-1,1] to int16 PCM
-        const int16 = new Int16Array(input.length);
-        for (let i = 0; i < input.length; i++) {
-          const s = Math.max(-1, Math.min(1, input[i]));
-          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        socket.emit('audio:chunk', new Uint8Array(int16.buffer));
-      };
+        scriptProcessor.onaudioprocess = (event) => {
+          if (!socket?.connected) return;
+          // Always send mic audio — server STT handles barge-in detection
+          // Echo cancellation is in getUserMedia (echoCancellation: true)
+          const input = event.inputBuffer.getChannelData(0);
+          // Convert float32 [-1,1] to int16 PCM
+          const int16 = new Int16Array(input.length);
+          for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]));
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          socket.emit('audio:chunk', new Uint8Array(int16.buffer));
+        };
 
-      source.connect(scriptProcessor);
-      // Mute output to speakers to prevent feedback loop
-      const zeroGain = audioContext.current.createGain();
-      zeroGain.gain.value = 0;
-      scriptProcessor.connect(zeroGain);
-      zeroGain.connect(audioContext.current.destination);
+        source.connect(scriptProcessor);
+        // Mute output to speakers to prevent feedback loop
+        const zeroGain = audioContext.current.createGain();
+        zeroGain.gain.value = 0;
+        scriptProcessor.connect(zeroGain);
+        zeroGain.connect(audioContext.current.destination);
 
-      scriptProcessorRef.current = scriptProcessor;
+        scriptProcessorRef.current = scriptProcessor;
+      }
 
       isCallActive.current = true;
       callStartTime.current = Date.now();
       timerInterval.current = setInterval(() => {
         setElapsedSeconds(Math.floor((Date.now() - callStartTime.current) / 1000));
       }, 1000);
-      socket.emit('audio:start', { voiceId, personalityId, agentId });
+      socket.emit('audio:start', { voiceId, personalityId, agentId, useServerMic });
     } catch (err: any) {
       setError(err.message || 'Failed to start voice call');
       setCallState('idle');
