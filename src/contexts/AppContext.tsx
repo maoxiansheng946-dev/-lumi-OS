@@ -92,7 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     const saved = localStorage.getItem('lumi_ai_config');
-    return saved ? JSON.parse(saved) : { provider: 'deepseek', model: 'deepseek-chat', apiKey: '' };
+    return saved ? JSON.parse(saved) : { provider: 'deepseek', model: 'deepseek-v4-pro', apiKey: '' };
   });
   // Voice state
   const [selectedVoiceId, setSelectedVoiceIdState] = useState<string | undefined>(() => {
@@ -133,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           try { return JSON.parse(localStorage.getItem('lumi_llm_models') || '{}'); } catch { return {}; }
         })();
         const defaults: Record<string, string> = {
-          qwen: 'qwen-plus', deepseek: 'deepseek-chat', openai: 'gpt-4o',
+          qwen: 'qwen3.6-plus', deepseek: 'deepseek-v4-pro', mimo: 'mimo-v2.5-pro', openai: 'gpt-4o',
           gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-4-6',
         };
         resolved.model = savedModels[newConfig.provider] || defaults[newConfig.provider] || '';
@@ -146,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const KEY_MAP: Record<string, string> = {
           qwen: 'DASHSCOPE_API_KEY',
           deepseek: 'DEEPSEEK_API_KEY',
+          mimo: 'MIMO_API_KEY',
           openai: 'OPENAI_API_KEY',
           gemini: 'GEMINI_API_KEY',
           anthropic: 'ANTHROPIC_API_KEY',

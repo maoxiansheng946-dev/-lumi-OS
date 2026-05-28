@@ -98,6 +98,19 @@ let anthropic: Anthropic | null = null;
 let gemini: GoogleGenerativeAI | null = null;
 let deepseek: OpenAI | null = null;
 let qwen: OpenAI | null = null;
+let mimo: { apiKey: string; baseURL: string } | null = null;
+
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+const QWEN_BASE_URL = process.env.QWEN_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://coding.dashscope.aliyuncs.com/v1";
+const MIMO_BASE_URL = process.env.MIMO_BASE_URL || "https://token-plan-cn.xiaomimimo.com/v1";
+const DEFAULT_MODELS: Record<string, string> = {
+  deepseek: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro",
+  qwen: process.env.QWEN_MODEL || "qwen3.6-plus",
+  mimo: process.env.MIMO_MODEL || "mimo-v2.5-pro",
+  openai: process.env.OPENAI_MODEL || "gpt-4o",
+  gemini: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+  anthropic: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+};
 
 function getOpenAI() {
   const key = process.env.OPENAI_API_KEY || getKey('OPENAI_API_KEY');
@@ -130,7 +143,7 @@ function getDeepSeek() {
   if (!deepseek && key) {
     deepseek = new OpenAI({
       apiKey: key,
-      baseURL: "https://api.deepseek.com"
+      baseURL: DEEPSEEK_BASE_URL,
     });
   }
   return deepseek;
@@ -142,11 +155,19 @@ function getQwen() {
     if (key) {
       qwen = new OpenAI({
         apiKey: key,
-        baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        baseURL: QWEN_BASE_URL,
       });
     }
   }
   return qwen;
+}
+
+function getMimo() {
+  const key = process.env.MIMO_API_KEY || getKey('MIMO_API_KEY');
+  if (!mimo && key) {
+    mimo = { apiKey: key, baseURL: MIMO_BASE_URL };
+  }
+  return mimo;
 }
 
 // Allow credentials from any origin (Tauri webview, localhost, etc.)
@@ -570,11 +591,12 @@ apiRouter.get("/llm/providers", (_req, res) => {
     !!(process.env[envKey] && process.env[envKey]!.length > 0) || !!stored[storeKey as keyof typeof stored];
   res.json({
     providers: {
-      deepseek: { available: envOrStore('DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY'), model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' },
-      gemini: { available: envOrStore('GEMINI_API_KEY', 'GEMINI_API_KEY'), model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' },
-      openai: { available: envOrStore('OPENAI_API_KEY', 'OPENAI_API_KEY'), model: process.env.OPENAI_MODEL || 'gpt-4o' },
-      anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' },
-      qwen: { available: envOrStore('QWEN_API_KEY', 'DASHSCOPE_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: process.env.QWEN_MODEL || 'qwen-plus' },
+      deepseek: { available: envOrStore('DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY'), model: DEFAULT_MODELS.deepseek },
+      gemini: { available: envOrStore('GEMINI_API_KEY', 'GEMINI_API_KEY'), model: DEFAULT_MODELS.gemini },
+      openai: { available: envOrStore('OPENAI_API_KEY', 'OPENAI_API_KEY'), model: DEFAULT_MODELS.openai },
+      anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: DEFAULT_MODELS.anthropic },
+      qwen: { available: envOrStore('QWEN_API_KEY', 'QWEN_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: DEFAULT_MODELS.qwen },
+      mimo: { available: envOrStore('MIMO_API_KEY', 'MIMO_API_KEY'), model: DEFAULT_MODELS.mimo },
     },
   });
 });
@@ -590,6 +612,7 @@ apiRouter.post("/llm/test", async (req, res) => {
       openai: process.env.OPENAI_API_KEY || stored.OPENAI_API_KEY,
       anthropic: process.env.ANTHROPIC_API_KEY || stored.ANTHROPIC_API_KEY,
       qwen: process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || stored.QWEN_API_KEY || stored.DASHSCOPE_API_KEY,
+      mimo: process.env.MIMO_API_KEY || stored.MIMO_API_KEY,
     };
     const key = keyMap[provider];
     if (!key) {
@@ -669,14 +692,39 @@ apiRouter.post("/ai/chat", asyncHandler(async (req, res) => {
       } else if (provider === "anthropic") {
         const client = new Anthropic({ apiKey: userKey });
         const response = await client.messages.create({
-          model: model || "claude-sonnet-4-6", max_tokens: 1024,
+          model: model || DEFAULT_MODELS.anthropic, max_tokens: 1024,
           messages: messages || [{ role: "user", content: prompt }]
         });
         responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+      } else if (provider === "mimo") {
+        const response = await fetch(`${MIMO_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": userKey,
+          },
+          body: JSON.stringify({
+            model: model || DEFAULT_MODELS.mimo,
+            messages: messages || [{ role: "user", content: prompt }],
+            max_completion_tokens: 1024,
+            thinking: { type: "disabled" },
+          }),
+        });
+        const raw = await response.text();
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!response.ok) {
+          throw new Error(parsed?.error?.message || `Mimo request failed with HTTP ${response.status}`);
+        }
+        responseText = parsed?.choices?.[0]?.message?.content || "";
       } else {
-        const client = new OpenAI({ apiKey: userKey, baseURL: provider === "deepseek" ? "https://api.deepseek.com" : provider === "qwen" ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : undefined });
+        const providerBaseURL =
+          provider === "deepseek" ? DEEPSEEK_BASE_URL
+          : provider === "qwen" ? QWEN_BASE_URL
+          : provider === "mimo" ? MIMO_BASE_URL
+          : undefined;
+        const client = new OpenAI({ apiKey: userKey, baseURL: providerBaseURL });
         const response = await client.chat.completions.create({
-          model: model || (provider === "deepseek" ? "deepseek-chat" : provider === "qwen" ? "qwen-plus" : "gpt-4o"),
+          model: model || DEFAULT_MODELS[provider] || DEFAULT_MODELS.openai,
           messages: messages || [{ role: "user", content: prompt }]
         });
         responseText = response.choices[0].message.content || '';
@@ -704,12 +752,14 @@ apiRouter.post("/ai/chat", asyncHandler(async (req, res) => {
         const result = await runWithTools(
           normalizedMessages,
           toolRegistry,
-          { provider, model: model || 'gemini-2.0-flash', userId },
+          { provider, model: model || DEFAULT_MODELS[provider] || DEFAULT_MODELS.gemini, userId },
           undefined, 3,
           getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
           (chunk) => {
             res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
           },
+          undefined,
+          getMimo,
         );
 
         responseText = result.text || '';
@@ -721,13 +771,16 @@ apiRouter.post("/ai/chat", asyncHandler(async (req, res) => {
         return res.end();
       }
 
-      const result = await runWithTools(
-        normalizedMessages,
-        toolRegistry,
-        { provider, model: model || 'gemini-2.0-flash', userId },
-        undefined, 3,
-        getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
-      );
+        const result = await runWithTools(
+          normalizedMessages,
+          toolRegistry,
+          { provider, model: model || DEFAULT_MODELS[provider] || DEFAULT_MODELS.gemini, userId },
+          undefined, 3,
+          getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
+          undefined,
+          undefined,
+          getMimo,
+        );
 
       responseText = result.text || '';
       const tokens = estimateTokens(
