@@ -89,15 +89,10 @@ jobs:
         include:
           - target: windows-x64
             runner: windows-latest
-            artifact-path: src-tauri/target/release/bundle/nsis/*
           - target: macos-arm64
             runner: macos-latest
-            artifact-path: src-tauri/target/release/bundle/dmg/*
           - target: linux-x64
             runner: ubuntu-latest
-            artifact-path: |
-              src-tauri/target/release/bundle/deb/*
-              src-tauri/target/release/bundle/appimage/*
 
     steps:
       - uses: actions/checkout@v4
@@ -127,11 +122,30 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri:build
 
-      - name: Upload installer artifact
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: lumi-os-${{ matrix.target }}
-          path: ${{ matrix.artifact-path }}
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Upload macOS installer
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumi-os-${{ matrix.target }}
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload Linux installers
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumi-os-${{ matrix.target }}
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage*
           if-no-files-found: error
 
   # ── GitHub Release ──
