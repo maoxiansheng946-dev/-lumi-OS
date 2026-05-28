@@ -11,6 +11,7 @@ interface KeyStore {
   GEMINI_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   QWEN_API_KEY?: string;
+  MIMO_API_KEY?: string;
   MINIMAX_API_KEY?: string;
   E2B_API_KEY?: string;
 }
@@ -51,6 +52,7 @@ export function getAllKeyNames(): (keyof KeyStore)[] {
     'GEMINI_API_KEY',
     'DEEPSEEK_API_KEY',
     'QWEN_API_KEY',
+    'MIMO_API_KEY',
     'MINIMAX_API_KEY',
     'E2B_API_KEY',
   ];

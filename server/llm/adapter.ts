@@ -5,7 +5,7 @@ import { recordWorkflow, WorkflowStep } from '../skills/worklog';
 import { recordLatency } from '../monitor/latency_store';
 
 export interface LLMConfig {
-  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen';
+  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'mimo';
   model: string;
   maxTokens?: number;
   userId?: string;
@@ -38,6 +38,7 @@ export async function runWithTools(
   getQwen?: () => any,
   onStreamChunk?: StreamCallback,
   context?: ToolContext,
+  getMimo?: () => any,
 ): Promise<LLMResult> {
   const executionLog: ToolExecutionRecord[] = [];
   const usageRecords: LLMUsageRecord[] = [];
@@ -66,6 +67,7 @@ export async function runWithTools(
           getOpenAI || (() => null),
           getAnthropic || (() => null),
           getQwen || (() => null),
+          getMimo || (() => null),
         )
       : await makeLLMCall(
           conversationHistory,
@@ -76,6 +78,7 @@ export async function runWithTools(
           getOpenAI || (() => null),
           getAnthropic || (() => null),
           getQwen || (() => null),
+          getMimo || (() => null),
         );
     recordLatency('llm', Date.now() - llmStart);
 
@@ -197,6 +200,7 @@ export async function analyzeScreen(
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
+  getMimo?: () => any,
 ): Promise<string> {
   // Determine which vision model to use based on provider
   let provider = config.provider;
@@ -228,7 +232,7 @@ export async function analyzeScreen(
     messages, [],
     { provider: provider as any, model, maxTokens: 1000 },
     getDeepSeek || (() => null), getGemini || (() => null),
-    getOpenAI, getAnthropic, getQwen,
+    getOpenAI, getAnthropic, getQwen, getMimo,
   );
 
   return result.text || 'Vision analysis returned no text.';
@@ -243,7 +247,8 @@ export async function runWithVision(
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
+  getMimo?: () => any,
 ): Promise<string> {
-  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen);
+  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen, getMimo);
   return result.text || '';
 }

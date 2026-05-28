@@ -184,6 +184,7 @@ export function Settings({
                       className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:border-celestial-saturn/50 outline-none">
                       <option value="deepseek">DeepSeek</option>
                       <option value="qwen">Qwen (DashScope)</option>
+                      <option value="mimo">Xiaomi Mimo</option>
                       <option value="gemini">Google Gemini</option>
                       <option value="openai">OpenAI</option>
                       <option value="anthropic">Anthropic Claude</option>
@@ -721,7 +722,7 @@ function ApiMatrixPage({ t, providerStatus }: { t: any; providerStatus: Record<s
                 icon={<BrainCircuit size={18} className="text-blue-400" />}
                 label="DeepSeek"
                 providerId="deepseek"
-                models={['deepseek-chat', 'deepseek-reasoner']}
+                models={['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-reasoner']}
                 placeholder="sk-..."
                 serverKey="DEEPSEEK_API_KEY"
                 t={t}
@@ -730,9 +731,18 @@ function ApiMatrixPage({ t, providerStatus }: { t: any; providerStatus: Record<s
                 icon={<Zap size={18} className="text-violet-400" />}
                 label="Qwen / DashScope (Alibaba Cloud)"
                 providerId="qwen"
-                models={['qwen-plus', 'qwen-max', 'qwen-turbo']}
+                models={['qwen3.6-plus', 'qwen-max', 'qwen-turbo']}
                 placeholder="sk-..."
                 serverKey="DASHSCOPE_API_KEY"
+                t={t}
+              />
+              <LLMProviderRow
+                icon={<Zap size={18} className="text-orange-400" />}
+                label="Xiaomi Mimo"
+                providerId="mimo"
+                models={['mimo-v2.5-pro']}
+                placeholder="tp-..."
+                serverKey="MIMO_API_KEY"
                 t={t}
               />
               <LLMProviderRow
