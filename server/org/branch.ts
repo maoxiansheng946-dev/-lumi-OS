@@ -24,32 +24,33 @@ export interface BranchState {
   lastHeartbeatAt: string | null;
 }
 
-let branchState: BranchState = loadBranchState();
+let _branchState: BranchState | null = null;
 
-function loadBranchState(): BranchState {
-  // Persist branch state to DB so it survives restarts
-  const db = readDB();
-  const saved = (db as any).branchState;
-  if (saved) return saved;
-  return {
-    orgId: null,
-    companyUrl: null,
-    connectionToken: null,
-    status: 'disconnected',
-    currentDomain: 'personal',
-    lastSyncAt: null,
-    lastHeartbeatAt: null,
-  };
+function bs(): BranchState {
+  if (!_branchState) {
+    try {
+      const saved = (readDB() as any).branchState;
+      if (saved) { _branchState = saved; return _branchState; }
+    } catch {}
+    _branchState = {
+      orgId: null, companyUrl: null, connectionToken: null,
+      status: 'disconnected', currentDomain: 'personal',
+      lastSyncAt: null, lastHeartbeatAt: null,
+    };
+  }
+  return _branchState;
 }
 
 function saveBranchState(): void {
-  const db = readDB();
-  (db as any).branchState = branchState;
-  writeDB(db);
+  try {
+    const db = readDB();
+    (db as any).branchState = bs();
+    writeDB(db);
+  } catch {}
 }
 
 export function getBranchState(): Readonly<BranchState> {
-  return branchState;
+  return bs();
 }
 
 // ── Connection lifecycle ────────────────────────────────────────────────
@@ -59,7 +60,7 @@ export async function connectToOrg(
   companyUrl: string,
   token: string
 ): Promise<{ success: boolean; error?: string }> {
-  branchState.status = 'connecting';
+  bs().status = 'connecting';
   saveBranchState();
 
   try {
@@ -72,16 +73,16 @@ export async function connectToOrg(
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      branchState.status = 'error';
+      bs().status = 'error';
       saveBranchState();
       return { success: false, error: err.error || 'Registration failed' };
     }
 
-    branchState.orgId = orgId;
-    branchState.companyUrl = companyUrl;
-    branchState.connectionToken = token;
-    branchState.status = 'connected';
-    branchState.lastHeartbeatAt = new Date().toISOString();
+    bs().orgId = orgId;
+    bs().companyUrl = companyUrl;
+    bs().connectionToken = token;
+    bs().status = 'connected';
+    bs().lastHeartbeatAt = new Date().toISOString();
     saveBranchState();
 
     // Pull KB cache in background
@@ -92,35 +93,35 @@ export async function connectToOrg(
 
     return { success: true };
   } catch (err: any) {
-    branchState.status = 'error';
+    bs().status = 'error';
     saveBranchState();
     return { success: false, error: err.message };
   }
 }
 
 export function disconnectFromOrg(): void {
-  branchState.orgId = null;
-  branchState.companyUrl = null;
-  branchState.connectionToken = null;
-  branchState.status = 'disconnected';
-  branchState.currentDomain = 'personal'; // revert to personal on disconnect
+  bs().orgId = null;
+  bs().companyUrl = null;
+  bs().connectionToken = null;
+  bs().status = 'disconnected';
+  bs().currentDomain = 'personal'; // revert to personal on disconnect
   saveBranchState();
 }
 
 // ── Domain switching ────────────────────────────────────────────────────
 
 export function switchDomain(domain: 'personal' | 'work'): void {
-  branchState.currentDomain = domain;
+  bs().currentDomain = domain;
   saveBranchState();
   console.log(`[Branch] Domain switched to: ${domain}`);
 }
 
 export function getCurrentDomain(): 'personal' | 'work' {
-  return branchState.currentDomain;
+  return bs().currentDomain;
 }
 
 export function isWorkDomain(): boolean {
-  return branchState.currentDomain === 'work' && branchState.status === 'connected';
+  return bs().currentDomain === 'work' && bs().status === 'connected';
 }
 
 // ── Work data sync ──────────────────────────────────────────────────────
@@ -132,12 +133,12 @@ export interface SyncPayload {
 }
 
 export async function syncWorkData(): Promise<{ synced: number; errors: string[] }> {
-  if (!branchState.companyUrl || !branchState.connectionToken || !branchState.orgId) {
+  if (!bs().companyUrl || !bs().connectionToken || !bs().orgId) {
     return { synced: 0, errors: ['Not connected to organization'] };
   }
 
   const db = readDB();
-  const orgId = branchState.orgId;
+  const orgId = bs().orgId;
 
   // Gather all work-domain data that hasn't been synced
   const payload: SyncPayload = {
@@ -150,11 +151,11 @@ export async function syncWorkData(): Promise<{ synced: number; errors: string[]
   if (total === 0) return { synced: 0, errors: [] };
 
   try {
-    const res = await fetch(`${branchState.companyUrl}/api/branch/sync`, {
+    const res = await fetch(`${bs().companyUrl}/api/branch/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${branchState.connectionToken}`,
+        Authorization: `Bearer ${bs().connectionToken}`,
       },
       body: JSON.stringify(payload),
     });
@@ -184,7 +185,7 @@ export async function syncWorkData(): Promise<{ synced: number; errors: string[]
     }
     writeDB(db);
 
-    branchState.lastSyncAt = now;
+    bs().lastSyncAt = now;
     saveBranchState();
 
     return { synced: total, errors: [] };
@@ -207,11 +208,11 @@ interface CachedArticle {
 let kbCache: CachedArticle[] = [];
 
 export async function pullKbCache(): Promise<number> {
-  if (!branchState.companyUrl || !branchState.connectionToken) return 0;
+  if (!bs().companyUrl || !bs().connectionToken) return 0;
 
   try {
-    const res = await fetch(`${branchState.companyUrl}/api/branch/kb-cache`, {
-      headers: { Authorization: `Bearer ${branchState.connectionToken}` },
+    const res = await fetch(`${bs().companyUrl}/api/branch/kb-cache`, {
+      headers: { Authorization: `Bearer ${bs().connectionToken}` },
     });
     if (!res.ok) return 0;
 
@@ -267,7 +268,7 @@ export function queueOfflineAction(type: OfflineAction['type'], payload: any): v
 
 export async function flushOfflineQueue(): Promise<{ flushed: number; errors: string[] }> {
   if (offlineQueue.length === 0) return { flushed: 0, errors: [] };
-  if (!branchState.companyUrl || !branchState.connectionToken) {
+  if (!bs().companyUrl || !bs().connectionToken) {
     return { flushed: 0, errors: ['Not connected'] };
   }
 
@@ -298,8 +299,8 @@ export function getOfflineQueueLength(): number {
 // ── Health check ────────────────────────────────────────────────────────
 
 export async function checkConnection(): Promise<BranchStatus> {
-  if (!branchState.companyUrl || !branchState.connectionToken) {
-    branchState.status = 'disconnected';
+  if (!bs().companyUrl || !bs().connectionToken) {
+    bs().status = 'disconnected';
     saveBranchState();
     return 'disconnected';
   }
@@ -307,27 +308,27 @@ export async function checkConnection(): Promise<BranchStatus> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${branchState.companyUrl}/api/branch/status`, {
-      headers: { Authorization: `Bearer ${branchState.connectionToken}` },
+    const res = await fetch(`${bs().companyUrl}/api/branch/status`, {
+      headers: { Authorization: `Bearer ${bs().connectionToken}` },
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
 
     if (res.ok) {
-      branchState.status = 'connected';
-      branchState.lastHeartbeatAt = new Date().toISOString();
+      bs().status = 'connected';
+      bs().lastHeartbeatAt = new Date().toISOString();
     } else if (res.status === 401) {
-      branchState.status = 'error';
+      bs().status = 'error';
       disconnectFromOrg();
     } else {
-      branchState.status = 'reconnecting';
+      bs().status = 'reconnecting';
     }
   } catch {
-    branchState.status = 'reconnecting';
+    bs().status = 'reconnecting';
     // Queue sync for when reconnected
   }
 
   saveBranchState();
-  return branchState.status;
+  return bs().status;
 }
 
 // ── Auto-sync timer ─────────────────────────────────────────────────────
@@ -337,7 +338,7 @@ let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 export function startAutoSync(intervalMs: number = 30000): void {
   if (autoSyncTimer) return;
   autoSyncTimer = setInterval(async () => {
-    if (branchState.status === 'connected' && branchState.currentDomain === 'work') {
+    if (bs().status === 'connected' && bs().currentDomain === 'work') {
       await syncWorkData();
       await checkConnection();
     }
