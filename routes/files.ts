@@ -14,8 +14,9 @@ import fs from 'fs';
 import os from 'os';
 import { readDB, writeDB } from '../db_layer';
 import { ingestDocument } from '../server/agents/rag';
+import { getDataPath } from '../server/config/data_path';
 
-const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge');
+const KNOWLEDGE_DIR = getDataPath('knowledge');
 fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
 
 const router = Router();

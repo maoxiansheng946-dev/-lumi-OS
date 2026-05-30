@@ -4,8 +4,9 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { getDataPath } from '../config/data_path';
 
-const CONFIG_FILE = path.join(process.cwd(), 'data', 'messaging.json');
+const CONFIG_FILE = getDataPath('messaging.json');
 
 export interface MessagingConfig {
   feishu: {

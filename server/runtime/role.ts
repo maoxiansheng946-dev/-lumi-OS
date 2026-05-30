@@ -1,12 +1,12 @@
 // Server role persistence — flat JSON config file (no DB dependency).
 // Env LUMI_ROLE overrides everything. Without env, reads data/server_config.json.
-// When a user creates an org, this file is written so the next restart picks up org.
+// Configured via getDataPath so it survives code upgrades.
 
 import fs from 'fs';
 import path from 'path';
+import { getDataPath } from '../config/data_path';
 
-const ROOT = path.resolve(process.cwd());
-const CONFIG_PATH = path.join(ROOT, 'data', 'server_config.json');
+const CONFIG_PATH = getDataPath('server_config.json');
 
 export interface ServerConfig {
   role: 'personal' | 'org';

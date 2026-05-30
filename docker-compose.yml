@@ -1,0 +1,55 @@
+# LumiOS Docker Compose
+#
+# Personal:
+#   docker compose --profile personal up -d
+#   → http://localhost:3000
+#
+# Org (company server):
+#   docker compose --profile org up -d
+#   → http://localhost:3001
+#
+# Both:
+#   docker compose --profile personal --profile org up -d
+
+services:
+  lumi-personal:
+    profiles: [personal]
+    build: .
+    container_name: lumi-personal
+    ports:
+      - "3000:3000"
+    environment:
+      LUMI_ROLE: personal
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    volumes:
+      - lumi_personal_data:/app/data
+    restart: unless-stopped
+
+  lumi-org:
+    profiles: [org]
+    build: .
+    container_name: lumi-org
+    ports:
+      - "3001:3000"
+    environment:
+      LUMI_ROLE: org
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    volumes:
+      - lumi_org_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  lumi_personal_data:
+  lumi_org_data:

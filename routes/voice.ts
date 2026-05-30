@@ -6,11 +6,11 @@ import { synthesizeSpeech, cloneVoice, designVoice, listVoices, getActiveProvide
 import { readDB, writeDB } from '../db_layer';
 import { logger } from '../logger';
 import { recordLatency } from '../server/monitor/latency_store';
+import { getDataPath } from '../server/config/data_path';
 
 const router = Router();
 
-// Ensure voice samples directory exists
-const samplesDir = path.join(process.cwd(), 'data', 'voice_samples');
+const samplesDir = getDataPath('voice_samples');
 fs.mkdirSync(samplesDir, { recursive: true });
 
 const storage = multer.diskStorage({

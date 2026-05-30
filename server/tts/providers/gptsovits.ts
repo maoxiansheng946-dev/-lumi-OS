@@ -1,10 +1,11 @@
 import { TTSResult, VoiceListItem } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { getDataPath } from '../../config/data_path';
 
 const BASE_URL = 'http://127.0.0.1:9880';
 
-const SEGMENTS_DIR = path.join(process.cwd(), 'data', 'voice_training', 'segments');
+const SEGMENTS_DIR = getDataPath('voice_training/segments');
 
 function listReferenceFiles(): { path: string; name: string }[] {
   try {
@@ -51,14 +52,14 @@ export async function synthesizeSpeech(
       promptText = match.name;
     } else {
       // Fallback to first available or default
-      refAudioPath = refs.length > 0 ? refs[0].path : path.join(process.cwd(), 'data', 'voice_training', 'segments', 'segment_0000.wav');
+      refAudioPath = refs.length > 0 ? refs[0].path : getDataPath('voice_training/segments/segment_0000.wav');
       promptText = refs.length > 0 ? refs[0].name : '各位朋友大家好，今天想和大家分享的';
     }
   } else if (refs.length > 0) {
     refAudioPath = refs[0].path;
     promptText = refs[0].name;
   } else {
-    refAudioPath = path.join(process.cwd(), 'data', 'voice_training', 'segments', 'segment_0000.wav');
+    refAudioPath = getDataPath('voice_training/segments/segment_0000.wav');
     promptText = '各位朋友大家好，今天想和大家分享的';
   }
 

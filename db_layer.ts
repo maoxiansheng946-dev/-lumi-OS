@@ -2,13 +2,37 @@ import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { getDataPath, getDataRoot } from './server/config/data_path';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'lumi.db');
-const DB_DIR = path.dirname(DB_PATH);
-
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+// Auto-migrate data from old location (project directory) to user directory on first run
+function migrateDataFromOldLocation() {
+  const oldDir = path.join(process.cwd(), 'data');
+  const newDir = path.join(getDataRoot(), 'data');
+  if (!fs.existsSync(oldDir)) return;
+  if (fs.existsSync(newDir)) {
+    const files = fs.readdirSync(newDir).filter(f => f !== '.gitkeep');
+    if (files.length > 0) return; // already has data, skip
+  }
+  console.log('[Data] Migrating from', oldDir, 'to', newDir);
+  try {
+    fs.mkdirSync(newDir, { recursive: true });
+    for (const entry of fs.readdirSync(oldDir, { withFileTypes: true })) {
+      const src = path.join(oldDir, entry.name);
+      const dest = path.join(newDir, entry.name);
+      if (entry.isDirectory()) {
+        fs.cpSync(src, dest, { recursive: true });
+      } else {
+        fs.copyFileSync(src, dest);
+      }
+    }
+    console.log('[Data] Migration complete —', newDir);
+  } catch (err) {
+    console.warn('[Data] Migration failed (non-fatal):', (err as Error).message);
+  }
 }
+migrateDataFromOldLocation();
+
+const DB_PATH = getDataPath('lumi.db');
 
 let db: sqlite3.Database | null = null;
 let memoryDB: any = null;

@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { exec } from 'child_process';
+import { getDataPath } from '../config/data_path';
 
 export interface MCPServerConfig {
   command?: string;
@@ -75,7 +76,9 @@ class MCPClientManager {
 
   getConfig(): Record<string, MCPServerConfig> {
     try {
-      const raw = fs.readFileSync(this.configPath, 'utf-8');
+      let raw = fs.readFileSync(this.configPath, 'utf-8');
+      // Replace static relative paths with actual data directory paths
+      raw = raw.replace(/"data\/lumi\.db"/g, JSON.stringify(getDataPath('lumi.db')));
       const parsed = JSON.parse(raw);
       return parsed.mcpServers || {};
     } catch {

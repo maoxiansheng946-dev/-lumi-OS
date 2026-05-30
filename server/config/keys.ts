@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { getDataPath } from './data_path';
 
-const KEYS_FILE = path.join(process.cwd(), 'data', 'keys.json');
+const KEYS_FILE = getDataPath('keys.json');
 
 interface KeyStore {
   DEEPGRAM_API_KEY?: string;

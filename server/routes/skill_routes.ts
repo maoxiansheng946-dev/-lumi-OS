@@ -7,6 +7,7 @@ import { readDB, writeDB } from "../../db_layer";
 import { mcpManager, getMCPConfig, updateMCPConfig, SKILLS_DIR } from "../mcp";
 import { generateSkill } from "../skills/generator";
 import { getRecentWorkflows } from "../skills/worklog";
+import { getDataPath } from "../config/data_path";
 
 const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) =>
@@ -76,7 +77,7 @@ export function mountSkillRoutes(
       if (result.success) {
         // Save generated skill code to knowledge base for agent ingestion
         try {
-          const kbDir = path.join(process.cwd(), 'data', 'knowledge');
+          const kbDir = getDataPath('knowledge');
           fs.mkdirSync(kbDir, { recursive: true });
           const safeName = `skill-${result.skillName}.ts`;
           fs.writeFileSync(path.join(kbDir, safeName), result.generatedCode || '', 'utf-8');

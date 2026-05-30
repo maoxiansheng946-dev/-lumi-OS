@@ -27,7 +27,10 @@
     "tauri:build": "tauri build",
     "mobile:sync": "vite build && cap sync",
     "mobile:open-android": "cap open android",
-    "mobile:open-ios": "cap open ios"
+    "mobile:open-ios": "cap open ios",
+    "deploy:win": "powershell -ExecutionPolicy Bypass -File scripts/deploy-windows.ps1",
+    "deploy:mac": "bash scripts/deploy-macos.sh",
+    "deploy:linux": "bash scripts/deploy-linux.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
