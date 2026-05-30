@@ -738,13 +738,19 @@ export function registerVoiceHandlers(
               }
             }
 
-            // Process immediately
-            processVoiceInput(socket, session, text, llmGetters, sensoryFn).catch(err => {
-              logger.error("[Voice Error]:", err);
-              session.isSpeaking = false;
-              session.isProcessing = false;
-              socket.emit("audio:status", { status: "listening" });
-            });
+            // Echo confirmation — brief window for user to see what was heard and interrupt if wrong
+            socket.emit("audio:confirm", { text });
+            logger.info(`[Audio] Heard: "${text}"`);
+
+            // Brief delay before processing (user can barge-in during this window)
+            setTimeout(() => {
+              processVoiceInput(socket, session, text, llmGetters, sensoryFn).catch(err => {
+                logger.error("[Voice Error]:", err);
+                session.isSpeaking = false;
+                session.isProcessing = false;
+                socket.emit("audio:status", { status: "listening" });
+              });
+            }, 600);
           } else if (result.text && !result.isFinal) {
             socket.emit("audio:transcript", { text: result.text, isFinal: false });
           }

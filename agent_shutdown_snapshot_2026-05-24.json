@@ -1,0 +1,35 @@
+{
+  "operation": "graceful_shutdown",
+  "timestamp": "2026-05-24T14:44:52.693Z",
+  "snapshot": {
+    "total_agents": 38,
+    "terminated_count": 16,
+    "active_count": 22,
+    "active_agents": [
+      {"id": "worker_1779631916508_owya", "name": "创作总监 · 阿阳", "category": "creative"},
+      {"id": "worker_1779631916508_ab3t", "name": "AI架构师 · 神经元", "category": "engineering"},
+      {"id": "worker_1779631916508_1yfx", "name": "市场洞察师 · 回声", "category": "research"},
+      {"id": "worker_1779631916508_l0b2", "name": "体验设计师 · 触觉", "category": "design"},
+      {"id": "worker_1779631916508_x00p", "name": "知识管理官 · 记忆", "category": "data"},
+      {"id": "worker_1779633883805_7n98", "name": "点点", "category": "friend"},
+      {"id": "worker_1779633883805_zxbk", "name": "TestAgentOrder", "category": "friend"},
+      {"id": "worker_1779633883806_pfkm", "name": "FinalTestAgent", "category": "friend"},
+      {"id": "worker_1779633883806_b4oy", "name": "智能体-同事-5291", "category": "coding"},
+      {"id": "worker_1779633883806_r9iy", "name": "智能体-朋友-9517", "category": "writing"},
+      {"id": "worker_1779633883806_rc9s", "name": "智能体-同事-1544", "category": "coding"},
+      {"id": "worker_1779633883806_ib8o", "name": "智能体-家人-5412", "category": "writing"},
+      {"id": "worker_1779633883806_32xf", "name": "智能体-爱人-3944", "category": "writing"},
+      {"id": "worker_1779633892693_gbr8", "name": "智能体-同事-9188", "category": "coding"},
+      {"id": "worker_1779633892693_kk35", "name": "点点", "category": "writing"},
+      {"id": "worker_1779633892693_dqrb", "name": "点点", "category": "writing"},
+      {"id": "worker_1779633892693_o6wy", "name": "我", "category": "writing"},
+      {"id": "worker_1779633892693_g7d4", "name": "瑞瑞", "category": "writing"},
+      {"id": "worker_1779633892693_tj4e", "name": "Waymo分析师", "category": "research"},
+      {"id": "worker_1779633892693_ye8i", "name": "中国智驾分析师", "category": "research"},
+      {"id": "worker_1779633892693_8i5t", "name": "特斯拉FSD分析师", "category": "research"},
+      {"id": "worker_1779633892693_ny4w", "name": "供应链与市场分析师", "category": "research"}
+    ]
+  },
+  "shutdown_order": "sequential_by_id",
+  "note": "Preserving critical state metadata before termination signals."
+}

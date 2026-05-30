@@ -188,6 +188,17 @@ export function registerChatHandler(
         effectiveSystemPrompt += `\n\n## Company Knowledge Base\n${kbContext}\n\nUse the above company knowledge to inform your response. Cite article titles when referencing company policy.`;
       }
 
+      // Inject contact context when user mentions people they know
+      try {
+        const { matchContactsFromText } = await import('../contacts/store');
+        const { formatContactsForContext } = await import('../contacts/context');
+        const mentioned = matchContactsFromText(uid, text);
+        if (mentioned.length > 0) {
+          effectiveSystemPrompt += '\n\n' + formatContactsForContext(mentioned);
+          effectiveSystemPrompt += '\n\nYou know these people personally. Use this information to provide relevant, contextual responses when the user asks about them.';
+        }
+      } catch {}
+
       const interactionId = crypto.randomUUID();
 
       socket.emit("agent:status", { status: "thinking", agentName: personality.name });
@@ -557,6 +568,26 @@ export function registerChatHandler(
 
       // Clean up abort session
       chatSessionMap.delete(uid);
+
+      // Auto-learn from corrections: when user corrects Lumi, extract high-confidence memories
+      const correctionPatterns = [/不是/, /不对/, /错了/, /wrong/i, /incorrect/i, /actually/i, /no,?\s/i, /你弄错了/, /不是这样的/];
+      const isCorrection = correctionPatterns.some(p => p.test(text));
+      if (isCorrection && responseText) {
+        try {
+          const corrected = await extractMemories(
+            { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider: activeProvider, model: activeModel, treeBranches: [] },
+            llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
+          );
+          for (const mem of corrected.memories) {
+            addMemory({
+              userId: uid, type: mem.type, content: mem.content,
+              keywords: mem.keywords, confidence: Math.min((mem.confidence || 0.5) + 0.2, 1.0),
+              sourceInteractionId: interactionId, agentId: agentId || '',
+            } as any, { domain, orgId: orgId || '' });
+          }
+          console.log(`[ChatHandler] Correction learned: ${corrected.memories.length} memories with boosted confidence`);
+        } catch (err: any) { console.warn('[ChatHandler] Correction extraction failed:', err.message); }
+      }
 
       // Async memory extraction — skip trivial/command messages to reduce noise
       const skipExtractionCategories = ['command', 'file', 'unknown'];
