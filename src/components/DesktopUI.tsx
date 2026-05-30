@@ -196,8 +196,7 @@ function OSWindow({
         className={`os-window pointer-events-auto overflow-hidden ${isMaximized ? 'rounded-none' : 'rounded-[2.5rem]'} ${isMinimized ? 'pointer-events-none' : ''} ${isDragging ? 'is-dragging' : ''}`}
       >
         <div
-          className="os-window-header cursor-grab active:cursor-grabbing px-6"
-          onDoubleClick={() => !isMinimized && setIsMaximized(!isMaximized)}
+          className="os-window-header px-6"
         >
           <div className="flex items-center gap-4 select-none">
             <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${colorClass} flex items-center justify-center p-1.5 shadow-lg border border-white/10 group-hover:rotate-6 transition-transform`}>
@@ -211,16 +210,6 @@ function OSWindow({
             </div>
           </div>
           <div className="flex gap-3">
-            <div className="h-6 w-px bg-white/5 mr-2" />
-            <button
-              onClick={() => onMinimize(id)}
-              className="w-3 h-3 rounded-full bg-blue-500/20 border border-blue-500/40 hover:bg-blue-500/60 transition-colors"
-            />
-            <button
-              onClick={() => setIsMaximized(!isMaximized)}
-              className="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/40 hover:bg-yellow-500/60 transition-colors"
-            />
-            <button className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/40 hover:bg-green-500/60 transition-colors" />
             <button
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
               className="w-3 h-3 rounded-full bg-red-500/40 border border-red-500/60 hover:bg-red-500/80 flex items-center justify-center transition-colors group/close"
@@ -762,21 +751,12 @@ export function DesktopUI({
   const [viewMode, setViewMode] = useState<'personal' | 'world'>('personal');
   const [syncRate, setSyncRate] = useState(1);
   const cameraZ = useMotionValue(viewMode === 'personal' ? 0 : -800);
-  const cameraRotateX = useMotionValue(0);
-  const cameraRotateY = useMotionValue(0);
 
   useEffect(() => {
     cameraZ.set(viewMode === 'personal' ? 0 : -1000);
   }, [viewMode]);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (viewMode === 'world') return; // Let OrbitControls handle mouse
-    const { clientX, clientY } = e;
-    const moveX = (clientX - window.innerWidth / 2) / 50;
-    const moveY = (clientY - window.innerHeight / 2) / 50;
-    cameraRotateX.set(-moveY);
-    cameraRotateY.set(moveX);
-  };
+  // Mouse parallax and hand gestures removed — will be re-added with face recognition
 
   const personalScale = useTransform(cameraZ, [0, -1000], [1, 0.4]);
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
@@ -940,16 +920,9 @@ export function DesktopUI({
     onInterrupt: () => interrupt(),
   });
 
-  // Gesture detection via webcam — drives the central orb visually
-  const {
-    handOpenness,
-    handPosition,
-    gesture,
-    handVisible,
-    facePresent,
-  } = useGestureDetector({ enabled: true });
+  // Gesture detection via webcam — open hand / fist (confirm gesture), face presence
+  const { handOpenness, handPosition, gesture, handVisible, facePresent } = useGestureDetector({ enabled: true });
 
-  // Diffusion mode: open hand → expand, fist → collapse (toggle, not continuous)
   const [diffused, setDiffused] = useState(false);
   useEffect(() => {
     if (gesture === 'open') setDiffused(true);
@@ -1436,13 +1409,9 @@ export function DesktopUI({
 
       {/* Immersive Environment Layer (Wallpaper OS Foundation) */}
       <div 
-        className={`fixed inset-0 z-0 overflow-hidden perspective-[1000px] transition-all duration-1000 ${isWallpaperMode ? 'bg-transparent' : 'bg-[#010103]'}`}
-        onMouseMove={handleMouseMove}
+        className={`fixed inset-0 z-0 overflow-hidden transition-all duration-1000 ${isWallpaperMode ? 'bg-transparent' : 'bg-[#010103]'}`}
       >
-        <motion.div 
-          style={{ rotateX: cameraRotateX, rotateY: cameraRotateY }}
-          className="absolute inset-0 preserve-3d"
-        >
+        <div className="absolute inset-0">
           {/* Warp Flash Overlay */}
           <motion.div 
             animate={{ 
@@ -1509,7 +1478,7 @@ export function DesktopUI({
               </AnimatePresence>
             </div>
           </motion.div>
-        </motion.div>
+        </div>
 
         {/* Hyper-tunnel edges */}
         <div className="absolute inset-0 shadow-[inset_0_0_300px_rgba(0,0,0,1)] pointer-events-none" />
@@ -1578,7 +1547,7 @@ export function DesktopUI({
 
       <div className="fixed inset-0 z-[100] pointer-events-none">
         {/* Top Status Bar */}
-        <div className={`absolute top-0 inset-x-0 h-10 glass-dark border-b border-white/5 flex items-center justify-between px-6 pointer-events-auto backdrop-blur-md transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <div className={`absolute top-0 inset-x-0 h-10 glass-dark border-b border-white/5 flex items-center justify-between px-6 pointer-events-auto backdrop-blur-md transition-all duration-1000 ${(isWallpaperMode || callState !== 'idle') ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex items-center gap-6">
             <button onClick={onExit} className="flex items-center gap-2 group transition-all">
                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-celestial-mars to-celestial-saturn flex items-center justify-center p-1 group-hover:rotate-12 transition-transform shadow-lg shadow-celestial-saturn/20">
@@ -1698,7 +1667,7 @@ export function DesktopUI({
         </AnimatePresence>
 
         {/* Bottom Taskbar / Dock */}
-        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 px-4 glass-dark rounded-[2.5rem] border border-white/10 flex items-center gap-2 shadow-2xl backdrop-blur-2xl transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}`}>
+        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 px-4 glass-dark rounded-[2.5rem] border border-white/10 flex items-center gap-2 shadow-2xl backdrop-blur-2xl transition-all duration-1000 ${(isWallpaperMode || callState !== 'idle') ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}`}>
           <button 
             onClick={() => setViewMode(viewMode === 'personal' ? 'world' : 'personal')}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group relative ${
@@ -1878,7 +1847,7 @@ export function DesktopUI({
                 gesture={gesture}
                 handVisible={handVisible}
                 facePresent={facePresent}
-                gesturesDisabled={viewMode === 'world' || isWallpaperMode || chatOpen || callState !== 'idle'}
+                gesturesDisabled={false}
                 diffused={diffused}
               />
               {wakeWord.isListening && callState === 'idle' && (
@@ -1953,7 +1922,7 @@ export function DesktopUI({
       </div>
 
       {/* Desktop Grid & Widgets */}
-      <div className={`relative z-10 w-full h-full p-8 md:p-12 lg:p-16 overflow-y-auto custom-scrollbar pt-20 transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 blur-sm pointer-events-none' : 'opacity-100'}`}>
+      <div className={`relative z-10 w-full h-full p-8 md:p-12 lg:p-16 overflow-y-auto custom-scrollbar pt-20 transition-all duration-1000 ${(isWallpaperMode || callState !== 'idle') ? 'opacity-0 blur-sm pointer-events-none' : 'opacity-100'}`}>
         <div className="flex flex-col xl:flex-row justify-between items-start gap-12">
             <div className="relative flex-1 w-full min-h-[400px]" style={{ margin: 0, padding: 0 }}>
               {desktopIcons.map((def, i) => {
@@ -2111,7 +2080,7 @@ export function DesktopUI({
           onSuccess={() => window.dispatchEvent(new CustomEvent('lumi:voice-updated'))}
         />
         <AnimatePresence>
-          {openWindows.map(windowId => {
+          {callState === 'idle' && openWindows.map(windowId => {
             const size = getWindowSize(windowId);
             const orderIdx = windowOrder.indexOf(windowId);
             return (
