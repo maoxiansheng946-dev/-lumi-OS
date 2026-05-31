@@ -17,7 +17,7 @@ import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useVoiceCloning } from '@/hooks/useVoiceCloning';
 import { listVoices } from '@/services/voiceService';
 
-export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void }) {
+export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [agentMetadata, setAgentMetadata] = useState<Partial<AgentResponse>>({});
   const { platform, isElectron } = usePlatform();
@@ -458,6 +458,18 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose }: { t: any; use
       }
     }
   };
+
+  // When prefillMessage comes from notification center, auto-send it
+  const sendTextRef = useRef(sendText);
+  sendTextRef.current = sendText;
+  const hasPrefilled = useRef(false);
+  useEffect(() => {
+    if (prefillMessage && !hasPrefilled.current && isOpen && messages.length === 0) {
+      hasPrefilled.current = true;
+      setTimeout(() => { sendTextRef.current(prefillMessage); }, 300);
+      onPrefillConsumed?.();
+    }
+  }, [prefillMessage, isOpen, messages.length, onPrefillConsumed]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();

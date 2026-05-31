@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, X, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle, Zap } from 'lucide-react';
+import { Bell, X, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle, Zap, MessageSquare } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { useT } from '../lib/useT';
 import { useEffect, useState } from 'react';
@@ -11,7 +11,7 @@ const ICONS: Record<string, React.ReactNode> = {
   system: <Zap size={14} className="text-violet-400" />,
 };
 
-export function NotificationCenter() {
+export function NotificationCenter({ onChatMessage }: { onChatMessage?: (message: string) => void }) {
   const { notifications, unreadCount, markAllNotificationsRead, clearNotifications } = useApp();
   const t = useT();
   const [historical, setHistorical] = useState<any[]>([]);
@@ -97,8 +97,12 @@ export function NotificationCenter() {
                   key={n.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all ${
-                    n.read ? 'bg-white/[0.02] opacity-50' : 'bg-white/5 border border-white/5'
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') onChatMessage?.(n.message); }}
+                  onClick={() => onChatMessage?.(n.message)}
+                  className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer hover:bg-white/[0.08] ${
+                    n.read ? 'bg-white/[0.02]' : 'bg-white/5 border border-white/5'
                   }`}
                 >
                   <div className="flex-shrink-0 mt-0.5">
@@ -111,9 +115,13 @@ export function NotificationCenter() {
                     </div>
                     <p className="text-[10px] text-white/40 mt-0.5">{n.message}</p>
                   </div>
-                  {!n.read && (
-                    <div className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-400 mt-1.5" />
-                  )}
+                  <div className="flex-shrink-0">
+                    {!n.read ? (
+                      <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5" />
+                    ) : (
+                      <MessageSquare size={12} className="text-white/10 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
+                  </div>
                 </motion.div>
               ))}
             </AnimatePresence>

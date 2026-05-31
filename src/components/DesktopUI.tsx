@@ -771,6 +771,7 @@ export function DesktopUI({
   const [windowOrder, setWindowOrder] = useState<string[]>(activeTab !== 'home' && activeTab !== 'knowledge' ? [activeTab] : []);
   const [knowledgeOpen, setKnowledgeOpen] = useState(activeTab === 'knowledge');
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatPrefill, setChatPrefill] = useState('');
   const [sanctuaryOpen, setSanctuaryOpen] = useState(false);
   const [sanctuaryAgent, setSanctuaryAgent] = useState<any>(null);
   const [petReaction, setPetReaction] = useState<{ animation: string; until: number } | null>(null);
@@ -2167,7 +2168,13 @@ export function DesktopUI({
                   ) : windowId === 'github-mcp' ? (
                     <GitHubMCPBrowser t={t} />
                   ) : windowId === 'notifications' ? (
-                    <NotificationCenter />
+                    <NotificationCenter
+                      onChatMessage={(message) => {
+                        closeWindow('notifications');
+                        setChatPrefill(message);
+                        setChatOpen(true);
+                      }}
+                    />
                   ) : windowId === 'reminders' ? (
                     <ReminderPanel t={t} />
                   ) : windowId === 'devices' ? (
@@ -2224,7 +2231,9 @@ export function DesktopUI({
         t={t}
         user={user}
         isOpen={chatOpen}
-        onClose={() => setChatOpen(false)}
+        onClose={() => { setChatOpen(false); setChatPrefill(''); }}
+        prefillMessage={chatPrefill}
+        onPrefillConsumed={() => setChatPrefill('')}
       />
 
       {/* Org Workbench fullscreen overlay — available to all logged-in users */}
