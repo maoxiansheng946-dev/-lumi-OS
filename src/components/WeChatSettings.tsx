@@ -69,12 +69,23 @@ export function WeChatSettings({ t }: { t?: any }) {
   return (
     <div className="space-y-5">
       {status?.configured ? (
-        <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/20 space-y-2">
+        <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/20 space-y-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-xs font-bold text-green-400">{t?.connected || 'Connected'}</span>
           </div>
           <p className="text-[10px] text-white/40">{t?.wechatConnected || 'Lumi is listening on WeChat.'}</p>
+          <button
+            onClick={async () => {
+              try {
+                await fetch('/api/wechat/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botToken: '', botId: '' }) });
+              } catch {}
+              setStatus(null); setStep('idle'); setQrCode(null); setQrId(null);
+            }}
+            className="w-full px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-bold hover:bg-red-500/20 transition-all"
+          >
+            {t?.reconnect || 'Reconnect'}
+          </button>
         </div>
       ) : (
         <div className="space-y-3">
