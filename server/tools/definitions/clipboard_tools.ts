@@ -26,7 +26,7 @@ export function registerClipboardTools(registry: ToolRegistry): void {
     },
     handler: readClipboard,
     permission: 'user',
-    securityLevel: 'safe',
+    securityLevel: 'confirm',
   });
 
   registry.register({
@@ -42,6 +42,6 @@ export function registerClipboardTools(registry: ToolRegistry): void {
     },
     handler: writeClipboard,
     permission: 'user',
-    securityLevel: 'safe',
+    securityLevel: 'confirm',
   });
 }

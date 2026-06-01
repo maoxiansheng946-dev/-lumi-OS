@@ -61,9 +61,25 @@ if (ROLE === 'org') {
   app.get('/', (_req, res) => res.redirect('/index.org.html'));
 }
 
+// ── Global exception handlers (must be registered first) ──
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason);
+  if (reason instanceof Error) console.error(reason.stack);
+  process.exit(1);
+});
+
 async function start() {
   await setupStatic(app, __filename, __dirname, ROLE);
   await bootstrap({ server, io, PORT, HOST, jwtSecret: JWT_SECRET, llm, __dirname });
 }
 
-start();
+start().catch((err) => {
+  console.error('[FATAL] Server startup failed:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});

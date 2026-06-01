@@ -61,7 +61,7 @@ export function registerOCRTools(registry: ToolRegistry): void {
     },
     handler: ocrScreen,
     permission: 'user',
-    securityLevel: 'safe',
+    securityLevel: 'confirm',
   });
 
   registry.register({
@@ -81,6 +81,6 @@ export function registerOCRTools(registry: ToolRegistry): void {
     },
     handler: ocrRegion,
     permission: 'user',
-    securityLevel: 'safe',
+    securityLevel: 'confirm',
   });
 }

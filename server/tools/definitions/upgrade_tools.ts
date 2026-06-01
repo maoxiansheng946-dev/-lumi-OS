@@ -175,6 +175,6 @@ Max ${MAX_FILES} files per call. TypeScript verification is mandatory — bad co
     },
     handler: selfUpgradeHandler,
     permission: 'admin',
-    securityLevel: 'safe',
+    securityLevel: 'confirm',
   });
 }

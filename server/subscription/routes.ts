@@ -58,6 +58,12 @@ router.get('/subscription/plans', (_req, res) => {
 router.post('/subscription/activate', (req, res) => {
   try {
     const adminId = getUserId(req);
+    // Admin role check
+    const db = require('../../db_layer').readDB();
+    const adminUser = db.users.find((u: any) => u.uid === adminId);
+    if (!adminUser || adminUser.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
     const { userId, planId, status, trialDays } = req.body;
 
     if (!userId || !planId) {
@@ -90,6 +96,10 @@ router.post('/subscription/activate', (req, res) => {
 // ── GET /subscription/admin — admin: list all subscriptions ──
 router.get('/subscription/admin', (req, res) => {
   try {
+    const adminId = getUserId(req);
+    const db = require('../../db_layer').readDB();
+    const adminUser = db.users.find((u: any) => u.uid === adminId);
+    if (!adminUser || adminUser.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const all = listAllSubscriptions();
     const enriched = all.map(sub => ({
       ...sub,

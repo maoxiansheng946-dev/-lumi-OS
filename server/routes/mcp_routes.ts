@@ -2,12 +2,13 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { requireAuth } from "../middleware/auth";
 import { mcpManager, getMCPConfig, updateMCPConfig } from "../mcp";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function mountMcpRoutes(router: Router) {
-  router.get("/mcp", (_req, res) => {
+  router.get("/mcp", requireAuth, (_req, res) => {
     const config = getMCPConfig();
     const connected = mcpManager.getConnectedServers();
     const servers = Object.entries(config).map(([name, cfg]) => ({
@@ -18,7 +19,7 @@ export function mountMcpRoutes(router: Router) {
     res.json({ servers });
   });
 
-  router.post("/mcp", async (req, res) => {
+  router.post("/mcp", requireAuth, async (req, res) => {
     try {
       const { servers } = req.body;
       if (!servers || typeof servers !== 'object') {

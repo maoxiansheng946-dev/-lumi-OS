@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { spawn, ChildProcess } from "child_process";
-import { readDB, writeDB, ensureDatabaseInitialized } from "../../db_layer";
+import { readDB, writeDB, flushDB, ensureDatabaseInitialized } from "../../db_layer";
 import { toolRegistry } from "../tools/registry";
 import { registerAllTools } from "../tools/definitions/index";
 import { mcpManager, registerMCPTools } from "../mcp";
@@ -109,6 +109,15 @@ export async function bootstrap(ctx: BootstrapContext) {
     console.log('[GPT-SoVITS] Not found — TTS will use cloud providers only.');
   }
 
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[FATAL] Port ${PORT} is already in use. Please close the other process and try again.`);
+    } else {
+      console.error('[FATAL] Server error:', err.message);
+    }
+    process.exit(1);
+  });
+
   server.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
     scheduler.setIO(io);
@@ -118,6 +127,11 @@ export async function bootstrap(ctx: BootstrapContext) {
   // Cleanup on exit
   const cleanup = async () => {
     console.log('[Shutdown] Cleaning up...');
+    // Flush dirty in-memory database before exit
+    try {
+      await flushDB();
+      console.log('[Shutdown] Database flushed');
+    } catch {}
     try {
       await mcpManager.disconnectAll();
       console.log('[MCP] All servers disconnected');

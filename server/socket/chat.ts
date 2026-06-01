@@ -201,6 +201,20 @@ export function registerChatHandler(
 
       const interactionId = crypto.randomUUID();
 
+      // ── Desktop relay: enables 15 tools (mouse/keyboard/clipboard/screenshot/etc) in chat ──
+      const desktopRelay = async (toolName: string, args: Record<string, any>): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const cid = crypto.randomUUID();
+          const timeout = setTimeout(() => reject(new Error(`Desktop tool "${toolName}" timed out (30s)`)), 30000);
+          socket.once(`tool:desktop_result:${cid}`, (data: { output?: string; error?: string }) => {
+            clearTimeout(timeout);
+            if (data.error) reject(new Error(data.error));
+            else resolve(data.output || '');
+          });
+          socket.emit('tool:desktop_exec', { correlationId: cid, name: toolName, arguments: args });
+        });
+      };
+
       socket.emit("agent:status", { status: "thinking", agentName: personality.name });
       console.log('[ChatHandler] emitted agent:status thinking');
 
@@ -392,7 +406,7 @@ export function registerChatHandler(
           socket.emit("agent:status", { status: "thinking", agentName: "Lumi Orchestrator" });
           const orchResult = await runOrchestratedTask(
             text,
-            { userId: uid, personalityId },
+            { userId: uid, personalityId, desktopRelay },
             { provider: activeProvider, model: activeModel },
             llmGetters,
             (msg) => socket.emit("agent:chunk", { text: msg, agentName: "Lumi" }),
@@ -469,7 +483,7 @@ export function registerChatHandler(
             maxIterations,
             llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
             onChunk,
-            { isCancelled: () => abortController.signal.aborted, ...(isSanctuary ? { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } } : {}) },
+            { desktopRelay, isCancelled: () => abortController.signal.aborted, ...(isSanctuary ? { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } } : {}) },
           );
 
           responseText = result.text || '';
@@ -510,7 +524,7 @@ export function registerChatHandler(
                 undefined, 1,
                 llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
                 undefined,
-                { isCancelled: () => abortController.signal.aborted },
+                { desktopRelay, isCancelled: () => abortController.signal.aborted },
               );
               responseText = fallback.text || '';
               llmWasCalled = true;

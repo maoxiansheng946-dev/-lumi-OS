@@ -307,10 +307,17 @@ class MCPClientManager {
         },
       );
     } else if (config.command) {
+      // Expand ${VAR_NAME} placeholders in env values using process.env
+      const resolvedEnv: Record<string, string> = {};
+      if (config.env) {
+        for (const [k, v] of Object.entries(config.env)) {
+          resolvedEnv[k] = v.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] || '');
+        }
+      }
       transport = new StdioClientTransport({
         command: config.command,
         args: config.args || [],
-        env: config.env || undefined,
+        env: Object.keys(resolvedEnv).length > 0 ? resolvedEnv : (config.env || undefined),
       });
     } else {
       throw new Error(`MCP server "${name}": must provide "url" for http/ws transport or "command" for stdio transport`);
