@@ -20,6 +20,7 @@ import { registerWorkflowTools } from './workflow_tools';
 import { registerImageTools } from './image_tools';
 import { registerVideoTools } from './video_tools';
 import { registerUpgradeTools } from './upgrade_tools';
+import { registerInputTools } from './input_tools';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -52,6 +53,7 @@ export function registerAllTools(
   registerImageTools(registry);
   registerVideoTools(registry);
   registerUpgradeTools(registry);
+  registerInputTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

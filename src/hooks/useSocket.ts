@@ -111,6 +111,31 @@ async function handleDesktopExec(socket: Socket, data: {
         output = JSON.stringify(snap, null, 2);
         break;
       }
+      case 'desktop_mouse_move': {
+        await invoke('mouse_move', { x: args.x, y: args.y });
+        output = `Mouse moved to (${args.x}, ${args.y})`;
+        break;
+      }
+      case 'desktop_mouse_click': {
+        await invoke('mouse_click', { button: args.button || 'left' });
+        output = `${args.button || 'left'} click`;
+        break;
+      }
+      case 'desktop_mouse_drag': {
+        await invoke('mouse_drag', { fromX: args.from_x, fromY: args.from_y, toX: args.to_x, toY: args.to_y, button: args.button || 'left' });
+        output = 'Drag completed';
+        break;
+      }
+      case 'desktop_keyboard_type': {
+        await invoke('keyboard_type', { text: args.text });
+        output = `Typed ${args.text?.length || 0} chars`;
+        break;
+      }
+      case 'desktop_keyboard_press': {
+        await invoke('keyboard_press', { key: args.key });
+        output = `Pressed: ${args.key}`;
+        break;
+      }
       default:
         socket.emit(`tool:desktop_result:${correlationId}`, {
           error: `Unknown desktop tool: ${name}`,
