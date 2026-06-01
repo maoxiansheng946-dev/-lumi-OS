@@ -373,29 +373,33 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       toast.error(data.message);
     });
 
-    // Live-refresh messages when voice/other sources save to conversation
+    // Live-refresh messages from API when voice/other sources save to conversation.
+    // Skip if a chunk stream is in-progress OR local state is already up-to-date.
     socket.on("chat:conversation_updated", (data: { conversationId: string; agentId: string }) => {
-      if (data.agentId === agentId) {
-        fetchConversations();
-        // Reload messages for the active conversation in real-time
-        const cid = activeCidRef.current;
-        if (cid && data.conversationId === cid) {
-          fetch(`/api/conversations/${data.conversationId}/messages?limit=100`)
-            .then(r => r.json())
-            .then(result => {
-              if (result.messages && Array.isArray(result.messages)) {
-                setMessages(result.messages.map((m: any, idx: number) => ({
-                  id: m.id || `hist-${idx}`,
-                  text: m.content,
-                  userName: m.role === 'assistant' ? (agentNameRef.current || (t.lumi || 'Lumi')) : (user?.displayName || (t.you || 'You')),
-                  timestamp: m.createdAt,
-                  type: m.role === 'assistant' ? 'agent' : 'user',
-                  mode: m.mode,
-                })));
-              }
-            })
-            .catch(() => {});
-        }
+      if (data.agentId !== agentId) return;
+      fetchConversations();
+      if (streamingMsgId.current) return;
+      const cid = activeCidRef.current;
+      if (cid && data.conversationId === cid) {
+        fetch(`/api/conversations/${data.conversationId}/messages?limit=100`)
+          .then(r => r.json())
+          .then(result => {
+            if (!result.messages || !Array.isArray(result.messages)) return;
+            // Only replace if API has more messages (e.g. voice added some).
+            // If counts match, local state is already correct — no-op to avoid flicker.
+            setMessages(prev => {
+              if (prev.length >= result.messages.length) return prev;
+              return result.messages.map((m: any, idx: number) => ({
+                id: m.id || `hist-${idx}`,
+                text: m.content,
+                userName: m.role === 'assistant' ? (agentNameRef.current || (t.lumi || 'Lumi')) : (user?.displayName || (t.you || 'You')),
+                timestamp: m.createdAt,
+                type: m.role === 'assistant' ? 'agent' : 'user',
+                mode: m.mode,
+              }));
+            });
+          })
+          .catch(() => {});
       }
     });
 
