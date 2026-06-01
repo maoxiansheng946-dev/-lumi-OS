@@ -27,6 +27,8 @@ export function LocalAgentSphere({
   facePresent = false,
   gesturesDisabled = false,
   diffused = false,
+  spatialMode: extMode,
+  onSetSpatialMode,
 }: {
   t: any;
   onMessage?: (text: string) => void;
@@ -50,6 +52,8 @@ export function LocalAgentSphere({
   facePresent?: boolean;
   gesturesDisabled?: boolean;
   diffused?: boolean;
+  spatialMode?: 'geometric' | 'humanoid';
+  onSetSpatialMode?: (m: 'geometric' | 'humanoid') => void;
 }) {
   const [interactionPulse, setInteractionPulse] = useState(0);
   const [reactionColor, setReactionColor] = useState('rgba(255,200,80,0.2)');
@@ -65,7 +69,9 @@ export function LocalAgentSphere({
     }
   }, [reaction]);
 
-  const [spatialMode, setSpatialMode] = useState<'geometric' | 'humanoid'>('geometric');
+  const [_innerMode, _innerSetMode] = useState<'geometric' | 'humanoid'>('geometric');
+  const spatialMode = extMode ?? _innerMode;
+  const setSpatialMode = onSetSpatialMode ?? _innerSetMode;
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const portalCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);

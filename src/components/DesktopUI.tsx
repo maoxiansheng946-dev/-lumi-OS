@@ -842,6 +842,7 @@ export function DesktopUI({
 
   const [theme, setTheme] = useState<string>('celestial');
   const [isLightMode, setIsLightMode] = useState(false);
+  const [spatialMode, setSpatialMode] = useState<'geometric' | 'humanoid'>('geometric');
   useEffect(() => {
     document.documentElement.setAttribute('data-mode', isLightMode ? 'light' : 'dark');
   }, [isLightMode]);
@@ -1877,6 +1878,17 @@ export function DesktopUI({
                   <X size={10} className="text-white/60" />
                 </button>
               </div>
+            ) : spatialMode === 'humanoid' ? (
+              <FaceSphere
+                callState={callState}
+                audioLevel={audioLevel}
+                sentiment={
+                  sphereSentiment === 'excited' ? { valence: 0.6, arousal: 0.8 } :
+                  sphereSentiment === 'focused' ? { valence: 0.1, arousal: 0.5 } :
+                  { valence: 0, arousal: 0 }
+                }
+                theme={theme}
+              />
             ) : (
               <>
               <LocalAgentSphere
@@ -1899,6 +1911,8 @@ export function DesktopUI({
                 facePresent={facePresent}
                 gesturesDisabled={false}
                 diffused={diffused}
+                spatialMode={spatialMode}
+                onSetSpatialMode={setSpatialMode}
               />
               {wakeWord.isListening && callState === 'idle' && (
                 <div className="mt-2 text-[10px] text-white/20 uppercase tracking-[0.25em] font-mono">
