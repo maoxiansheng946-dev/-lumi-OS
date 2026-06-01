@@ -104,12 +104,44 @@ export class WeChatClawBotAdapter implements MessageAdapter {
     };
   }
 
+  // ── Activation: must send typing before WeChat routes messages ──
+
+  private async activate(): Promise<void> {
+    try {
+      const uin = crypto.randomInt(0, 4294967295).toString();
+      const uinB64 = Buffer.from(uin).toString('base64');
+      const headers = {
+        'Content-Type': 'application/json',
+        'AuthorizationType': 'ilink_bot_token',
+        'X-WECHAT-UIN': uinB64,
+        'Authorization': `Bearer ${this.config.botToken}`,
+      };
+      const base = this.config.baseUrl || 'https://ilinkai.weixin.qq.com';
+
+      // Step 1: getconfig → typing_ticket
+      const cfgRes = await fetch(`${base}/ilink/bot/getconfig`, { method: 'POST', headers, body: '{}' });
+      const cfg: any = await cfgRes.json();
+      const ticket = cfg?.typing_ticket || '';
+      console.log('[WeChat] getconfig — ticket:', ticket ? `${ticket.slice(0, 6)}...` : 'none');
+
+      // Step 2: sendtyping with ticket → signals WeChat that we are online
+      const typingBody = { ticket, to_user_id: this.config.botId };
+      await fetch(`${base}/ilink/bot/sendtyping`, { method: 'POST', headers, body: JSON.stringify(typingBody) });
+      console.log('[WeChat] sendtyping sent — activation complete');
+    } catch (err: any) {
+      console.warn('[WeChat] Activation warning:', err.message);
+    }
+  }
+
   // ── Messaging: long-poll for new messages ──
 
   /** Start long-polling loop. Calls onMessage callback for each incoming message. */
-  startPolling(onMessage: (msg: IncomingMessage) => Promise<OutgoingMessage | null>): void {
+  async startPolling(onMessage: (msg: IncomingMessage) => Promise<OutgoingMessage | null>): Promise<void> {
     this.onMessage = onMessage;
     if (this.pollingTimer) return;
+
+    // Activate the bot session before polling
+    await this.activate();
 
     const running = { value: true };
     this.pollingTimer = running as any;
