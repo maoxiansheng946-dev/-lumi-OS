@@ -1879,15 +1879,26 @@ export function DesktopUI({
               </div>
             ) : (
               <>
-              <FaceSphere
+              <LocalAgentSphere
+                t={t}
+                sentiment={sphereSentiment}
                 callState={callState}
                 audioLevel={audioLevel}
-                sentiment={
-                  sphereSentiment === 'excited' ? { valence: 0.6, arousal: 0.8 } :
-                  sphereSentiment === 'focused' ? { valence: 0.1, arousal: 0.5 } :
-                  { valence: 0, arousal: 0 }
-                }
-                theme={theme}
+                highPerformance={isTauri}
+                isWallpaperMode={isWallpaperMode}
+                reaction={petReaction?.animation || null}
+                onStartCall={() => startCall(selectedVoiceId, 'lumi', 'lumi')}
+                onEndCall={endCall}
+                onInterrupt={interrupt}
+                onToggleMute={toggleMute}
+                onMessage={() => {}}
+                handOpenness={handOpenness}
+                handPosition={handPosition}
+                gesture={gesture}
+                handVisible={handVisible}
+                facePresent={facePresent}
+                gesturesDisabled={false}
+                diffused={diffused}
               />
               {wakeWord.isListening && callState === 'idle' && (
                 <div className="mt-2 text-[10px] text-white/20 uppercase tracking-[0.25em] font-mono">
