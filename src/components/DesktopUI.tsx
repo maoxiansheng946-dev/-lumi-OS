@@ -1450,7 +1450,7 @@ export function DesktopUI({
           backgroundRepeat: 'no-repeat',
         } : {}),
         ...(isFullscreen ? {} : {
-          transform: 'scale(0.82)',
+          transform: 'scale(0.75)',
           transformOrigin: 'center center',
         }),
       }}
