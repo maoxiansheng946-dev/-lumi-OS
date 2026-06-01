@@ -853,6 +853,15 @@ export function DesktopUI({
   const [time, setTime] = useState(new Date());
   const [isWallpaperMode, setIsWallpaperMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(true); // Tauri starts fullscreen
+  useEffect(() => {
+    const check = () => {
+      setIsFullscreen(window.innerWidth >= screen.width - 10 && window.innerHeight >= screen.height - 10);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const [iconPositions, setIconPositions] = useState<Record<string, { x: number; y: number }>>(() => {
     try { return JSON.parse(localStorage.getItem('lumi_icon_positions') || '{}'); } catch { return {}; }
   });
@@ -1425,7 +1434,7 @@ export function DesktopUI({
   return (
     <div
       data-mode={isLightMode ? 'light' : 'dark'}
-      className={`fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none transition-all duration-1000 ${
+      className={`fixed inset-0 overflow-hidden cursor-default select-none transition-all duration-1000 ${
       isWallpaperMode ? 'bg-transparent pointer-events-none' :
       isLightMode ? 'bg-[#f5f5f7]' :
       theme === 'celestial' ? 'bg-[#010103]' :
@@ -1433,12 +1442,18 @@ export function DesktopUI({
       theme === 'cyber' ? 'bg-[#000808]' :
       'bg-black'
     }`}
-      style={wallpaper === 'custom' && wallpaperUrl ? {
-        backgroundImage: `url(${wallpaperUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      } : undefined}
+      style={{
+        ...(wallpaper === 'custom' && wallpaperUrl ? {
+          backgroundImage: `url(${wallpaperUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        } : {}),
+        ...(isFullscreen ? {} : {
+          transform: 'scale(0.82)',
+          transformOrigin: 'center center',
+        }),
+      }}
     >
       <input ref={wallpaperInputRef} type="file" accept="image/*" onChange={handleWallpaperUpload} className="hidden" />
       <ContextMenu menu={menu} items={contextItems} onAction={(action) => {
