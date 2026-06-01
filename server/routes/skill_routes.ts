@@ -8,6 +8,7 @@ import { mcpManager, getMCPConfig, updateMCPConfig, SKILLS_DIR } from "../mcp";
 import { generateSkill } from "../skills/generator";
 import { getRecentWorkflows } from "../skills/worklog";
 import { getDataPath } from "../config/data_path";
+import { requireAuth } from "../middleware/auth";
 
 const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) =>
@@ -111,7 +112,7 @@ export function mountSkillRoutes(
   }));
 
   // Install a skill from git/npm/local
-  router.post("/skills/install", async (req, res) => {
+  router.post("/skills/install", requireAuth, async (req, res) => {
     try {
       const { source, url, package: pkgName, path: localPath, name } = req.body;
 
@@ -141,7 +142,7 @@ export function mountSkillRoutes(
   });
 
   // Uninstall a skill
-  router.delete("/skills/:name", async (req, res) => {
+  router.delete("/skills/:name", requireAuth, async (req, res) => {
     try {
       mcpManager.uninstallSkill(req.params.name);
       io.emit('skill:uninstalled', { name: req.params.name });
@@ -152,7 +153,7 @@ export function mountSkillRoutes(
   });
 
   // Enable a skill
-  router.post("/skills/:name/enable", async (req, res) => {
+  router.post("/skills/:name/enable", requireAuth, async (req, res) => {
     try {
       const config = getMCPConfig();
       if (!config[req.params.name]) return res.status(404).json({ error: 'Skill not found' });
@@ -165,7 +166,7 @@ export function mountSkillRoutes(
   });
 
   // Disable a skill
-  router.post("/skills/:name/disable", async (req, res) => {
+  router.post("/skills/:name/disable", requireAuth, async (req, res) => {
     try {
       const config = getMCPConfig();
       if (!config[req.params.name]) return res.status(404).json({ error: 'Skill not found' });

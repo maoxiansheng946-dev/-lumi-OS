@@ -1204,6 +1204,13 @@ export function DesktopUI({
         toast.info('桌面形象已从另一设备同步');
       }
     });
+    socket.on('agent:promoted', (data: { agentName: string; skillName?: string }) => {
+      const msg = data.skillName
+        ? `Agent "${data.agentName}" auto-promoted with skill "${data.skillName}"`
+        : `Agent "${data.agentName}" has been auto-created`;
+      addNotification({ type: 'system', title: 'Agent Promoted', message: msg });
+      toast.info(msg, { duration: 5000 });
+    });
     socket.on('agent:notification', (data: { type: string; level: string; message: string }) => {
       addNotification({ type: data.level === 'critical' ? 'warning' : data.level === 'warning' ? 'warning' : 'info', title: data.type || 'Lumi', message: data.message });
       if (data.level === 'critical') {
@@ -1221,6 +1228,7 @@ export function DesktopUI({
       socket.off('agent:error', onError);
       socket.off('agent:proactive', onProactive);
       socket.off('preferences:changed');
+      socket.off('agent:promoted');
       socket.off('agent:notification');
     };
   }, [socket]);

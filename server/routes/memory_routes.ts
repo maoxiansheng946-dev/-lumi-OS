@@ -230,7 +230,10 @@ export function mountMemoryRoutes(
   // Memory consolidation
   router.post("/memory/consolidate", async (req, res) => {
     try {
-      const userId = (req as any).user?.uid || 'anonymous';
+      const token = req.cookies.token;
+      if (!token) return res.status(401).json({ error: 'Authentication required' });
+      let userId = 'anonymous';
+      try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
       const ctx: ConsolidationContext = {
         userId,
         provider: (req.body.provider as any) || 'deepseek',
@@ -256,7 +259,10 @@ export function mountMemoryRoutes(
   // Self-reflection
   router.post("/memory/self-reflect", async (req, res) => {
     try {
-      const userId = (req as any).user?.uid || 'anonymous';
+      const token = req.cookies.token;
+      if (!token) return res.status(401).json({ error: 'Authentication required' });
+      let userId = 'anonymous';
+      try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
       const ctx: ConsolidationContext = {
         userId,
         provider: (req.body.provider as any) || 'deepseek',
@@ -279,7 +285,10 @@ export function mountMemoryRoutes(
 
   // Growth timeline
   router.get("/memory/growth", (req, res) => {
-    const userId = (req as any).user?.uid || 'anonymous';
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    let userId = 'anonymous';
+    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const growth = queryMemories({ userId, tier: 'growth', limit: Number(req.query.limit) || 50, minConfidence: 0.4 });
     const core = queryMemories({ userId, tier: 'core_identity', limit: 10 });
     res.json({ growth, coreIdentity: core });
@@ -287,7 +296,10 @@ export function mountMemoryRoutes(
 
   // Memory tiers
   router.get("/memory/tiers", (req, res) => {
-    const userId = (req as any).user?.uid || 'anonymous';
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    let userId = 'anonymous';
+    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const tiers: Record<string, any[]> = {};
     for (const tier of ['core_identity', 'growth', 'internalized', 'episodic']) {
       tiers[tier] = queryMemories({ userId, tier: tier as any, limit: Number(req.query.limit) || 100 });
@@ -297,6 +309,9 @@ export function mountMemoryRoutes(
 
   // Change memory tier
   router.put("/memory/:id/tier", (req, res) => {
+    const token2 = req.cookies.token;
+    if (!token2) return res.status(401).json({ error: 'Authentication required' });
+    try { jwt.verify(token2, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const { tier } = req.body;
     const validTiers = ['episodic', 'internalized', 'growth', 'core_identity'];
     if (!tier || !validTiers.includes(tier)) {
@@ -444,6 +459,9 @@ Rules:
 
   // Toggle core identity protection
   router.put("/memory/:id/protect", (req, res) => {
+    const token3 = req.cookies.token;
+    if (!token3) return res.status(401).json({ error: 'Authentication required' });
+    try { jwt.verify(token3, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const all = queryMemories({ limit: 9999 });
     const mem = all.find(m => m.id === req.params.id);
     if (!mem) return res.status(404).json({ error: 'Memory not found' });

@@ -13,6 +13,7 @@ import type { FeishuConfig } from './feishu';
 import type { IncomingMessage, MessageHandler } from './types';
 import { getMessagingConfig, updateMessagingConfig } from './config';
 import { readDB } from '../../db_layer';
+import { requireAuth } from '../middleware/auth';
 
 // Dedup cache: prevent duplicate processing when Feishu retries events
 // Feishu retries if no 200 within 1s, but AI reply may take 5-30s
@@ -131,7 +132,7 @@ export function createMessagingRoutes(
   });
 
   // ── GET /feishu/config — full config (masked) ──
-  router.get('/feishu/config', (_req, res) => {
+  router.get('/feishu/config', requireAuth, (_req, res) => {
     const cfg = getMessagingConfig().feishu;
     res.json({
       appId: cfg.appId,
@@ -143,7 +144,7 @@ export function createMessagingRoutes(
   });
 
   // ── POST /feishu/config — update config ──
-  router.post('/feishu/config', async (req, res) => {
+  router.post('/feishu/config', requireAuth, async (req, res) => {
     try {
       const { appId, appSecret, verificationToken } = req.body;
       const updated = updateMessagingConfig({ appId, appSecret, verificationToken });

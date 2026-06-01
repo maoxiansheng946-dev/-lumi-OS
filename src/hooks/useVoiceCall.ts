@@ -207,6 +207,11 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       });
     });
 
+    // Voice confirmation window — show recognized text during the 600ms delay
+    socket.on('audio:confirm', (data: { text: string }) => {
+      onTranscript?.(data.text, true);
+    });
+
     /**
      * Play a TTS audio chunk using Web Audio API with cross-fade scheduling.
      * Pre-buffers: starts decoding while the previous chunk is still playing.
@@ -356,6 +361,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
 
     return () => {
       socket.off('audio:status');
+      socket.off('audio:confirm');
       socket.off('audio:response');
       socket.off('audio:transcript');
       socket.off('agent:response');
