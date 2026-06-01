@@ -36,20 +36,17 @@ export function createWeChatRoutes(
       if (!qrId) return res.status(400).json({ error: 'qrcode_id required' });
       const status = await adapter.checkQRCodeStatus(qrId);
       if (status.status === 'confirmed' && status.bot_token) {
-        // Persist the login credentials
-        updateMessagingConfig({
-          wechat: {
-            botToken: status.bot_token,
-            botId: status.bot_id || '',
-            baseUrl: status.baseurl || 'https://ilinkai.weixin.qq.com',
-          },
-        });
-        Object.assign(config, {
+        // Derive botId from botToken if not returned: format is "xxx@im.bot:token"
+        const botId = status.bot_id || (status.bot_token.split(':')[0] || status.bot_token);
+        const conf = {
           botToken: status.bot_token,
-          botId: status.bot_id || '',
+          botId,
           baseUrl: status.baseurl || 'https://ilinkai.weixin.qq.com',
           enabled: true,
-        });
+        };
+        // Persist the login credentials
+        updateMessagingConfig({ wechat: conf });
+        Object.assign(config, conf);
         // Start polling in background
         startWeChatPolling(adapter, config, options);
       }
@@ -91,8 +88,9 @@ export function createWeChatRoutes(
   });
 
   // Auto-start polling if already configured (survives restarts)
-  if (config?.botToken && config?.botId) {
-    console.log('[WeChat] Already logged in — starting poll loop');
+  if (config?.botToken) {
+    if (!config.botId) config.botId = (config.botToken.split(':')[0] || config.botToken);
+    console.log('[WeChat] Already logged in — botId:', config.botId?.slice(0,12)+'...', 'starting poll loop');
     startWeChatPolling(adapter, config, options);
   }
 
