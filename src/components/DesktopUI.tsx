@@ -2332,16 +2332,7 @@ export function DesktopUI({
             transition={{ duration: 0.3 }}
             className="fixed inset-0 z-[220] bg-celestial-deep overflow-auto"
           >
-            {/* Back to desktop button */}
-            <div className="absolute top-4 left-4 z-10">
-              <button
-                onClick={() => setActiveTab('home')}
-                className="w-10 h-10 flex items-center justify-center bg-black/40 backdrop-blur-xl border border-white/[0.08] rounded-2xl text-white/40 hover:text-white hover:border-white/20 transition-all"
-              >
-                <ArrowLeft size={18} />
-              </button>
-            </div>
-            <OrgPortal />
+            <OrgPortal onBack={() => setActiveTab('home')} />
           </motion.div>
         )}
       </AnimatePresence>

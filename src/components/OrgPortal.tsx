@@ -14,7 +14,7 @@ interface OrgStatus {
   orgRole: string | null;
 }
 
-export function OrgPortal() {
+export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const t = useT();
   const { user } = useApp();
   const [status, setStatus] = useState<OrgStatus | null>(null);
@@ -103,6 +103,13 @@ export function OrgPortal() {
               {t.orgWorkbenchNote || 'The workbench opens in a new tab. Manage your organization, knowledge base, and team from there.'}
             </p>
           </div>
+          {onBack && (
+            <div className="text-center mt-4">
+              <button onClick={onBack} className="text-white/30 text-sm hover:text-white/50">
+                ← {t.back || '返回'}
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
     );
@@ -158,9 +165,11 @@ export function OrgPortal() {
               </motion.button>
             </div>
 
-            <button onClick={() => window.history.back()} className="w-full text-center text-white/30 text-sm hover:text-white/50 py-2">
-              {t.back || 'Back'}
-            </button>
+            {onBack && (
+              <button onClick={onBack} className="w-full text-center text-white/30 text-sm hover:text-white/50 py-2">
+                ← {t.back || '返回'}
+              </button>
+            )}
           </motion.div>
         )}
 
