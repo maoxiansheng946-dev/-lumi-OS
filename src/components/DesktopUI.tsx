@@ -49,6 +49,7 @@ import {
 import { toast } from 'sonner';
 import { GlassCard } from './SharedUI';
 import { LocalAgentSphere } from './LocalAgentSphere';
+import { FaceSphere } from './FaceSphere/FaceSphere';
 import { VoiceTrainingDialog } from './VoiceTrainingDialog';
 import { VoicePicker } from './VoicePicker';
 import { VoiceForge } from './VoiceForge';
@@ -231,7 +232,7 @@ function OSWindow({
   );
 }
 
-function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, setVolume, theme, setTheme, lang, setLang, toggleWindow }: {
+function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, setVolume, theme, setTheme, lang, setLang, isLightMode, setIsLightMode, toggleWindow }: {
   isOpen: boolean;
   onClose: () => void;
   t: any;
@@ -243,6 +244,8 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
   setTheme: (t: string) => void;
   lang: 'en' | 'zh';
   setLang: (l: 'en' | 'zh') => void;
+  isLightMode: boolean;
+  setIsLightMode: (v: boolean) => void;
   toggleWindow: (id: string) => void;
 }) {
   const [nightShift, setNightShift] = useState(false);
@@ -316,7 +319,15 @@ function ControlCenter({ isOpen, onClose, t, brightness, setBrightness, volume, 
            <div className="space-y-2">
              <div className="flex justify-between items-center text-[10px] font-bold text-white/40 uppercase">
                <span>{t.display || 'Display'}</span>
-               <Sun size={12} />
+               <button
+                 onClick={() => setIsLightMode(!isLightMode)}
+                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                   isLightMode ? 'bg-amber-400 text-black' : 'bg-white/10 text-blue-300'
+                 }`}
+                 title={isLightMode ? (t.lightMode || 'Light') : (t.darkMode || 'Dark')}
+               >
+                 {isLightMode ? <Sun size={14} /> : <Moon size={14} />}
+               </button>
              </div>
              <div className="h-4 w-full bg-white/5 rounded-full relative group cursor-pointer" onClick={(e) => {
                const rect = e.currentTarget.getBoundingClientRect();
@@ -830,6 +841,7 @@ export function DesktopUI({
   }, []);
 
   const [theme, setTheme] = useState<string>('celestial');
+  const [isLightMode, setIsLightMode] = useState(false);
   const [nativeFiles, setNativeFiles] = useState<NativeFile[]>([]);
   const [isControlCenterOpen, setIsControlCenterOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -1396,8 +1408,11 @@ export function DesktopUI({
   };
 
   return (
-    <div className={`fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none transition-all duration-1000 ${
+    <div
+      data-mode={isLightMode ? 'light' : 'dark'}
+      className={`fixed inset-0 h-screen w-screen overflow-hidden cursor-default select-none transition-all duration-1000 ${
       isWallpaperMode ? 'bg-transparent pointer-events-none' :
+      isLightMode ? 'bg-[#f5f5f7]' :
       theme === 'celestial' ? 'bg-[#010103]' :
       theme === 'nebula' ? 'bg-[#050010]' :
       theme === 'cyber' ? 'bg-[#000808]' :
@@ -1427,6 +1442,8 @@ export function DesktopUI({
         setTheme={setTheme}
         lang={lang}
         setLang={setLang}
+        isLightMode={isLightMode}
+        setIsLightMode={setIsLightMode}
         toggleWindow={toggleWindow}
       />
       {/* CRT Scanline / Noise Overlay */}
@@ -1849,36 +1866,25 @@ export function DesktopUI({
                     e.stopPropagation();
                     setSelectedPet(null);
                     savePetPrefsToServer(null, equippedAccessories);
-                    toast.info('已切换回原始圆球');
+                    toast.info('已切换回粒子人脸');
                   }}
                   className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white/10 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/30 hover:border-red-500/40"
-                  title="切换回圆球"
+                  title="切换回粒子人脸"
                 >
                   <X size={10} className="text-white/60" />
                 </button>
               </div>
             ) : (
               <>
-              <LocalAgentSphere
-                t={t}
-                sentiment={sphereSentiment}
+              <FaceSphere
                 callState={callState}
                 audioLevel={audioLevel}
-                highPerformance={isTauri}
-                isWallpaperMode={isWallpaperMode}
-                reaction={petReaction?.animation || null}
-                onStartCall={() => startCall(selectedVoiceId, 'lumi', 'lumi')}
-                onEndCall={endCall}
-                onInterrupt={interrupt}
-                onToggleMute={toggleMute}
-                onMessage={() => {}}
-                handOpenness={handOpenness}
-                handPosition={handPosition}
-                gesture={gesture}
-                handVisible={handVisible}
-                facePresent={facePresent}
-                gesturesDisabled={false}
-                diffused={diffused}
+                sentiment={
+                  sphereSentiment === 'excited' ? { valence: 0.6, arousal: 0.8 } :
+                  sphereSentiment === 'focused' ? { valence: 0.1, arousal: 0.5 } :
+                  { valence: 0, arousal: 0 }
+                }
+                theme={theme}
               />
               {wakeWord.isListening && callState === 'idle' && (
                 <div className="mt-2 text-[10px] text-white/20 uppercase tracking-[0.25em] font-mono">
