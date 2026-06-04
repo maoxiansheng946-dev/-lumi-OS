@@ -947,7 +947,7 @@ export function DesktopUI({
   });
 
   // Gesture detection via webcam — open hand / fist (confirm gesture), face presence
-  const { handOpenness, handPosition, gesture, handVisible, facePresent } = useGestureDetector({ enabled: true });
+  const { handOpenness, handPosition, gesture, handVisible, facePresent } = useGestureDetector({ enabled: false });
 
   const [diffused, setDiffused] = useState(false);
   useEffect(() => {
@@ -1923,7 +1923,7 @@ export function DesktopUI({
                 gesture={gesture}
                 handVisible={handVisible}
                 facePresent={facePresent}
-                gesturesDisabled={false}
+                gesturesDisabled={true}
                 diffused={diffused}
                 isLightMode={isLightMode}
               />

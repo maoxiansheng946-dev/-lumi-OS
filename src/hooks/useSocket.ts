@@ -86,7 +86,30 @@ async function handleDesktopExec(socket: Socket, data: {
       }
       case 'desktop_capture_screen': {
         const capture = await invoke('capture_screen');
-        output = JSON.stringify({ width: (capture as any).width, height: (capture as any).height, image_base64_preview: (capture as any).image_base64?.slice(0, 80) + '...' });
+        const pngBase64: string = (capture as any).image_base64 || '';
+        const width: number = (capture as any).width || 1920;
+        const height: number = (capture as any).height || 1080;
+        const quality = args.quality || 60;
+        // Convert PNG to JPEG via Canvas to reduce size for vision API / computer use
+        try {
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to load screenshot'));
+            img.src = `data:image/png;base64,${pngBase64}`;
+          });
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, width, height);
+          const jpegDataUrl = canvas.toDataURL('image/jpeg', quality / 100);
+          const jpegBase64 = jpegDataUrl.split(',')[1];
+          output = JSON.stringify({ image_base64: jpegBase64, width, height, format: 'jpeg' });
+        } catch {
+          // Fallback: return full PNG base64 if canvas conversion fails
+          output = JSON.stringify({ image_base64: pngBase64, width, height, format: 'png' });
+        }
         break;
       }
       case 'desktop_clipboard_read': {

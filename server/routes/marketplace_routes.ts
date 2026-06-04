@@ -171,6 +171,40 @@ export function mountMarketplaceRoutes(
         return;
       }
 
+      // npm package install — e.g. "lumi-skill-nanobanana" from npm registry
+      if (installSource === 'npm' && req.body.npmPackage) {
+        const npmPkg = req.body.npmPackage;
+        io.emit('skill:installing', { skillId, name: npmPkg, stage: 'downloading' });
+        let skillDirName: string;
+        try {
+          skillDirName = path.basename(await mcpManager.installFromNpm(npmPkg));
+          io.emit('skill:installing', { skillId, name: skillName, stage: 'connecting' });
+          await mcpManager.restartServer(skillDirName);
+        } catch (err: any) {
+          return res.status(500).json({ error: `npm install failed: ${err.message}` });
+        }
+        recordInstall(skillId);
+        io.emit('skill:installed', { skillId, name: skillName, source: 'npm' });
+        return res.json({ success: true, name: skillName, message: `Skill "${skillName}" installed from npm and activated!` });
+      }
+
+      // GitHub repo install — clone + npm install + register
+      if (installSource === 'github' && req.body.repoUrl) {
+        const repoUrl = req.body.repoUrl;
+        io.emit('skill:installing', { skillId, name: skillName, stage: 'cloning' });
+        let skillDirName: string;
+        try {
+          skillDirName = path.basename(await mcpManager.installFromGitHub(repoUrl));
+          io.emit('skill:installing', { skillId, name: skillName, stage: 'connecting' });
+          await mcpManager.restartServer(skillDirName);
+        } catch (err: any) {
+          return res.status(500).json({ error: `GitHub install failed: ${err.message}` });
+        }
+        recordInstall(skillId);
+        io.emit('skill:installed', { skillId, name: skillName, source: 'github' });
+        return res.json({ success: true, name: skillName, message: `Skill "${skillName}" installed from GitHub and activated!` });
+      }
+
       res.status(400).json({ error: 'Invalid installSource' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -263,12 +297,16 @@ export function mountMarketplaceRoutes(
       if (!resp.ok) throw new Error(`npm registry returned ${resp.status}`);
       const data: any = await resp.json();
       const results = (data.objects || []).map((obj: any) => ({
+        id: `npm-${obj.package?.name}`,
         name: obj.package?.name,
-        description: obj.package?.description,
+        description: obj.package?.description || '',
         version: obj.package?.version,
-        author: obj.package?.publisher?.username || obj.package?.author?.name,
+        author: obj.package?.publisher?.username || obj.package?.author?.name || '',
         npmUrl: obj.package?.links?.npm,
         repository: obj.package?.links?.repository,
+        installSource: 'npm' as const,
+        npmPackage: obj.package?.name,
+        source: 'npm',
       }));
       res.json({ source: 'npm', count: results.length, results });
     } catch (err: any) {
@@ -290,13 +328,18 @@ export function mountMarketplaceRoutes(
       if (!resp.ok) throw new Error(`GitHub API returned ${resp.status}`);
       const data: any = await resp.json();
       const results = (data.items || []).map((repo: any) => ({
+        id: `gh-${repo.full_name}`,
         name: repo.name,
         fullName: repo.full_name,
-        description: repo.description,
+        description: repo.description || '',
         stars: repo.stargazers_count,
         url: repo.html_url,
+        cloneUrl: repo.clone_url,
         language: repo.language,
         updatedAt: repo.updated_at,
+        installSource: 'github' as const,
+        repoUrl: repo.clone_url,
+        source: 'github',
       }));
       res.json({ source: 'github', count: results.length, results });
     } catch (err: any) {

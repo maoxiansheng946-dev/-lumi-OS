@@ -195,6 +195,21 @@ function recordWorkflowIfToolsUsed(
 
 // ── Vision Integration ──
 
+/** Parse screenshot relay result — handles JSON wrapper { image_base64, format, width, height } or raw base64 */
+export function parseScreenshotBase64(relayResult: string): { base64: string; mime: string } {
+  try {
+    const parsed = JSON.parse(relayResult);
+    if (parsed.image_base64) {
+      return {
+        base64: parsed.image_base64,
+        mime: parsed.format === 'jpeg' ? 'image/jpeg' : 'image/png',
+      };
+    }
+  } catch {}
+  // Fallback: raw base64 string (legacy)
+  return { base64: relayResult, mime: 'image/png' };
+}
+
 /** Analyze a screenshot with a vision-capable model. */
 export async function analyzeScreen(
   imageBase64: string,
@@ -207,6 +222,8 @@ export async function analyzeScreen(
   getQwen?: () => any,
   getOllama?: () => any,
 ): Promise<string> {
+  const { base64, mime } = parseScreenshotBase64(imageBase64);
+
   // Determine which vision model to use based on provider
   let provider = config.provider;
   let model = config.model;
@@ -228,7 +245,7 @@ export async function analyzeScreen(
       role: 'user',
       content: [
         { type: 'text', text: query },
-        { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}`, detail: 'high' } },
+        { type: 'image_url', image_url: { url: `data:${mime};base64,${base64}`, detail: 'high' } },
       ],
     },
   ];

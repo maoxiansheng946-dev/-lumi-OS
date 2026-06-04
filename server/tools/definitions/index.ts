@@ -21,6 +21,7 @@ import { registerImageTools } from './image_tools';
 import { registerVideoTools } from './video_tools';
 import { registerUpgradeTools } from './upgrade_tools';
 import { registerInputTools } from './input_tools';
+import { registerComputerUseTool } from './computer_use_tool';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -54,6 +55,7 @@ export function registerAllTools(
   registerVideoTools(registry);
   registerUpgradeTools(registry);
   registerInputTools(registry);
+  registerComputerUseTool(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

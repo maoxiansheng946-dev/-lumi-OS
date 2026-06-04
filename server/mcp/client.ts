@@ -141,23 +141,173 @@ class MCPClientManager {
     }
 
     this.copyDirSync(sourceDir, destDir);
-
-    // Run npm install in the destination so deps are available at runtime
     this.installDepsInDir(destDir);
+    this.patchInstalledMetadata(destDir);
 
-    // Write install metadata into package.json
-    const pkgPath = path.join(destDir, 'package.json');
+    let pkg: any = this.readPkg(destDir);
+    this.registerLocalSkill(name, destDir, pkg);
+
+    return destDir;
+  }
+
+  /** Install a skill from an npm package (e.g. "lumi-skill-nanobanana") */
+  async installFromNpm(packageName: string): Promise<string> {
+    this.ensureSkillsDir();
+    const skillName = packageName
+      .replace(/^@/, '')
+      .replace(/\//g, '-')
+      .replace(/[^a-z0-9-]/g, '-');
+    const skillDir = path.join(SKILLS_DIR, skillName);
+
+    if (fs.existsSync(skillDir)) {
+      throw new Error(`Skill "${skillName}" already exists. Uninstall it first.`);
+    }
+
+    // Create a workspace package that depends on the npm MCP skill
+    fs.mkdirSync(skillDir, { recursive: true });
+    const workspacePkg: any = {
+      name: `lumi-skill-${skillName}`,
+      version: '1.0.0',
+      type: 'module',
+      description: `Installed from npm: ${packageName}`,
+      dependencies: { [packageName]: '*' },
+      lumi: { installedAt: new Date().toISOString(), installedFrom: 'npm', npmPackage: packageName },
+    };
+    fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify(workspacePkg, null, 2));
+
+    // npm install — the dep gets resolved into node_modules/{packageName}
+    await this.installDepsSync(skillDir);
+
+    // Read the installed package's package.json for lumi config
+    const depPkgPath = path.join(skillDir, 'node_modules', ...packageName.split('/'), 'package.json');
+    let depPkg: any = {};
+    try { depPkg = JSON.parse(fs.readFileSync(depPkgPath, 'utf-8')); } catch {}
+
+    const lumi = depPkg.lumi || {};
+
+    if (lumi.runCommand) {
+      // External MCP with its own run command — use directly
+      workspacePkg.lumi.runCommand = lumi.runCommand;
+      workspacePkg.lumi.runArgs = lumi.runArgs || [];
+      workspacePkg.lumi.toolCount = lumi.toolCount || 0;
+      workspacePkg.lumi.requiresApiKey = lumi.requiresApiKey || false;
+      workspacePkg.lumi.apiKeyEnv = lumi.apiKeyEnv;
+      workspacePkg.lumi.apiKeyUrl = lumi.apiKeyUrl;
+      workspacePkg.lumi.description = depPkg.description || lumi.description || packageName;
+      fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify(workspacePkg, null, 2));
+      this.registerLocalSkill(skillName, skillDir, workspacePkg);
+    } else if (depPkg.main || depPkg.exports || fs.existsSync(path.join(path.dirname(depPkgPath), 'index.mjs'))) {
+      // Standard MCP package: create a tsx wrapper index.ts
+      const wrapper = `// Auto-generated wrapper for npm package: ${packageName}
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+async function main() {
+  // The npm package exports its own MCP server — import and start
+  const mod = await import('${packageName}');
+  // If the package exports a server directly, use it; otherwise start via the package's main
+  if (mod.server) {
+    const transport = new StdioServerTransport();
+    await mod.server.connect(transport);
+    console.error('[npm-skill] ${packageName} ready');
+  } else if (mod.default?.server) {
+    const transport = new StdioServerTransport();
+    await mod.default.server.connect(transport);
+    console.error('[npm-skill] ${packageName} ready (default export)');
+  } else {
+    // Fallback: let the package's entry point handle it (it should be self-booting)
+    console.error('[npm-skill] ${packageName} loaded (self-booting)');
+  }
+}
+main().catch((err) => { console.error('[npm-skill] Fatal:', err); process.exit(1); });
+`;
+      fs.writeFileSync(path.join(skillDir, 'index.ts'), wrapper);
+      workspacePkg.lumi.toolCount = lumi.toolCount || 1;
+      workspacePkg.lumi.description = depPkg.description || lumi.description || packageName;
+      workspacePkg.dependencies = workspacePkg.dependencies || {};
+      workspacePkg.dependencies['@modelcontextprotocol/sdk'] = '^1.0.0';
+      fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify(workspacePkg, null, 2));
+      await this.installDepsSync(skillDir);
+      this.registerLocalSkill(skillName, skillDir, workspacePkg);
+    } else {
+      throw new Error(`npm package "${packageName}" does not have a lumi MCP config (lumi.runCommand or main entry). Not a valid Lumi skill package.`);
+    }
+
+    return skillDir;
+  }
+
+  /** Install a skill from a GitHub repository (clone + npm install + register) */
+  async installFromGitHub(repoUrl: string): Promise<string> {
+    this.ensureSkillsDir();
+    const repoName = repoUrl
+      .split('/').pop()!
+      .replace(/\.git$/, '')
+      .replace(/[^a-zA-Z0-9-]/g, '-')
+      .toLowerCase();
+    const skillDir = path.join(SKILLS_DIR, repoName);
+
+    if (fs.existsSync(skillDir)) {
+      throw new Error(`Skill "${repoName}" already exists. Uninstall it first.`);
+    }
+
+    console.log(`[MCP] Cloning ${repoUrl} → ${skillDir}`);
+    await new Promise<void>((resolve, reject) => {
+      exec(`git clone --depth 1 "${repoUrl}" "${skillDir}"`, { timeout: 60000 }, (err) => {
+        err ? reject(new Error(`Git clone failed: ${err.message}`)) : resolve();
+      });
+    });
+
+    // Run npm install
+    await this.installDepsSync(skillDir);
+
+    // Read package.json for lumi config
+    let pkg: any = this.readPkg(skillDir);
+    const lumi = pkg.lumi || {};
+
+    // Patch install metadata
+    if (!pkg.lumi) pkg.lumi = {};
+    pkg.lumi.installedAt = new Date().toISOString();
+    pkg.lumi.installedFrom = 'github';
+    pkg.lumi.repoUrl = repoUrl;
+    pkg.lumi.toolCount = lumi.toolCount || 1;
+    if (!pkg.description) pkg.description = lumi.description || repoName;
+    fs.writeFileSync(path.join(skillDir, 'package.json'), JSON.stringify(pkg, null, 2));
+
+    this.registerLocalSkill(repoName, skillDir, pkg);
+    return skillDir;
+  }
+
+  /** Run npm install synchronously (awaits completion) */
+  private installDepsSync(dir: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      exec('npm install --loglevel=error --no-audit --no-fund', {
+        timeout: 120000,
+        cwd: dir,
+      }, (error, _stdout, stderr) => {
+        if (error) {
+          console.warn(`[MCP] npm install failed in ${path.basename(dir)}:`, stderr.trim() || error.message);
+          reject(new Error(stderr.trim() || error.message));
+        } else {
+          console.log(`[MCP] Dependencies installed in ${path.basename(dir)}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  private readPkg(dir: string): any {
+    const pkgPath = path.join(dir, 'package.json');
+    try { return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')); } catch { return {}; }
+  }
+
+  private patchInstalledMetadata(dir: string): void {
+    const pkgPath = path.join(dir, 'package.json');
     let pkg: any = {};
     try { pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')); } catch {}
     if (!pkg.lumi) pkg.lumi = {};
     pkg.lumi.installedAt = new Date().toISOString();
     pkg.lumi.autoGenerated = pkg.lumi.autoGenerated || false;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-
-    // Add to config.json
-    this.registerLocalSkill(name, destDir, pkg);
-
-    return destDir;
   }
 
   /** Uninstall a local skill */
