@@ -75,14 +75,11 @@ async function executeAction(
   switch (action.action) {
     case 'click':
       await desktopRelay('desktop_mouse_move', { x: action.x!, y: action.y! });
-      // Update glow position after cursor moves
-      await desktopRelay('desktop_cursor_glow_update', { x: action.x!, y: action.y! });
       await sleep(80);
       await desktopRelay('desktop_mouse_click', { button: 'left' });
       break;
     case 'double_click':
       await desktopRelay('desktop_mouse_move', { x: action.x!, y: action.y! });
-      await desktopRelay('desktop_cursor_glow_update', { x: action.x!, y: action.y! });
       await sleep(80);
       await desktopRelay('desktop_mouse_click', { button: 'left' });
       await sleep(150);
@@ -90,7 +87,6 @@ async function executeAction(
       break;
     case 'right_click':
       await desktopRelay('desktop_mouse_move', { x: action.x!, y: action.y! });
-      await desktopRelay('desktop_cursor_glow_update', { x: action.x!, y: action.y! });
       await sleep(80);
       await desktopRelay('desktop_mouse_click', { button: 'right' });
       break;
@@ -121,17 +117,20 @@ async function callVisionModel(
 ): Promise<string> {
   const g = llmGetters;
 
-  // Prefer OpenAI GPT-4o for best vision+instruction following, fall back to Gemini
-  let provider: 'openai' | 'gemini';
+  // Prefer OpenAI GPT-4o, fall back to Qwen-VL, then Gemini
+  let provider: 'openai' | 'gemini' | 'qwen';
   let model: string;
   if (g.getOpenAI?.()) {
     provider = 'openai';
     model = 'gpt-4o';
+  } else if (g.getQwen?.()) {
+    provider = 'qwen';
+    model = 'qwen-vl-max';
   } else if (g.getGemini?.()) {
     provider = 'gemini';
     model = 'gemini-2.0-flash';
   } else {
-    throw new Error('Computer use requires OpenAI (GPT-4o) or Gemini API key. Add one in Settings → Voice Services.');
+    throw new Error('Computer use requires a vision-capable model. Add an OpenAI, DashScope (Qwen), or Gemini API key in Settings → Voice Services.');
   }
 
   const historyContext = actionHistory.length > 0
@@ -231,29 +230,8 @@ export async function computerUseLoop(
   const actionHistory: string[] = [];
   let consecutiveErrors = 0;
 
-  // ── Enter wallpaper mode + show cursor glow ──
-  try {
-    await options.desktopRelay('desktop_set_wallpaper_mode', { enabled: true });
-    await options.desktopRelay('desktop_cursor_glow_show', {});
-    console.log('[ComputerUse] Wallpaper mode ON + cursor glow shown');
-  } catch (err) {
-    console.warn('[ComputerUse] Failed to enter wallpaper mode:', err);
-  }
-
-  // ── Restore normal mode on exit ──
-  const dispose = async () => {
-    try {
-      await options.desktopRelay('desktop_cursor_glow_hide', {});
-      await options.desktopRelay('desktop_set_wallpaper_mode', { enabled: false });
-      console.log('[ComputerUse] Wallpaper mode OFF + cursor glow hidden');
-    } catch (err) {
-      console.warn('[ComputerUse] Failed to restore normal mode:', err);
-    }
-  };
-
   for (let i = 0; i < maxIter; i++) {
     if (options.isCancelled?.()) {
-      await dispose();
       return `Task cancelled by user after ${i} step(s). Last actions: ${actionHistory.slice(-3).join('; ') || 'none'}`;
     }
 
@@ -268,10 +246,7 @@ export async function computerUseLoop(
     } catch (err: any) {
       options.onProgress?.(`[${i + 1}/${maxIter}] Screenshot failed: ${err.message}`);
       consecutiveErrors++;
-      if (consecutiveErrors >= 3) {
-        await dispose();
-        return 'Failed to capture screenshot 3 times in a row. Is the desktop app running?';
-      }
+      if (consecutiveErrors >= 3) return 'Failed to capture screenshot 3 times in a row. Is the desktop app running?';
       await sleep(1000);
       continue;
     }
@@ -284,7 +259,6 @@ export async function computerUseLoop(
       options.onProgress?.(`[${i + 1}/${maxIter}] Vision call failed: ${err.message}`);
       consecutiveErrors++;
       if (consecutiveErrors >= 3) {
-        await dispose();
         return `Vision model failed 3 times: ${err.message}`;
       }
       await sleep(2000);
@@ -296,10 +270,7 @@ export async function computerUseLoop(
     if (!action) {
       options.onProgress?.(`[${i + 1}/${maxIter}] Could not parse action from: ${responseText.slice(0, 80)}`);
       consecutiveErrors++;
-      if (consecutiveErrors >= 5) {
-        await dispose();
-        return 'Too many parse failures. The vision model is not returning valid JSON actions.';
-      }
+      if (consecutiveErrors >= 5) return 'Too many parse failures. The vision model is not returning valid JSON actions.';
       continue;
     }
 
@@ -315,7 +286,6 @@ export async function computerUseLoop(
 
     // ── 5. Execute ──
     if (action.action === 'done') {
-      await dispose();
       return action.message || 'Task completed.';
     }
 
@@ -336,6 +306,5 @@ export async function computerUseLoop(
     }
   }
 
-  await dispose();
   return `Reached maximum of ${maxIter} iterations. Last actions: ${actionHistory.slice(-5).join('; ') || 'none'}`;
 }

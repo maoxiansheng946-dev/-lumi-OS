@@ -836,57 +836,52 @@ fn poll_activity() -> ActivitySnapshot {
 fn capture_screen() -> CaptureResult {
     #[cfg(target_os = "windows")]
     {
+        // Write PNG to temp file (avoids stdout truncation for ~8 MB screenshots)
+        let temp_path = std::env::temp_dir().join(format!("lumi_scr_{}.png", std::process::id()));
+        let temp_file = temp_path.to_string_lossy().replace('\\', "\\\\");
+
         let mut cmd = Command::new("powershell");
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000u32);
         }
-        let output = cmd
-            .args([
-                "-NoProfile", "-NonInteractive", "-Command",
-                r#"Add-Type -AssemblyName System.Windows.Forms
+        let ps = format!(
+            r#"Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen
-$w = $screen.Bounds.Width; $h = $screen.Bounds.Height
-$bmp = New-Object System.Drawing.Bitmap($w, $h)
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+$s = [System.Windows.Forms.Screen]::PrimaryScreen
+$w = $s.Bounds.Width; $h = $s.Bounds.Height
+$b = New-Object System.Drawing.Bitmap($w, $h)
+$g = [System.Drawing.Graphics]::FromImage($b)
+$g.CopyFromScreen(0, 0, 0, 0, $b.Size)
 $g.Dispose()
-$ms = New-Object System.IO.MemoryStream
-$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-$bmp.Dispose()
-$bytes = $ms.ToArray()
-$ms.Dispose()
-Write-Output "$([Convert]::ToBase64String($bytes))|${w}|${h}"#
-            ])
+$b.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png)
+$b.Dispose()
+Write-Output "OK|$w|$h""#,
+            temp_file
+        );
+        let output = cmd
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
             .output();
+
         if let Ok(out) = output {
             let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if let Some(_first_newline) = text.find('\n') {
-                // PowerShell may add extra output before our Write-Output
-                let lines: Vec<&str> = text.lines().collect();
-                if let Some(last) = lines.last() {
-                    let parts: Vec<&str> = last.split('|').collect();
-                    if parts.len() >= 3 {
+            let parts: Vec<&str> = text.split('|').collect();
+            if parts.len() >= 3 && parts[0] == "OK" {
+                if let Ok(png) = std::fs::read(&temp_path) {
+                    let _ = std::fs::remove_file(&temp_path);
+                    if !png.is_empty() {
+                        let b64 = base64_encode(&png);
                         return CaptureResult {
-                            image_base64: parts[0].to_string(),
+                            image_base64: b64,
                             width: parts[1].parse().unwrap_or(0),
                             height: parts[2].parse().unwrap_or(0),
                         };
                     }
                 }
-            } else {
-                let parts: Vec<&str> = text.split('|').collect();
-                if parts.len() >= 3 {
-                    return CaptureResult {
-                        image_base64: parts[0].to_string(),
-                        width: parts[1].parse().unwrap_or(0),
-                        height: parts[2].parse().unwrap_or(0),
-                    };
-                }
             }
         }
+        let _ = std::fs::remove_file(&temp_path);
     }
     #[cfg(target_os = "linux")]
     {
@@ -934,6 +929,27 @@ Write-Output "$([Convert]::ToBase64String($bytes))|${w}|${h}"#
         }
     }
     CaptureResult { image_base64: String::new(), width: 0, height: 0 }
+}
+
+/// Simple base64 encoder — avoids pulling in a crate for one function.
+fn base64_encode(bytes: &[u8]) -> String {
+    const CHARS: &[char] = &[
+        'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+        'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z',
+        '0','1','2','3','4','5','6','7','8','9','+','/',
+    ];
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(CHARS[((n >> 18) & 0x3F) as usize]);
+        out.push(CHARS[((n >> 12) & 0x3F) as usize]);
+        out.push(if chunk.len() > 1 { CHARS[((n >> 6) & 0x3F) as usize] } else { '=' });
+        out.push(if chunk.len() > 2 { CHARS[(n & 0x3F) as usize] } else { '=' });
+    }
+    out
 }
 
 // ── Mouse & Keyboard Input Commands (enigo crate) ──

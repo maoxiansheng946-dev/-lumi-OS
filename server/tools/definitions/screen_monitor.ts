@@ -69,6 +69,6 @@ export function registerScreenMonitorTools(registry: ToolRegistry): void {
     },
     handler: captureScreen,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 }

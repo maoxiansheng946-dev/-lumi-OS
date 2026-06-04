@@ -46,7 +46,7 @@ export function registerInputTools(registry: ToolRegistry): void {
     },
     handler: mouseMove,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 
   registry.register({
@@ -62,7 +62,7 @@ export function registerInputTools(registry: ToolRegistry): void {
     },
     handler: mouseClick,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 
   registry.register({
@@ -82,7 +82,7 @@ export function registerInputTools(registry: ToolRegistry): void {
     },
     handler: mouseDrag,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 
   registry.register({
@@ -98,7 +98,7 @@ export function registerInputTools(registry: ToolRegistry): void {
     },
     handler: keyType,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 
   registry.register({
@@ -114,6 +114,6 @@ export function registerInputTools(registry: ToolRegistry): void {
     },
     handler: keyPress,
     permission: 'user',
-    securityLevel: 'confirm',
+    securityLevel: 'safe',
   });
 }
