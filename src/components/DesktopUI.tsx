@@ -82,6 +82,7 @@ import { useAmbientPoller } from '@/hooks/useAmbientPoller';
 import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useApp } from '@/contexts/AppContext';
 const NexusGlobe = lazy(() => import('./NexusGlobe/NexusGlobe').then(m => ({ default: m.NexusGlobe })));
+const InkWorldLazy = lazy(() => import('./InkWorld').then(m => ({ default: m.InkWorld })));
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
 import { useGestureDetector } from '../hooks/useGestureDetector';
@@ -1566,7 +1567,7 @@ export function DesktopUI({
             transition={{ duration: 1.2 }}
             className="fixed inset-0 z-0"
           >
-            <Suspense fallback={null}><NexusGlobe theme={theme as 'celestial' | 'nebula' | 'cyber'} syncRate={syncRate} /></Suspense>
+            <Suspense fallback={null}><InkWorldLazy theme={theme as 'celestial' | 'nebula' | 'cyber'} syncRate={syncRate} /></Suspense>
           </motion.div>
         )}
       </AnimatePresence>
