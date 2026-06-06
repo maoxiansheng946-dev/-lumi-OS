@@ -5,7 +5,7 @@ import { recordWorkflow, WorkflowStep } from '../skills/worklog';
 import { recordLatency } from '../monitor/latency_store';
 
 export interface LLMConfig {
-  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'auto';
+  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'auto';
   model: string;
   maxTokens?: number;
   userId?: string;
@@ -39,6 +39,7 @@ export async function runWithTools(
   onStreamChunk?: StreamCallback,
   context?: ToolContext,
   getOllama?: () => any,
+  getLmStudio?: () => any,
   getArk?: () => any,
 ): Promise<LLMResult> {
   const executionLog: ToolExecutionRecord[] = [];
@@ -74,6 +75,7 @@ export async function runWithTools(
           getAnthropic || (() => null),
           getQwen || (() => null),
           getOllama || (() => null),
+          getLmStudio || (() => null),
           getArk || (() => null),
         )
       : await makeLLMCall(
@@ -86,6 +88,7 @@ export async function runWithTools(
           getAnthropic || (() => null),
           getQwen || (() => null),
           getOllama || (() => null),
+          getLmStudio || (() => null),
           getArk || (() => null),
         );
     recordLatency('llm', Date.now() - llmStart);
@@ -224,6 +227,7 @@ export async function analyzeScreen(
   getAnthropic?: () => any,
   getQwen?: () => any,
   getOllama?: () => any,
+  getLmStudio?: () => any,
   getArk?: () => any,
 ): Promise<string> {
   const { base64, mime } = parseScreenshotBase64(imageBase64);
@@ -259,7 +263,7 @@ export async function analyzeScreen(
     messages, [],
     { provider: provider as any, model, maxTokens: 1000 },
     getDeepSeek || (() => null), getGemini || (() => null),
-    getOpenAI, getAnthropic, getQwen, getOllama, getArk,
+    getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk,
   );
 
   return result.text || 'Vision analysis returned no text.';
@@ -275,8 +279,9 @@ export async function runWithVision(
   getAnthropic?: () => any,
   getQwen?: () => any,
   getOllama?: () => any,
+  getLmStudio?: () => any,
   getArk?: () => any,
 ): Promise<string> {
-  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen, getOllama, getArk);
+  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk);
   return result.text || '';
 }

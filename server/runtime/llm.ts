@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getKey } from "../config/keys";
+import { readDB } from "../../db_layer";
 
 let openai: OpenAI | null = null;
 let anthropic: Anthropic | null = null;
@@ -11,6 +12,34 @@ let qwen: OpenAI | null = null;
 let ark: OpenAI | null = null;
 let ollama: OpenAI | null = null;
 let ollamaDetected = false;
+let lmstudio: OpenAI | null = null;
+let lmstudioDetected = false;
+
+/** Read Ollama base URL from settings (user-configured) or env var */
+function getOllamaBaseUrl(): string {
+  try {
+    const db = readDB();
+    const setting = (db.settings || []).find((s: any) => s.key === 'ollama_config');
+    if (setting) {
+      const config = JSON.parse(setting.value);
+      if (config.baseUrl) return config.baseUrl.replace(/\/+$/, '');
+    }
+  } catch { /* DB not initialized yet — use env */ }
+  return (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+}
+
+/** Read LM Studio base URL from settings (user-configured) or env var */
+function getLmStudioBaseUrl(): string {
+  try {
+    const db = readDB();
+    const setting = (db.settings || []).find((s: any) => s.key === 'lmstudio_config');
+    if (setting) {
+      const config = JSON.parse(setting.value);
+      if (config.baseUrl) return config.baseUrl.replace(/\/+$/, '');
+    }
+  } catch { /* DB not initialized yet — use env */ }
+  return (process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234').replace(/\/+$/, '');
+}
 
 export interface LLMClients {
   getOpenAI: () => OpenAI | null;
@@ -21,6 +50,8 @@ export interface LLMClients {
   getArk: () => OpenAI | null;
   getOllama: () => OpenAI | null;
   isOllamaAvailable: () => boolean;
+  getLmStudio: () => OpenAI | null;
+  isLmStudioAvailable: () => boolean;
 }
 
 function getOpenAI() {
@@ -83,9 +114,10 @@ function getArk() {
 
 function getOllama() {
   if (!ollama && ollamaDetected) {
+    const url = getOllamaBaseUrl();
     ollama = new OpenAI({
-      apiKey: 'ollama', // Ollama doesn't require an API key but the SDK requires non-empty
-      baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+      apiKey: 'ollama',
+      baseURL: `${url}/v1`,
     });
   }
   return ollama;
@@ -97,7 +129,8 @@ function isOllamaAvailable() {
 
 async function detectOllama(): Promise<boolean> {
   try {
-    const resp = await fetch(`${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/tags`, {
+    const baseUrl = getOllamaBaseUrl();
+    const resp = await fetch(`${baseUrl}/api/tags`, {
       signal: AbortSignal.timeout(3000),
     });
     if (resp.ok) {
@@ -117,8 +150,43 @@ async function detectOllama(): Promise<boolean> {
   return false;
 }
 
+function getLmStudio() {
+  if (!lmstudio && lmstudioDetected) {
+    const url = getLmStudioBaseUrl();
+    lmstudio = new OpenAI({
+      apiKey: 'lm-studio',
+      baseURL: `${url}/v1`,
+    });
+  }
+  return lmstudio;
+}
+
+function isLmStudioAvailable() {
+  return lmstudioDetected;
+}
+
+async function detectLmStudio(): Promise<boolean> {
+  try {
+    const baseUrl = getLmStudioBaseUrl();
+    const resp = await fetch(`${baseUrl}/v1/models`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (resp.ok) {
+      const data = await resp.json() as any;
+      const models = data.data || [];
+      const hasLLM = models.length > 0;
+      lmstudioDetected = hasLLM;
+      console.log(`[LLM] LM Studio detected — ${models.length} models`);
+      return hasLLM;
+    }
+  } catch { /* LM Studio not running */ }
+  lmstudioDetected = false;
+  return false;
+}
+
 export function createLLMRuntime(): LLMClients {
-  // Fire-and-forget: detect local Ollama in background
+  // Fire-and-forget: detect local Ollama and LM Studio in background
   detectOllama();
-  return { getOpenAI, getAnthropic, getGemini, getDeepSeek, getQwen, getArk, getOllama, isOllamaAvailable };
+  detectLmStudio();
+  return { getOpenAI, getAnthropic, getGemini, getDeepSeek, getQwen, getArk, getOllama, isOllamaAvailable, getLmStudio, isLmStudioAvailable };
 }

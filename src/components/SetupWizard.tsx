@@ -12,29 +12,84 @@ interface Props {
 export function SetupWizard({ onFinish }: Props) {
   const [step, setStep] = useState<Step>('detect');
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'not-found'>('checking');
+  const [ollamaUrl, setOllamaUrl] = useState(() => {
+    try { return localStorage.getItem('lumi_ollama_url') || 'http://localhost:11434'; } catch { return 'http://localhost:11434'; }
+  });
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [lmstudioStatus, setLmstudioStatus] = useState<'checking' | 'available' | 'not-found'>('checking');
+  const [lmstudioUrl, setLmstudioUrl] = useState(() => {
+    try { return localStorage.getItem('lumi_lmstudio_url') || 'http://localhost:1234'; } catch { return 'http://localhost:1234'; }
+  });
+  const [lmstudioModels, setLmstudioModels] = useState<string[]>([]);
   const [apiKey, setApiKey] = useState('');
   const [apiProvider, setApiProvider] = useState('deepseek');
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    // Detect Ollama
-    const detect = async () => {
-      try {
-        const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
-        if (resp.ok) {
-          const data = await resp.json();
-          const hasLLM = (data.models || []).some((m: any) => !m.name.includes('embed') && !m.name.includes('whisper'));
-          setOllamaStatus(hasLLM ? 'available' : 'not-found');
-        } else {
-          setOllamaStatus('not-found');
-        }
-      } catch {
+  const detectOllama = async (url: string) => {
+    setOllamaStatus('checking');
+    try {
+      const resp = await fetch(`${url.replace(/\/+$/, '')}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        const models = data.models || [];
+        const hasLLM = models.some((m: any) => !m.name.includes('embed') && !m.name.includes('whisper'));
+        setOllamaModels(models.map((m: any) => m.name));
+        setOllamaStatus(hasLLM ? 'available' : 'not-found');
+      } else {
         setOllamaStatus('not-found');
       }
-    };
-    detect();
+    } catch {
+      setOllamaStatus('not-found');
+    }
+  };
+
+  const detectLmstudio = async (url: string) => {
+    setLmstudioStatus('checking');
+    try {
+      const resp = await fetch(`${url.replace(/\/+$/, '')}/v1/models`, { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        const models = (data.data || []) as any[];
+        setLmstudioModels(models.map((m: any) => m.id));
+        setLmstudioStatus(models.length > 0 ? 'available' : 'not-found');
+      } else {
+        setLmstudioStatus('not-found');
+      }
+    } catch {
+      setLmstudioStatus('not-found');
+    }
+  };
+
+  useEffect(() => {
+    detectOllama(ollamaUrl);
+    detectLmstudio(lmstudioUrl);
   }, []);
+
+  const handleOllamaUrlChange = (url: string) => {
+    setOllamaUrl(url);
+    localStorage.setItem('lumi_ollama_url', url);
+    fetch('/api/ollama/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseUrl: url }),
+    }).catch(() => {});
+    detectOllama(url);
+  };
+
+  const handleLmstudioUrlChange = (url: string) => {
+    setLmstudioUrl(url);
+    localStorage.setItem('lumi_lmstudio_url', url);
+    fetch('/api/lmstudio/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseUrl: url }),
+    }).catch(() => {});
+    detectLmstudio(url);
+  };
+
+  const localAIReady = ollamaStatus === 'available' || lmstudioStatus === 'available';
+  const localAINotDetected = ollamaStatus !== 'checking' && lmstudioStatus !== 'checking' && !localAIReady;
 
   const handleSaveApiKey = async () => {
     if (!apiKey.trim()) return;
@@ -90,42 +145,104 @@ export function SetupWizard({ onFinish }: Props) {
             <div className="flex justify-center">
               <div className="relative">
                 <Cpu size={64} className="text-blue-400" />
-                {ollamaStatus === 'checking' && (
+                {(ollamaStatus === 'checking' || lmstudioStatus === 'checking') && (
                   <Loader2 size={24} className="absolute -bottom-1 -right-1 animate-spin text-blue-400" />
                 )}
               </div>
             </div>
             <h2 className="text-2xl font-bold text-white">
-              {ollamaStatus === 'checking' ? 'Detecting local AI...' : ollamaStatus === 'available' ? 'Local AI Found' : 'No Local AI Detected'}
+              {ollamaStatus === 'checking' || lmstudioStatus === 'checking'
+                ? 'Detecting local AI...'
+                : localAIReady
+                ? 'Local AI Found'
+                : 'No Local AI Detected'}
             </h2>
             <p className="text-white/40 text-sm">
-              {ollamaStatus === 'checking'
-                ? 'Checking if Ollama is running on this machine...'
-                : ollamaStatus === 'available'
-                ? 'An LLM model is available locally. Your conversations will be fast, private, and free.'
-                : 'No local model found. You can still use Lumi with a cloud API key, or install Ollama for local AI.'}
+              {localAIReady
+                ? 'Local LLM detected. Your conversations will be fast, private, and free.'
+                : (localAINotDetected
+                  ? 'No local model found. You can still use Lumi with a cloud API key, or install a local AI runtime.'
+                  : '')
+              }
             </p>
-            {ollamaStatus === 'not-found' && (
-              <a
-                href="https://ollama.com/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm transition-colors"
-              >
-                <Download size={16} />
-                Install Ollama (free)
-              </a>
+
+            {/* Ollama status line */}
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <span className={`w-2 h-2 rounded-full ${ollamaStatus === 'available' ? 'bg-green-400' : ollamaStatus === 'checking' ? 'bg-amber-400 animate-pulse' : 'bg-red-400'}`} />
+              <span className="text-white/50">Ollama</span>
+              {ollamaStatus === 'available' && ollamaModels.length > 0 && (
+                <span className="text-white/40 text-xs">
+                  ({ollamaModels.filter(m => !m.includes('embed') && !m.includes('whisper')).length} models)
+                </span>
+              )}
+            </div>
+
+            {/* LM Studio status line */}
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <span className={`w-2 h-2 rounded-full ${lmstudioStatus === 'available' ? 'bg-green-400' : lmstudioStatus === 'checking' ? 'bg-amber-400 animate-pulse' : 'bg-red-400'}`} />
+              <span className="text-white/50">LM Studio</span>
+              {lmstudioStatus === 'available' && lmstudioModels.length > 0 && (
+                <span className="text-white/40 text-xs">({lmstudioModels.length} models)</span>
+              )}
+            </div>
+
+            {localAINotDetected && (
+              <div className="space-y-3">
+                {/* Ollama URL */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={ollamaUrl}
+                    onChange={e => setOllamaUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleOllamaUrlChange(ollamaUrl)}
+                    placeholder="Ollama: http://localhost:11434"
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-emerald-500/50"
+                  />
+                  <button
+                    onClick={() => handleOllamaUrlChange(ollamaUrl)}
+                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white text-sm font-medium transition-colors"
+                  >
+                    检测
+                  </button>
+                </div>
+                {/* LM Studio URL */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={lmstudioUrl}
+                    onChange={e => setLmstudioUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleLmstudioUrlChange(lmstudioUrl)}
+                    placeholder="LM Studio: http://localhost:1234"
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                  <button
+                    onClick={() => handleLmstudioUrlChange(lmstudioUrl)}
+                    className="px-4 py-3 bg-amber-600 hover:bg-amber-500 rounded-xl text-white text-sm font-medium transition-colors"
+                  >
+                    检测
+                  </button>
+                </div>
+                <a
+                  href="https://ollama.com/download"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm transition-colors"
+                >
+                  <Download size={16} />
+                  Install Ollama (free)
+                </a>
+              </div>
             )}
-            {ollamaStatus !== 'checking' && (
+            {(ollamaStatus !== 'checking' || lmstudioStatus !== 'checking') && (
               <button
-                onClick={() => setStep(ollamaStatus === 'available' ? 'voice-test' : 'api-setup')}
+                onClick={() => setStep(localAIReady ? 'voice-test' : 'api-setup')}
                 className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-2xl text-white font-semibold transition-all"
               >
-                {ollamaStatus === 'available' ? 'Start Using Lumi' : 'Set Up Cloud API Key'}
+                {localAIReady ? 'Start Using Lumi' : 'Set Up Cloud API Key'}
                 <ArrowRight size={18} />
               </button>
             )}
-            {ollamaStatus === 'available' && (
+            {localAIReady && (
               <button onClick={() => setStep('api-setup')} className="w-full text-white/55 text-sm hover:text-white/50 py-2">
                 Also configure a cloud API key for complex tasks
               </button>

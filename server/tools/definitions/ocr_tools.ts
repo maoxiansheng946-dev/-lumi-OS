@@ -17,7 +17,7 @@ async function ocrScreen(args: Record<string, any>, context?: any): Promise<stri
 
   const model = provider === 'openai' ? 'gpt-4o' : provider === 'qwen' ? 'qwen-vl-max' : provider === 'ark' ? 'doubao-1-5-vision-pro-32k' : 'gemini-2.0-flash';
   try {
-    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getArk);
+    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
     return description;
   } catch (err: any) {
     return JSON.stringify({ format: 'screenshot_base64', data: base64, error: err.message });
@@ -40,7 +40,7 @@ async function ocrRegion(args: Record<string, any>, context?: any): Promise<stri
 
   const model = provider === 'openai' ? 'gpt-4o' : provider === 'qwen' ? 'qwen-vl-max' : provider === 'ark' ? 'doubao-1-5-vision-pro-32k' : 'gemini-2.0-flash';
   try {
-    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getArk);
+    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
     return description;
   } catch (err: any) {
     return JSON.stringify({ format: 'screenshot_base64', data: base64, error: err.message });

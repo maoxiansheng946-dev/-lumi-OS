@@ -159,6 +159,7 @@ async function callVisionModel(
     g.getAnthropic,
     g.getQwen,
     g.getOllama,
+    g.getLmStudio,
     g.getArk,
   );
 

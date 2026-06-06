@@ -34,6 +34,8 @@ export function registerChatHandler(
     getQwen: () => any;
     getOllama: () => any;
     isOllamaAvailable: () => boolean;
+    getLmStudio: () => any;
+    isLmStudioAvailable: () => boolean;
   },
   sensoryFn: (uid: string) => any,
   userIdFn: (s: Socket) => string,

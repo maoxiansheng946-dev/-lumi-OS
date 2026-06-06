@@ -120,6 +120,16 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
     const stored = loadKeys();
     const envOrStore = (envKey: string, storeKey: string) =>
       !!(process.env[envKey] && process.env[envKey]!.length > 0) || !!stored[storeKey as keyof typeof stored];
+    // Check local model configs
+    let ollamaAvailable = false;
+    let lmstudioAvailable = false;
+    try {
+      const db = readDB();
+      const os = (db.settings || []).find((s: any) => s.key === 'ollama_config');
+      if (os) ollamaAvailable = !!JSON.parse(os.value).detected;
+      const ls = (db.settings || []).find((s: any) => s.key === 'lmstudio_config');
+      if (ls) lmstudioAvailable = !!JSON.parse(ls.value).detected;
+    } catch {}
     res.json({
       providers: {
         deepseek: { available: envOrStore('DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY'), model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' },
@@ -128,6 +138,8 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
         anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' },
         qwen: { available: envOrStore('QWEN_API_KEY', 'DASHSCOPE_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: process.env.QWEN_MODEL || 'qwen-plus' },
         ark: { available: envOrStore('ARK_API_KEY', 'ARK_API_KEY'), model: process.env.ARK_MODEL || 'doubao-1-5-pro-32k' },
+        ollama: { available: ollamaAvailable, model: 'local' },
+        lmstudio: { available: lmstudioAvailable, model: 'local' },
       },
     });
   });
@@ -343,5 +355,106 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
         { id: 5, title: "数据共享协议", content: "严格本地优先数据共享协议，只有明确授权时才与对等节点共享。" }
       ]
     });
+  });
+
+  // ── Ollama local model config ──
+  // GET: return saved Ollama URL + detection status
+  router.get("/ollama/config", (_req, res) => {
+    try {
+      const db = readDB();
+      const setting = (db.settings || []).find((s: any) => s.key === 'ollama_config');
+      const config = setting ? JSON.parse(setting.value) : {};
+      res.json({
+        baseUrl: config.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+        detected: !!config.detected,
+        models: config.models || [],
+      });
+    } catch { res.json({ baseUrl: 'http://localhost:11434', detected: false, models: [] }); }
+  });
+
+  // PUT: save Ollama URL and trigger re-detection
+  router.put("/ollama/config", async (req, res) => {
+    try {
+      const { baseUrl } = req.body || {};
+      const url = (baseUrl || 'http://localhost:11434').replace(/\/+$/, '');
+
+      // Try detecting models at the new URL
+      let detected = false;
+      let models: string[] = [];
+      try {
+        const resp = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
+        if (resp.ok) {
+          const data = await resp.json() as any;
+          models = (data.models || []).map((m: any) => m.name);
+          detected = models.length > 0;
+        }
+      } catch { /* detection failed */ }
+
+      const payload = { baseUrl: url, detected, models, updatedAt: new Date().toISOString() };
+      const db = readDB();
+      const key = 'ollama_config';
+      const existing = (db.settings || []).findIndex((s: any) => s.key === key);
+      if (existing >= 0) {
+        db.settings[existing].value = JSON.stringify(payload);
+      } else {
+        if (!db.settings) (db as any).settings = [];
+        db.settings.push({ key, value: JSON.stringify(payload) });
+      }
+      writeDB(db);
+
+      res.json({ baseUrl: url, detected, models });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── LM Studio local model config ──
+  // GET: return saved LM Studio URL + detection status
+  router.get("/lmstudio/config", (_req, res) => {
+    try {
+      const db = readDB();
+      const setting = (db.settings || []).find((s: any) => s.key === 'lmstudio_config');
+      const config = setting ? JSON.parse(setting.value) : {};
+      res.json({
+        baseUrl: config.baseUrl || process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234',
+        detected: !!config.detected,
+        models: config.models || [],
+      });
+    } catch { res.json({ baseUrl: 'http://localhost:1234', detected: false, models: [] }); }
+  });
+
+  // PUT: save LM Studio URL and trigger re-detection
+  router.put("/lmstudio/config", async (req, res) => {
+    try {
+      const { baseUrl } = req.body || {};
+      const url = (baseUrl || 'http://localhost:1234').replace(/\/+$/, '');
+
+      let detected = false;
+      let models: string[] = [];
+      try {
+        const resp = await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(5000) });
+        if (resp.ok) {
+          const data = await resp.json() as any;
+          models = (data.data || []).map((m: any) => m.id);
+          detected = models.length > 0;
+        }
+      } catch { /* detection failed */ }
+
+      const payload = { baseUrl: url, detected, models, updatedAt: new Date().toISOString() };
+      const db = readDB();
+      const key = 'lmstudio_config';
+      const existing = (db.settings || []).findIndex((s: any) => s.key === key);
+      if (existing >= 0) {
+        db.settings[existing].value = JSON.stringify(payload);
+      } else {
+        if (!db.settings) (db as any).settings = [];
+        db.settings.push({ key, value: JSON.stringify(payload) });
+      }
+      writeDB(db);
+
+      res.json({ baseUrl: url, detected, models });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 }

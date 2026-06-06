@@ -360,38 +360,40 @@ export function parseAnthropicResponse(rawResponse: any): NormalizedLLMResponse 
 export async function makeLLMCall(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'auto'; model: string; maxTokens?: number; userId?: string },
-  getDeepSeek: () => any,
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'auto'; model: string; maxTokens?: number; userId?: string },  getDeepSeek: () => any,
   getGemini: () => any,
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
   getOllama?: () => any,
+  getLmStudio?: () => any,
   getArk?: () => any,
 ): Promise<NormalizedLLMResponse> {
   // ── Auto/hybrid dispatch: local Ollama → cloud DeepSeek fallback ──
   if (config.provider === 'auto' && getOllama) {
     const { dispatchLLMCall } = await import('./dispatch');
-    const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.() };
+    const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.(), getLmStudio, isLmStudioAvailable: () => !!getLmStudio?.() };
     const result = await dispatchLLMCall(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: config.maxTokens, userId: config.userId }, getters);
     return { text: result.text, toolCalls: result.toolCalls, usage: result.usage };
   }
 
-  // OpenAI-compatible path: DeepSeek, Qwen, Ark, Ollama
-  if (config.provider === 'deepseek' || config.provider === 'qwen' || config.provider === 'ark' || config.provider === 'ollama') {
+  // OpenAI-compatible path: DeepSeek, Qwen, Ark, Ollama, LM Studio
+  if (config.provider === 'deepseek' || config.provider === 'qwen' || config.provider === 'ark' || config.provider === 'ollama' || config.provider === 'lmstudio') {
     const client = config.provider === 'deepseek' ? getDeepSeek()
       : config.provider === 'qwen' ? getQwen?.()
       : config.provider === 'ark' ? getArk?.()
+      : config.provider === 'lmstudio' ? getLmStudio?.()
       : getOllama?.();
     if (!client) throw new Error(`${config.provider} not configured`);
 
     const fmt = config.provider === 'qwen' ? formatQwenRequest : formatDeepSeekRequest;
+    const isLocal = config.provider === 'ollama' || config.provider === 'lmstudio';
     const params = fmt({
       model: config.model,
       messages,
       toolDeclarations,
       maxTokens: config.maxTokens,
-      ...(config.provider !== 'ollama' ? { userId: config.userId } : {}),
+      ...(isLocal ? {} : { userId: config.userId }),
     });
 
     const response = await withCloudResilience(
@@ -467,7 +469,7 @@ export type StreamCallback = (chunk: string) => void;
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'auto'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'auto'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
   onChunk: StreamCallback,
   getDeepSeek: () => any,
   getGemini: () => any,
@@ -475,32 +477,35 @@ export async function makeLLMCallStreaming(
   getAnthropic?: () => any,
   getQwen?: () => any,
   getOllama?: () => any,
+  getLmStudio?: () => any,
   getArk?: () => any,
 ): Promise<NormalizedLLMResponse> {
   // ── Auto/hybrid dispatch: local Ollama → cloud DeepSeek fallback ──
   if (config.provider === 'auto' && getOllama) {
     const { dispatchLLMCallStreaming } = await import('./dispatch');
-    const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.() };
+    const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.(), getLmStudio, isLmStudioAvailable: () => !!getLmStudio?.() };
     const result = await dispatchLLMCallStreaming(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: config.maxTokens, userId: config.userId, signal: config.signal }, onChunk, getters);
     return { text: result.text, toolCalls: result.toolCalls, usage: result.usage };
   }
 
-  // ── DeepSeek / OpenAI / Qwen / Ark / Ollama (OpenAI-compatible streaming) ──
-  if (config.provider === 'deepseek' || config.provider === 'openai' || config.provider === 'qwen' || config.provider === 'ark' || config.provider === 'ollama') {
+  // ── DeepSeek / OpenAI / Qwen / Ark / Ollama / LM Studio (OpenAI-compatible streaming) ──
+  if (config.provider === 'deepseek' || config.provider === 'openai' || config.provider === 'qwen' || config.provider === 'ark' || config.provider === 'ollama' || config.provider === 'lmstudio') {
     const client = config.provider === 'deepseek' ? getDeepSeek()
       : config.provider === 'openai' ? getOpenAI?.()
       : config.provider === 'qwen' ? getQwen?.()
       : config.provider === 'ark' ? getArk?.()
+      : config.provider === 'lmstudio' ? getLmStudio?.()
       : getOllama?.();
     if (!client) throw new Error(`${config.provider} not configured`);
 
     const fmt = config.provider === 'qwen' ? formatQwenRequest : formatDeepSeekRequest;
+    const isLocal = config.provider === 'ollama' || config.provider === 'lmstudio';
     const params: any = fmt({
       model: config.model,
       messages,
       toolDeclarations,
       maxTokens: config.maxTokens,
-      ...(config.provider !== 'ollama' ? { userId: config.userId } : {}),
+      ...(isLocal ? {} : { userId: config.userId }),
     });
     params.stream = true;
 

@@ -17,6 +17,7 @@ import {
   Mic,
   CheckCircle,
   AlertCircle,
+  Loader2,
   LogOut,
   Terminal,
   Cloud
@@ -653,8 +654,167 @@ function LLMProvidersPage({ t, providerStatus }: { t: any; providerStatus: Recor
           <LLMProviderRow icon={<BrainCircuit size={18} className="text-blue-400" />} label={`Google Gemini${providerStatus.gemini?.available ? ` (${providerStatus.gemini.model})` : ''}`} providerId="gemini" models={['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']} placeholder={providerStatus.gemini?.available ? (t.connectedViaEnv || 'Connected via environment') : (t.noKeyConfigured || 'No key configured')} serverKey="GEMINI_API_KEY" t={t} />
           <LLMProviderRow icon={<MessagesSquare size={18} className="text-green-400" />} label="OpenAI" providerId="openai" models={['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']} placeholder="sk-..." serverKey="OPENAI_API_KEY" t={t} />
           <LLMProviderRow icon={<Sparkle size={18} className="text-purple-400" />} label="Anthropic Claude" providerId="anthropic" models={['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5']} placeholder="sk-ant-..." serverKey="ANTHROPIC_API_KEY" t={t} />
+          <OllamaProviderRow t={t} />
+          <LmStudioProviderRow t={t} />
         </div>
       </SettingsSection>
+    </div>
+  );
+}
+
+function OllamaProviderRow({ t }: { t?: any }) {
+  const [baseUrl, setBaseUrl] = useState(() => {
+    try { return localStorage.getItem('lumi_ollama_url') || 'http://localhost:11434'; } catch { return 'http://localhost:11434'; }
+  });
+  const [detected, setDetected] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    // Load current config on mount
+    fetch('/api/ollama/config')
+      .then(r => r.json())
+      .then(cfg => {
+        setBaseUrl(cfg.baseUrl || 'http://localhost:11434');
+        setDetected(!!cfg.detected);
+        setModels(cfg.models || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleDetect = async () => {
+    setChecking(true);
+    try {
+      const resp = await fetch('/api/ollama/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl }),
+      });
+      const cfg = await resp.json();
+      setDetected(!!cfg.detected);
+      setModels(cfg.models || []);
+      localStorage.setItem('lumi_ollama_url', baseUrl);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { setDetected(false); setModels([]); }
+    setChecking(false);
+  };
+
+  const llmModels = models.filter(m => !m.includes('embed') && !m.includes('whisper'));
+
+  return (
+    <div className="p-6 bg-white/5 rounded-3xl border border-white/5 space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="p-2 bg-white/5 rounded-lg"><Cpu size={18} className="text-emerald-400" /></div>
+        <label className="text-xs font-black uppercase tracking-widest text-white/50">Ollama (Local AI)</label>
+        {detected && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">CONNECTED</span>}
+        {saved && <CheckCircle size={14} className="text-green-400 ml-auto" />}
+      </div>
+      <div className="flex gap-3">
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={e => { setBaseUrl(e.target.value); setSaved(false); }}
+          onKeyDown={e => e.key === 'Enter' && handleDetect()}
+          placeholder="http://localhost:11434"
+          className="flex-1 bg-black/40 border border-white/10 rounded-xl p-4 text-white font-mono text-sm outline-none focus:border-emerald-400/50 transition-colors"
+        />
+        <Button
+          onClick={handleDetect}
+          disabled={checking || !baseUrl.trim()}
+          className="h-[56px] px-5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 hover:bg-emerald-500 transition-all"
+        >
+          {checking ? <Loader2 size={16} className="animate-spin" /> : 'Detect'}
+        </Button>
+      </div>
+      {detected && llmModels.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {llmModels.map(m => (
+            <span key={m} className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/60 font-mono">{m}</span>
+          ))}
+        </div>
+      )}
+      {!detected && !checking && baseUrl && (
+        <p className="text-xs text-white/40">No local models found at this address. Make sure Ollama is running.</p>
+      )}
+    </div>
+  );
+}
+
+function LmStudioProviderRow({ t }: { t?: any }) {
+  const [baseUrl, setBaseUrl] = useState(() => {
+    try { return localStorage.getItem('lumi_lmstudio_url') || 'http://localhost:1234'; } catch { return 'http://localhost:1234'; }
+  });
+  const [detected, setDetected] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/lmstudio/config')
+      .then(r => r.json())
+      .then(cfg => {
+        setBaseUrl(cfg.baseUrl || 'http://localhost:1234');
+        setDetected(!!cfg.detected);
+        setModels(cfg.models || []);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleDetect = async () => {
+    setChecking(true);
+    try {
+      const resp = await fetch('/api/lmstudio/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl }),
+      });
+      const cfg = await resp.json();
+      setDetected(!!cfg.detected);
+      setModels(cfg.models || []);
+      localStorage.setItem('lumi_lmstudio_url', baseUrl);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { setDetected(false); setModels([]); }
+    setChecking(false);
+  };
+
+  return (
+    <div className="p-6 bg-white/5 rounded-3xl border border-white/5 space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="p-2 bg-white/5 rounded-lg"><Cpu size={18} className="text-amber-400" /></div>
+        <label className="text-xs font-black uppercase tracking-widest text-white/50">LM Studio (Local AI)</label>
+        {detected && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">CONNECTED</span>}
+        {saved && <CheckCircle size={14} className="text-green-400 ml-auto" />}
+      </div>
+      <div className="flex gap-3">
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={e => { setBaseUrl(e.target.value); setSaved(false); }}
+          onKeyDown={e => e.key === 'Enter' && handleDetect()}
+          placeholder="http://localhost:1234"
+          className="flex-1 bg-black/40 border border-white/10 rounded-xl p-4 text-white font-mono text-sm outline-none focus:border-amber-400/50 transition-colors"
+        />
+        <Button
+          onClick={handleDetect}
+          disabled={checking || !baseUrl.trim()}
+          className="h-[56px] px-5 bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 hover:bg-amber-500 transition-all"
+        >
+          {checking ? <Loader2 size={16} className="animate-spin" /> : 'Detect'}
+        </Button>
+      </div>
+      {detected && models.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {models.map(m => (
+            <span key={m} className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/60 font-mono">{m}</span>
+          ))}
+        </div>
+      )}
+      {!detected && !checking && baseUrl && (
+        <p className="text-xs text-white/40">No models found. Make sure LM Studio is running and a model is loaded.</p>
+      )}
     </div>
   );
 }
