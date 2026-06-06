@@ -222,6 +222,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       if (!isCallActive.current) return;
       const ctx = ensureTtsContext();
       isTtsPlaying.current = true;
+      if (ttsStartedAt.current === 0) ttsStartedAt.current = Date.now();
 
       ctx.decodeAudioData(buffer.slice(0), (decoded) => {
         if (!isCallActive.current) return;
@@ -505,6 +506,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     }
 
     isTtsPlaying.current = false;
+    ttsStartedAt.current = 0;
     setIsMuted(false);
     setElapsedSeconds(0);
 
@@ -526,8 +528,8 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
   }, [callState]);
 
   useEffect(() => {
-    const threshold = 0.15;
-    const minTtsDuration = 400; // ms — ignore barge-in during first 400ms of TTS
+    const threshold = 0.12;
+    const minTtsDuration = 500; // ms — ignore barge-in during first 500ms of TTS
     if (
       audioLevel > threshold &&
       isTtsPlaying.current &&
