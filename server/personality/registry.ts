@@ -16,27 +16,34 @@ class PersonalityRegistry {
     this.broadcastFn = fn;
   }
 
-  /** Load personalities from the JSON config file */
+  /** Load personalities: user's evolved state (data/) takes priority over factory default */
   load(configPath?: string): void {
     if (this.loaded) return;
 
-    const filePath = configPath || path.join(process.cwd(), 'server', 'personality', 'personalities.json');
+    const factoryPath = configPath || path.join(process.cwd(), 'server', 'personality', 'personalities.json');
+    const altFactoryPath = path.join(process.cwd(), '..', 'server', 'personality', 'personalities.json');
+    const userStatePath = path.join(process.cwd(), 'data', 'personalities.json');
+    const altUserStatePath = path.join(process.cwd(), '..', 'data', 'personalities.json');
 
-    // For bundled dist-server, try relative to entry
-    const altPath = path.join(process.cwd(), '..', 'server', 'personality', 'personalities.json');
+    // 1. Prefer user's evolved state (data/ — gitignored, survives updates)
+    let raw: string = '';
+    let loadedFrom = '';
+    for (const p of [userStatePath, altUserStatePath]) {
+      try { raw = fs.readFileSync(p, 'utf-8'); loadedFrom = p; break; } catch {}
+    }
 
-    let raw: string;
-    try {
-      raw = fs.readFileSync(filePath, 'utf-8');
-    } catch {
-      try {
-        raw = fs.readFileSync(altPath, 'utf-8');
-      } catch {
-        console.warn(`[Personality] Config not found at ${filePath}, using built-in defaults`);
-        this.loadBuiltins();
-        this.loaded = true;
-        return;
+    // 2. Fall back to factory default (server/ — git-tracked, clean for all users)
+    if (!loadedFrom) {
+      for (const p of [factoryPath, altFactoryPath]) {
+        try { raw = fs.readFileSync(p, 'utf-8'); loadedFrom = p; break; } catch {}
       }
+    }
+
+    if (!loadedFrom) {
+      console.warn('[Personality] Config not found, using built-in defaults');
+      this.loadBuiltins();
+      this.loaded = true;
+      return;
     }
 
     try {
@@ -204,23 +211,27 @@ class PersonalityRegistry {
     return (config as any).evolutionHistory || [];
   }
 
-  /** Persist the current registry state back to the JSON file */
+  /** Persist the current registry state to the user's state file (data/ — gitignored) */
   save(configPath?: string): void {
-    const filePath = configPath || path.join(process.cwd(), 'server', 'personality', 'personalities.json');
-    const altPath = path.join(process.cwd(), '..', 'server', 'personality', 'personalities.json');
+    // Always write to data/ so evolution survives git pulls
+    const userStatePath = path.join(process.cwd(), 'data', 'personalities.json');
+    const altUserStatePath = path.join(process.cwd(), '..', 'data', 'personalities.json');
+
+    // Ensure data directory exists
+    for (const p of [userStatePath, altUserStatePath]) {
+      try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch {}
+    }
 
     const configs = Array.from(this.personalities.values());
     const json = JSON.stringify(configs, null, 2);
 
-    try {
-      fs.writeFileSync(filePath, json, 'utf-8');
-    } catch {
+    for (const p of [userStatePath, altUserStatePath]) {
       try {
-        fs.writeFileSync(altPath, json, 'utf-8');
-      } catch (err) {
-        console.error('[Personality] Failed to save config:', err);
-      }
+        fs.writeFileSync(p, json, 'utf-8');
+        return;
+      } catch {}
     }
+    console.error('[Personality] Failed to save config');
   }
 
   /**
