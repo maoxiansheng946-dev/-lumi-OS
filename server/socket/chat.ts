@@ -23,6 +23,8 @@ import { matchQuickCommand } from "../cognition/quick_commands";
 import { checkLLMAccess, recordUsage, estimateTokens } from "../subscription/proxy";
 import { recordTokenUsage } from "../llm/token_tracker";
 import { runOrchestratedTask, shouldDistillSkill, buildSkillDescription } from "../agents/orchestrator";
+import { runNLChainer, shouldChainTask } from "../agents/nl_chainer";
+import { recommendSkills, formatRecommendations } from "../agents/skill_recommender";
 import { searchKnowledgeBase } from "../org/kb";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 
@@ -462,6 +464,28 @@ export function registerChatHandler(
 
       const allToolRecords: { name: string; args: string; result?: string; error?: string }[] = [];
 
+      // Path B2: NL Task Chainer — for office workflows that chain tools (search→read→create etc.)
+      if (!responseText && shouldChainTask(text)) {
+        try {
+          socket.emit("agent:status", { status: "thinking", agentName: "Lumi Office" });
+          const chainerResult = await runNLChainer(
+            text,
+            { userId: uid, provider: activeProvider, model: activeModel, desktopRelay, context: { isCancelled: () => abortController.signal.aborted, toolPolicy: personality.toolPolicy } },
+            llmGetters,
+            (step, total, desc) => {
+              socket.emit("agent:status", { status: "thinking", agentName: `Step ${step}/${total}: ${desc}` });
+            },
+          );
+          if (chainerResult.finalResponse) {
+            responseText = chainerResult.finalResponse;
+            llmWasCalled = true;
+            console.log('[NLChainer] Completed with', chainerResult.stepResults.length, 'steps. Goal:', chainerResult.plan.goal);
+          }
+        } catch (chainErr: any) {
+          console.error('[NLChainer] Failed, falling back to normal chat:', chainErr.message);
+        }
+      }
+
       if (!responseText) {
         // Path C: Normal LLM path (simple queries, or orchestrator fallback)
 
@@ -650,6 +674,12 @@ export function registerChatHandler(
         orgId: orgId || '',
       });
       writeDB(db);
+
+      // Skill auto-recommendation: suggest uninstalled skills that match the user's task
+      const skillRecs = recommendSkills(text);
+      if (skillRecs.length > 0) {
+        responseText += formatRecommendations(skillRecs);
+      }
 
       // Emit response BEFORE conversation_updated so the client finalizes streaming first
       socket.emit("agent:response", { text: responseText, agentName: personality.name, source: "chat" });

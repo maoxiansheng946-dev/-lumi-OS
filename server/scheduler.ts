@@ -9,6 +9,7 @@ import { makeLLMCall } from './llm/providers';
 import { getWeatherBrief, getTimeGreeting } from './services/weather';
 import { autoGenerateSkill } from './skills/generator';
 import { autoGenerateWorkflows } from './agents/workflows';
+import { runHealthAudit, HealthReport } from './agents/health_audit';
 import { readDB, writeDB } from '../db_layer';
 import { AgentRuntime, AgentRecord } from './agents/runtime';
 import { personalityRegistry } from './personality';
@@ -884,6 +885,36 @@ Rules:
         }
       } catch (err) {
         console.error('[Scheduler] auto_workflow_gen failed:', err);
+      }
+      return null;
+    },
+  });
+
+  // System health audit (every 6 hours) — self-diagnose and notify if issues found
+  scheduler.register({
+    id: 'health_audit',
+    cron: 'every_6h',
+    quiet: true,
+    lastRun: null,
+    handler: async () => {
+      try {
+        const userIds = getAllUserIds();
+        for (const userId of userIds) {
+          const report = runHealthAudit(userId);
+          if (report.recommendations.length > 0 && scheduler.io) {
+            scheduler.io.to(userId).emit('agent:proactive', {
+              type: 'health_audit',
+              report: {
+                overallStatus: report.overallStatus,
+                recommendations: report.recommendations.slice(0, 3),
+                evolutionInsight: report.evolutionInsight,
+              },
+              timestamp: report.timestamp,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[Scheduler] health_audit failed:', err);
       }
       return null;
     },
