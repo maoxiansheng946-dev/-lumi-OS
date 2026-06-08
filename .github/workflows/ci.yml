@@ -119,8 +119,32 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Build Tauri app
+      - name: Build Tauri app (non-Linux)
+        if: runner.os != 'Linux'
         run: npm run tauri:build
+
+      - name: Build Tauri app (Linux, with retry for GH release downloads)
+        if: runner.os == 'Linux'
+        run: |
+          # Pre-download AppRun binary with retry to avoid 504 during Tauri bundling
+          APPRUN_URL="https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64"
+          APPRUN_DIR="$HOME/.cache/tauri"
+          mkdir -p "$APPRUN_DIR"
+          echo "Downloading AppRun binary with retry..."
+          curl --retry 10 --retry-delay 15 --retry-max-time 600 --connect-timeout 30 \
+            -L "$APPRUN_URL" -o "$APPRUN_DIR/AppRun-x86_64" || echo "Pre-download failed, will rely on Tauri's built-in download"
+
+          # Build with retries for resilience against transient network issues
+          for i in 1 2 3; do
+            if npm run tauri:build; then
+              exit 0
+            fi
+            if [ $i -lt 3 ]; then
+              echo "Build attempt $i failed, retrying in 30s..."
+              sleep 30
+            fi
+          done
+          exit 1
 
       - name: Upload Windows installer
         if: runner.os == 'Windows'
