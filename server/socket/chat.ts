@@ -489,7 +489,18 @@ export function registerChatHandler(
               album: pick.album?.name,
               duration: pick.duration || pick.dt,
             };
-            const audioUrl = `https://music.163.com/song/media/outer/url?id=${pick.id}.mp3`;
+            // Try ncm-cli play (uses mpv + authenticated stream, supports VIP)
+            // Fall back to public outer URL if ncm-cli is not configured
+            let audioUrl: string | undefined;
+            try {
+              const { exec: execCb } = await import('child_process');
+              const { promisify } = await import('util');
+              const execP = promisify(execCb);
+              await execP(`npx @music163/ncm-cli play --song --encrypted-id "${pick.id}" --original-id "${pick.id}" --output json`, { timeout: 10000 });
+            } catch {
+              // Fallback: public outer URL (works for free songs only)
+              audioUrl = `https://music.163.com/song/media/outer/url?id=${pick.id}.mp3`;
+            }
             emitMusicAtmosphere(socket, {
               track: trackInfo,
               mood,
