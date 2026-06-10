@@ -51,6 +51,42 @@ function ncmFirePlay(encryptedId: string, originalId: string): void {
   });
 }
 
+/** Get encrypted ID of the user's liked-songs playlist (specialType 5) */
+async function getLikedPlaylistEncId(): Promise<string | null> {
+  const raw = await ncmExec('playlist created');
+  const data = tryParse(raw);
+  const records = data?.data?.records || [];
+  const liked = records.find((r: any) => r.specialType === 5);
+  return liked?.id || null;
+}
+
+/** Get playable tracks from a playlist with random offset for variety */
+async function getPlaylistSongs(encId: string, limit = 50): Promise<any[]> {
+  const offset = Math.floor(Math.random() * 200);
+  const raw = await ncmExec(`playlist tracks --playlistId ${encId} --limit ${limit} --offset ${offset}`);
+  const data = tryParse(raw);
+  const tracks = data?.data || [];
+  return tracks.filter((s: any) => s.playFlag !== false);
+}
+
+/** Check if user is asking for their liked/favorited songs */
+function isLikedSongsRequest(text: string): boolean {
+  return /我喜欢的|我的喜欢|喜欢的歌|喜欢的音乐|红心|收藏的歌/.test(text);
+}
+
+/** Check if user is asking for daily recommendations */
+function isRecommendRequest(text: string): boolean {
+  return /推荐|每日|今天听什么|有什么新歌|推荐.*歌|今日推荐|日推/.test(text);
+}
+
+/** Get playable songs from daily recommend */
+async function getDailySongs(limit = 30): Promise<any[]> {
+  const raw = await ncmExec(`recommend daily --limit ${limit}`);
+  const data = tryParse(raw);
+  const tracks = data?.data || [];
+  return tracks.filter((s: any) => s.playFlag !== false);
+}
+
 function extractTarget(userText: string): string | null {
   let t = userText.replace(/[。！？，\s]+/g, ' ').trim();
   const prefixWords = /^(给我|帮我|我想|我要|来|放|播放|搜|听|来点|随便放|随便来|一首|一个|点|下|一下|首|的)\s*/;
@@ -67,29 +103,13 @@ function extractTarget(userText: string): string | null {
   return t.length > 0 && t.length <= 30 ? t : null;
 }
 
-export async function searchAndPlay(
-  userId: string,
-  socket: any,
-  userText?: string,
+async function pickAndPlay(
+  socket: any, userId: string, mood: string,
+  candidates: any[], source: string,
 ): Promise<{ success: boolean; text?: string }> {
-  const emotionalState = loadEmotionalState(userId);
-  const mood = emotionalState.dominantMood || 'peaceful';
-
-  let keyword: string;
-  if (userText) {
-    const target = extractTarget(userText);
-    keyword = target || moodSearchMap[mood] || '推荐 热门';
-    if (target) console.log(`[Music] User target: "${target}"`);
-  } else {
-    keyword = moodSearchMap[mood] || '推荐 热门';
-  }
-
-  // Search via ncm-cli
-  const searchRaw = await ncmExec(`search song --keyword "${keyword}" --limit 5`);
-  const searchData = tryParse(searchRaw);
-  const allSongs = searchData?.data?.records || [];
-  const playable = allSongs.filter((s: any) => s.playFlag !== false);
+  const playable = candidates.filter((s: any) => s.playFlag !== false);
   if (playable.length === 0) return { success: false };
+  console.log(`[Music] ${source}: ${playable.length} playable from ${candidates.length} candidates`);
 
   const pick = playable[Math.floor(Math.random() * playable.length)];
   const trackInfo = {
@@ -100,20 +120,17 @@ export async function searchAndPlay(
     coverUrl: pick.coverImgUrl,
   };
 
-  // Fire ncm-cli play — mpv handles audio
   ncmFirePlay(pick.id, pick.originalId);
-
-  // No audioUrl — mpv handles audio, frontend uses local ticker for progress
   console.log(`[Music] Selected: "${trackInfo.name}"`);
 
-  // Lyrics (public API)
+  const emotionalState = loadEmotionalState(userId);
+
+  // Lyrics via ncm-cli (authenticated)
   let lyricsData: any[] = [];
   try {
-    const lyricRes = await fetch(`https://music.163.com/api/song/lyric?os=pc&id=${pick.originalId}&lv=-1&kv=-1&tv=-1`, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://music.163.com/' },
-    });
-    const lyricJson = await lyricRes.json() as any;
-    const lrcText = lyricJson?.lrc?.lyric || '';
+    const lyricRaw = await ncmExec(`song lyric --songId ${pick.id}`, 10000);
+    const lyricJson = tryParse(lyricRaw);
+    const lrcText = lyricJson?.data?.lyric || '';
     for (const line of lrcText.split('\n')) {
       const m = line.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/);
       if (m) {
@@ -137,13 +154,63 @@ export async function searchAndPlay(
 
   console.log(`[Music] Scene: ${scene.scene}, particles=${scene.particles}`);
   emitMusicAtmosphere(socket, {
-    track: trackInfo,
-    mood,
-    audioUrl: '',
-    lyrics: lyricsData,
-    lumiReason,
-    scene,
+    track: trackInfo, mood, audioUrl: '',
+    lyrics: lyricsData, lumiReason, scene,
   });
 
   return { success: true, text: lumiReason };
+}
+
+export async function searchAndPlay(
+  userId: string,
+  socket: any,
+  userText?: string,
+): Promise<{ success: boolean; text?: string }> {
+  const emotionalState = loadEmotionalState(userId);
+  const mood = emotionalState.dominantMood || 'peaceful';
+
+  // 1. "我喜欢的歌" / "放红心歌单" → liked playlist
+  if (userText && isLikedSongsRequest(userText)) {
+    const encId = await getLikedPlaylistEncId();
+    if (encId) {
+      const songs = await getPlaylistSongs(encId);
+      if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
+    }
+    return { success: false };
+  }
+
+  // 2. "每日推荐" / "有什么新歌" → daily recommend
+  if (userText && isRecommendRequest(userText)) {
+    const songs = await getDailySongs(30);
+    if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'daily');
+    return { success: false };
+  }
+
+  // 3. Specific artist/song request → search
+  if (userText) {
+    const target = extractTarget(userText);
+    if (target) {
+      console.log(`[Music] User target: "${target}"`);
+      const searchRaw = await ncmExec(`search song --keyword "${target}" --limit 5`);
+      const searchData = tryParse(searchRaw);
+      const songs = searchData?.data?.records || [];
+      if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
+    }
+  }
+
+  // 4. Default: liked playlist preferred, fallback to mood search
+  const encId = await getLikedPlaylistEncId();
+  if (encId) {
+    const songs = await getPlaylistSongs(encId, 30);
+    if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
+  }
+
+  // Fallback: mood-based search
+  const keyword = moodSearchMap[mood] || '推荐 热门';
+  const searchRaw = await ncmExec(`search song --keyword "${keyword}" --limit 5`);
+  const searchData = tryParse(searchRaw);
+  const songs = searchData?.data?.records || [];
+  if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
+
+  return { success: false };
 }

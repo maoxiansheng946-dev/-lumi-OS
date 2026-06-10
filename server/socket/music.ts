@@ -1,26 +1,9 @@
 /**
  * Music Socket Handler — real-time music playback events.
- *
- * Bridges the frontend MusicMoodLayer with the backend ncm-cli (or other music tools).
- * Handles play/pause/seek/next from frontend, emits track state back.
+ * All playback, navigation, queue, like, and recommendations go through ncm-cli.
  */
 import { exec } from 'child_process';
-import { promisify } from 'util';
 import { Socket } from 'socket.io';
-
-const execAsync = promisify(exec);
-
-interface MusicState {
-  playing: boolean;
-  trackName?: string;
-  artists?: string[];
-  album?: string;
-  duration?: number;
-  progress?: number;
-  coverUrl?: string;
-  volume?: number;
-  source?: 'netease' | 'minimax' | 'url';
-}
 
 interface MusicAtmosphere {
   track: { name: string; artists: string[]; album?: string; coverUrl?: string; duration?: number };
@@ -34,9 +17,12 @@ interface MusicAtmosphere {
 
 const userPollers = new Map<string, ReturnType<typeof setInterval>>();
 
-function ncmCmd(args: string): Promise<string> {
+const mpvPath = 'C:\\Program Files\\MPV Player';
+const ncmEnv = { ...process.env, PATH: `${mpvPath};${process.env.PATH || ''}` };
+
+function ncmExec(args: string, timeout = 10000): Promise<string> {
   return new Promise((resolve) => {
-    exec(`npx @music163/ncm-cli ${args} --output json`, { timeout: 10000 }, (err, stdout) => {
+    exec(`npx @music163/ncm-cli ${args} --output json`, { timeout, env: ncmEnv }, (_err, stdout) => {
       resolve(stdout || '');
     });
   });
@@ -53,22 +39,20 @@ export function registerMusicHandlers(
 ) {
   const uid = getUserId(socket);
 
+  // ── Playback ──────────────────────────────────────────────────────────
+
   socket.on('music:play', async (data: { encryptedId?: string; originalId?: string; playlist?: boolean; audioUrl?: string }) => {
     try {
       if (data.audioUrl) {
-        // Direct URL playback (for MiniMax generated music or external sources)
         socket.emit('music:state', { playing: true, source: 'url', audioUrl: data.audioUrl });
         return;
       }
-
       if (data.playlist) {
         const args = [data.encryptedId ? `--encrypted-id "${data.encryptedId}"` : '', data.originalId ? `--original-id "${data.originalId}"` : ''].filter(Boolean).join(' ');
-        await ncmCmd(`play --playlist ${args}`);
+        await ncmExec(`play --playlist ${args}`, 15000);
       } else if (data.encryptedId && data.originalId) {
-        await ncmCmd(`play --song --encrypted-id "${data.encryptedId}" --original-id "${data.originalId}"`);
+        await ncmExec(`play --song --encrypted-id "${data.encryptedId}" --original-id "${data.originalId}"`, 15000);
       }
-
-      // Start polling state
       startStatePoller(socket, uid);
       socket.emit('music:state', { playing: true, source: 'netease' });
     } catch (e: any) {
@@ -77,38 +61,66 @@ export function registerMusicHandlers(
   });
 
   socket.on('music:pause', async () => {
-    await ncmCmd('pause');
+    await ncmExec('pause');
     socket.emit('music:state', { playing: false });
   });
 
   socket.on('music:resume', async () => {
-    await ncmCmd('resume');
+    await ncmExec('resume');
     socket.emit('music:state', { playing: true });
   });
 
   socket.on('music:next', async () => {
-    try {
-      const { searchAndPlay } = await import('../music/search_play');
-      await searchAndPlay(uid, socket);
-    } catch {}
+    await ncmExec('next');
+    pollAndEmitState(socket);
   });
 
   socket.on('music:prev', async () => {
-    try {
-      const { searchAndPlay } = await import('../music/search_play');
-      await searchAndPlay(uid, socket);
-    } catch {}
+    await ncmExec('prev');
+    pollAndEmitState(socket);
   });
 
   socket.on('music:seek', async (data: { seconds: number }) => {
-    await ncmCmd(`seek ${Math.max(0, data.seconds || 0)}`);
+    await ncmExec(`seek ${Math.max(0, data.seconds || 0)}`);
   });
 
   socket.on('music:volume', async (data: { level: number }) => {
     const vol = Math.max(0, Math.min(100, data.level || 50));
-    await ncmCmd(`volume ${vol}`);
+    await ncmExec(`volume ${vol}`);
     socket.emit('music:state', { volume: vol });
   });
+
+  // ── Queue ─────────────────────────────────────────────────────────────
+
+  socket.on('music:queue:list', async () => {
+    const raw = await ncmExec('queue');
+    socket.emit('music:queue', tryParse(raw) || raw.slice(0, 1000));
+  });
+
+  socket.on('music:queue:add', async (data: { encryptedId: string; originalId?: string }) => {
+    const args = [`--encrypted-id "${data.encryptedId}"`, data.originalId ? `--original-id "${data.originalId}"` : ''].filter(Boolean).join(' ');
+    await ncmExec(`queue add ${args}`);
+    socket.emit('music:queue:added', { encryptedId: data.encryptedId });
+  });
+
+  socket.on('music:queue:clear', async () => {
+    await ncmExec('queue clear');
+    socket.emit('music:queue:cleared', {});
+  });
+
+  // ── Like / Dislike ────────────────────────────────────────────────────
+
+  socket.on('music:like', async (data: { encryptedId: string }) => {
+    await ncmExec(`song like --songId "${data.encryptedId}"`);
+    socket.emit('music:liked', { encryptedId: data.encryptedId });
+  });
+
+  socket.on('music:dislike', async (data: { encryptedId: string }) => {
+    await ncmExec(`song dislike --songId "${data.encryptedId}"`);
+    socket.emit('music:disliked', { encryptedId: data.encryptedId });
+  });
+
+  // ── State ─────────────────────────────────────────────────────────────
 
   socket.on('music:get_state', () => {
     pollAndEmitState(socket);
@@ -119,8 +131,10 @@ export function registerMusicHandlers(
   });
 }
 
+// ── State polling ──────────────────────────────────────────────────────────
+
 async function pollAndEmitState(socket: Socket) {
-  const raw = await ncmCmd('state');
+  const raw = await ncmExec('state');
   const result = tryParse(raw);
   const data = result?.state || result;
   if (data) {
@@ -153,8 +167,7 @@ function stopStatePoller(uid: string) {
 }
 
 /**
- * Emit a music atmosphere event to trigger the MusicMoodLayer in the frontend.
- * Broadcasts to ALL sockets in the user's room (since frontend may have multiple connections).
+ * Emit a music atmosphere event to trigger the MusicMoodLayer.
  */
 export function emitMusicAtmosphere(socket: Socket, atmosphere: MusicAtmosphere) {
   const rooms = Array.from(socket.rooms);
@@ -163,6 +176,5 @@ export function emitMusicAtmosphere(socket: Socket, atmosphere: MusicAtmosphere)
     socket.to(userRoom).emit('music:atmosphere', atmosphere);
   }
   socket.emit('music:atmosphere', atmosphere);
-  // Start polling ncm-cli state to sync progress/lyrics to frontend
   startStatePoller(socket, userRoom || 'default');
 }

@@ -39,6 +39,40 @@ let ncmLoginPolling: ReturnType<typeof setTimeout> | null = null;
 let ncmLoginQrUrl: string | null = null;
 let ncmLoginDone = false;
 
+// Configure ncm-cli credentials (appId + privateKey from developer.music.163.com)
+apiRouter.post('/ncm/configure', async (req, res) => {
+  try {
+    const { appId, privateKey } = req.body || {};
+    if (!appId?.trim() || !privateKey?.trim()) {
+      return res.json({ success: false, error: 'appId and privateKey are required' });
+    }
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execP = promisify(exec);
+    await execP(`npx @music163/ncm-cli config set appId "${appId.trim()}"`, { timeout: 10000 });
+    await execP(`npx @music163/ncm-cli config set privateKey "${privateKey.trim().replace(/\n/g, '\\n')}"`, { timeout: 10000 });
+    console.log('[NCM] Credentials configured.');
+    res.json({ success: true });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message || String(e) });
+  }
+});
+
+apiRouter.get('/ncm/configure/status', async (_req, res) => {
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execP = promisify(exec);
+    const result = await execP('npx @music163/ncm-cli config list', { timeout: 8000 });
+    const stdout = result.stdout || '';
+    const hasAppId = stdout.includes('appId:') && !stdout.includes('appId: (未配置)');
+    const hasPrivateKey = stdout.includes('privateKey:') && !stdout.includes('privateKey: (未配置)');
+    res.json({ configured: hasAppId && hasPrivateKey });
+  } catch {
+    res.json({ configured: false });
+  }
+});
+
 apiRouter.post('/ncm/login', async (_req, res) => {
   try {
     const { exec } = await import('child_process');
