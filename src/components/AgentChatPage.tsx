@@ -920,7 +920,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         </div>
 
         {/* ── Info Sidebar ── */}
-            <div className="w-72 flex-shrink-0 space-y-4 overflow-y-auto custom-scrollbar">
+            <motion.div
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1], delay: 0.15 }}
+              className="w-96 flex-shrink-0 space-y-4 overflow-y-auto custom-scrollbar">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1], delay: 0.2 }}>
           <GlassCard className="p-6 rounded-[2.5rem] space-y-4 border-celestial-saturn/20" hoverEffect={false}>
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">{t.activeCapabilities || 'Active Capabilities'}</h4>
@@ -937,7 +942,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               ))}
             </div>
           </GlassCard>
+          </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1], delay: 0.28 }}>
           <GlassCard className="p-6 rounded-[2.5rem] space-y-4" hoverEffect={false}>
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">{t.optimizeKnowledge || 'Knowledge Optimization'}</h4>
             <div className="grid grid-cols-1 gap-3">
@@ -1050,7 +1057,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               </div>
             )}
           </GlassCard>
+          </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1], delay: 0.36 }}>
           <GlassCard className="p-6 rounded-[2.5rem] space-y-4" hoverEffect={false}>
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">{t.agentStats || 'Agent Stats'}</h4>
             <div className="space-y-4">
@@ -1064,7 +1073,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               </div>
             </div>
           </GlassCard>
+          </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1], delay: 0.44 }}>
           <GlassCard className="p-6 rounded-[2.5rem] space-y-4" hoverEffect={false}>
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">{t.neuralMeshStatus || 'Neural Mesh Status'}</h4>
             <div className="flex items-center gap-3">
@@ -1075,7 +1086,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               {t.agentSyncDesc || 'Your agent is currently synchronized with the local node. All interactions are stored in your private neural cloud.'}
             </p>
           </GlassCard>
-            </div>
+          </motion.div>
+            </motion.div>
       </div>
     </div>
 

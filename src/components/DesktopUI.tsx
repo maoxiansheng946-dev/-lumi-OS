@@ -43,6 +43,8 @@ import {
   Crown,
   Castle,
   Brush,
+  Play,
+  Pause,
   Mic,
   Briefcase,
   Terminal as TerminalIcon,
@@ -2405,6 +2407,39 @@ function SoundPanel({ t }: { t?: any }) {
   const [designName, setDesignName] = useState('');
   const [designing, setDesigning] = useState(false);
   const [voiceRefresh, setVoiceRefresh] = useState(0);
+  const [voices, setVoices] = useState<{ cloned: any[]; premade: any[] }>({ cloned: [], premade: [] });
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    fetch('/api/voice/voices', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setVoices({ cloned: d.cloned || [], premade: d.premade || [] }))
+      .catch(() => {});
+  }, [voiceRefresh]);
+
+  const handlePlay = async (voiceId: string, text?: string) => {
+    if (playingId === voiceId) {
+      audioRef.current?.pause();
+      setPlayingId(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/voice/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voiceId, text: text || '你好，这是我的声音。Hello, this is my voice.' }),
+      });
+      if (!res.ok) throw new Error('Synthesis failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setPlayingId(null); URL.revokeObjectURL(url); };
+      await audio.play();
+      setPlayingId(voiceId);
+    } catch { toast.error('Playback failed'); }
+  };
 
   const handleDesign = async () => {
     if (!designPrompt.trim() || !designName.trim()) return;
@@ -2445,26 +2480,19 @@ function SoundPanel({ t }: { t?: any }) {
       </div>
 
       <div className="flex-1 grid grid-cols-2 gap-4 overflow-hidden">
-        {/* Left: Clone */}
-        <div className="overflow-y-auto scrollbar-hide rounded-2xl bg-white/[0.02] border border-white/5 p-4">
-          <h4 className="text-xs font-black uppercase tracking-widest text-white/55 mb-4">{t?.voiceCloning || 'Voice Cloning'}</h4>
-          <VoiceForge t={t} compact onCloneSuccess={() => setVoiceRefresh(n => n + 1)} />
-        </div>
-
-        {/* Right: Design */}
-        <div className="overflow-y-auto scrollbar-hide rounded-2xl bg-white/[0.02] border border-white/5 p-4 space-y-4">
-          <h4 className="text-xs font-black uppercase tracking-widest text-white/55">{t?.voiceDesignTab || 'Voice Design'}</h4>
-          <p className="text-xs text-white/40">{t?.voiceDesignDesc || 'Describe the voice you want, and AI will generate it. No audio sample needed.'}</p>
-          <div className="space-y-2">
+        {/* Left: Create */}
+        <div className="overflow-y-auto scrollbar-hide space-y-4">
+          {/* Voice Design — text → voice */}
+          <div className="rounded-2xl bg-white/[0.02] border border-white/5 p-4 space-y-4">
+            <h4 className="text-xs font-black uppercase tracking-widest text-white/55">{t?.voiceDesignTab || 'Voice Design'}</h4>
+            <p className="text-xs text-white/40">{t?.voiceDesignDesc || 'Describe the voice you want, and AI will generate it. No audio sample needed.'}</p>
             <label className="text-xs font-black uppercase text-white/55">{t?.voiceDesignPrompt || 'Voice Description'}</label>
             <textarea
               value={designPrompt}
               onChange={e => setDesignPrompt(e.target.value)}
-              placeholder={t?.voiceDesignPlaceholder || 'e.g. A warm, gentle female voice with a soft tone, speaking at a moderate pace, suitable for storytelling...'}
-              className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-3 text-sm text-white/80 outline-none focus:border-sky-500/50 resize-none"
+              placeholder={t?.voiceDesignPlaceholder || 'e.g. A warm, gentle female voice with a soft tone...'}
+              className="w-full h-20 bg-black/40 border border-white/10 rounded-2xl p-3 text-sm text-white/80 outline-none focus:border-sky-500/50 resize-none"
             />
-          </div>
-          <div className="space-y-2">
             <label className="text-xs font-black uppercase text-white/55">{t?.voiceDesignName || 'Voice Name'}</label>
             <input
               value={designName}
@@ -2472,16 +2500,83 @@ function SoundPanel({ t }: { t?: any }) {
               placeholder="e.g. Storyteller_v1"
               className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white/80 outline-none focus:border-sky-500/50"
             />
+            <button
+              onClick={handleDesign}
+              disabled={designing || !designPrompt.trim() || !designName.trim()}
+              className="w-full py-3 bg-sky-500/20 border border-sky-500/30 rounded-2xl text-sm font-black uppercase tracking-widest text-sky-400 hover:bg-sky-500/30 disabled:opacity-70 disabled:cursor-not-allowed transition-all relative overflow-hidden"
+            >
+              {designing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-sky-400/30 border-t-sky-400 rounded-full animate-spin" />
+                  {t?.generating || 'Generating...'}
+                </span>
+              ) : (
+                t?.generateVoice || 'Generate Voice'
+              )}
+            </button>
+            {designing && (
+              <div className="h-0.5 w-full bg-white/5 rounded-full overflow-hidden mt-1">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                  initial={{ width: '0%' }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 8, ease: 'easeInOut' }}
+                />
+              </div>
+            )}
           </div>
-          <button
-            onClick={handleDesign}
-            disabled={designing || !designPrompt.trim() || !designName.trim()}
-            className="w-full py-3 bg-sky-500/20 border border-sky-500/30 rounded-2xl text-sm font-black uppercase tracking-widest text-sky-400 hover:bg-sky-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-          >
-            {designing ? (t?.generating || 'Generating...') : t?.generateVoice || 'Generate Voice'}
-          </button>
+
+          {/* Voice Cloning — record/upload */}
+          <div className="rounded-2xl bg-white/[0.02] border border-white/5 p-4">
+            <h4 className="text-xs font-black uppercase tracking-widest text-white/55 mb-4">{t?.voiceCloning || 'Voice Cloning'}</h4>
+            <VoiceForge t={t} compact onCloneSuccess={() => setVoiceRefresh(n => n + 1)} />
+          </div>
+        </div>
+
+        {/* Right: Voice List */}
+        <div className="overflow-y-auto scrollbar-hide rounded-2xl bg-white/[0.02] border border-white/5 p-4 space-y-6">
+          {voices.cloned.length > 0 && (
+            <section className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40">{t?.clonedVoices || 'Cloned Voices'}</h4>
+              <div className="space-y-2">
+                {voices.cloned.map((v: any) => (
+                  <VoiceCard key={v.voiceId} voice={v} isCloned isPlaying={playingId === v.voiceId} onPlay={() => handlePlay(v.voiceId)} />
+                ))}
+              </div>
+            </section>
+          )}
+          <section className="space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40">{t?.premadeVoices || 'Premade Voices'}</h4>
+            <div className="space-y-2">
+              {voices.premade.map((v: any) => (
+                <VoiceCard key={v.voiceId} voice={v} isPlaying={playingId === v.voiceId} onPlay={() => handlePlay(v.voiceId)} />
+              ))}
+            </div>
+          </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+function VoiceCard({ voice, isCloned, isPlaying, onPlay }: { voice: any; isCloned?: boolean; isPlaying?: boolean; onPlay: () => void }) {
+  return (
+    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all group ${
+      isPlaying ? 'bg-sky-500/10 border border-sky-500/20' : 'bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.06]'
+    }`}>
+      <button
+        onClick={onPlay}
+        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+          isPlaying ? 'bg-sky-500 text-white' : 'bg-white/10 text-white/50 group-hover:text-white'
+        }`}
+      >
+        {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-bold text-white/80 truncate">{voice.name}</div>
+        <div className="text-[10px] text-white/40 uppercase">{voice.language || voice.provider || ''}</div>
+      </div>
+      {isCloned && <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />}
     </div>
   );
 }

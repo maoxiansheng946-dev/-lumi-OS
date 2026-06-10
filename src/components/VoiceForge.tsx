@@ -260,6 +260,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                       <Upload size={14} className="mr-1" />
                       {t.uploadAudioFile || 'Upload Audio File'}
                     </Button>
+                    <p className="text-[10px] text-white/25 font-mono mt-1">MP3, WAV, WebM, OGG, M4A &middot; &le;10 MB</p>
                  </div>
               </div>
            </div>
