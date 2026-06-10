@@ -519,7 +519,7 @@ async function processVoiceInput(
       // Load recent conversation history for context continuity
       // Include both user & assistant messages with correct roles
       const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-      const recentMsgs = getMessagesByTokenBudget(conv.id, 8000);
+      const recentMsgs = getMessagesByTokenBudget(conv.id);
       const voiceHistory: NormalizedMessage[] = [];
       for (const m of recentMsgs) {
         if (m.message) voiceHistory.push({ role: 'user', content: m.message });

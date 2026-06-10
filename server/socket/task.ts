@@ -81,7 +81,7 @@ export function registerTaskHandler(
     const convForHistory = getOrCreateActiveConversation(uid);
     const voiceHistory: NormalizedMessage[] = [];
     if (convForHistory) {
-      const recentMsgs = getMessagesByTokenBudget(convForHistory.id, 16000);
+      const recentMsgs = getMessagesByTokenBudget(convForHistory.id);
       for (const m of recentMsgs) {
         if (m.message) voiceHistory.push({ role: 'user', content: m.message });
         if (m.response) voiceHistory.push({ role: 'assistant', content: m.response });
