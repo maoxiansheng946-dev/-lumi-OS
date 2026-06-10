@@ -66,8 +66,11 @@ export function SpriteAnimator({
       imgRef.current = img;
       setLoaded(true);
     };
+    img.onerror = () => {
+      console.warn('[SpriteAnimator] Failed to load spritesheet');
+    };
     img.src = spritesheet;
-    return () => { img.onload = null; };
+    return () => { img.onload = null; img.onerror = null; };
   }, [spritesheet]);
 
   const drawFrame = useCallback((frameIndex: number) => {

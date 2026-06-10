@@ -31,7 +31,8 @@ function drawRow(ctx: CanvasRenderingContext2D, row: number, frameCount: number,
 }
 
 function canvasToDataURL(canvas: HTMLCanvasElement): string {
-  return canvas.toDataURL('image/webp', 0.85);
+  // PNG for max compatibility across WebView2 / all browsers
+  return canvas.toDataURL('image/png');
 }
 
 // ── Drawing helpers ──
@@ -498,118 +499,120 @@ function drawBird(ctx: CanvasRenderingContext2D, a: { bounceY: number; extra: nu
 // ── Dragon ──
 
 function drawDragon(ctx: CanvasRenderingContext2D, a: { bounceY: number; extra: number; blink: number; frame: number }, p: PetPalette, tags: CustomPetTags, s: number) {
-  const cx = 96, cy = 100 + a.bounceY;
+  // Dragon = cat body shape + spikes + wings + horns + slit eyes + open mouth
+  const bounceY = a.bounceY;
+  const cy = 100 + bounceY;
 
-  // Tail
-  ctx.strokeStyle = p.accent;
-  ctx.lineWidth = 10 * s;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(40, cy + 10);
-  ctx.quadraticCurveTo(15, cy - 10, 25, cy - 30);
-  ctx.stroke();
-  ctx.fillStyle = p.bodyDark;
-  ctx.beginPath();
-  ctx.moveTo(25, cy - 30);
-  ctx.lineTo(18, cy - 45);
-  ctx.lineTo(32, cy - 32);
-  ctx.fill();
-
-  // Body
-  const bodyGrad = ctx.createLinearGradient(cx, cy - 20, cx, cy + 30);
-  bodyGrad.addColorStop(0, p.body);
-  bodyGrad.addColorStop(1, p.bodyDark);
-  ctx.fillStyle = bodyGrad;
-  roundRect(ctx, cx - 30 * s, cy - 18 * s, 65 * s, 48 * s, 20);
-
-  // Belly
-  ctx.fillStyle = p.belly;
-  roundRect(ctx, cx - 15 * s, cy + 5 * s, 35 * s, 20 * s, 10);
-
-  // Spikes
+  // Back spikes (drawn BEFORE body so they sit behind)
   ctx.fillStyle = p.bodyDark;
   for (let i = 0; i < 3; i++) {
     ctx.beginPath();
-    ctx.moveTo(cx - 15 + i * 18, cy - 18);
-    ctx.lineTo(cx - 5 + i * 18, cy - 35);
-    ctx.lineTo(cx + 5 + i * 18, cy - 18);
+    ctx.moveTo(81 + i * 20, 72 + bounceY);
+    ctx.lineTo(91 + i * 20, 52 + bounceY);
+    ctx.lineTo(101 + i * 20, 72 + bounceY);
     ctx.fill();
   }
 
   // Wings
   if (tags.hasWings) {
     ctx.save();
-    ctx.translate(cx, cy - 5);
-    ctx.rotate(-0.2 + a.extra * 0.6);
-    ctx.fillStyle = p.accent + '88';
+    ctx.translate(96, 100 + bounceY);
+    ctx.rotate(-0.3 + a.extra * 0.5);
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = p.accent;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(-25, -35, -10, -55);
-    ctx.quadraticCurveTo(5, -30, 0, 0);
+    ctx.moveTo(-20, 0);
+    ctx.quadraticCurveTo(-45, -30, -20, -55);
+    ctx.quadraticCurveTo(-5, -30, -20, 0);
     ctx.fill();
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
+
+  // Tail (spiked)
+  ctx.strokeStyle = p.body;
+  ctx.lineWidth = 8 * s;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(30, 150 + bounceY);
+  ctx.quadraticCurveTo(10 + a.extra * 15, 120 + bounceY, 25 + a.extra * 10, 80 + bounceY);
+  ctx.stroke();
+  // Tail spike
+  ctx.fillStyle = p.bodyDark;
+  ctx.beginPath();
+  ctx.moveTo(25, 80 + bounceY);
+  ctx.lineTo(15, 62 + bounceY);
+  ctx.lineTo(33, 78 + bounceY);
+  ctx.fill();
+
+  // Feet
+  ctx.fillStyle = p.bodyDark;
+  roundRect(ctx, 55, 155 + bounceY, 30 * s, 20 * s, 8);
+  roundRect(ctx, 105, 155 + bounceY, 30 * s, 20 * s, 8);
+
+  // Body
+  ctx.fillStyle = p.body;
+  roundRect(ctx, 48, 90 + bounceY, 95 * s, 75 * s, 25);
+
+  // Belly
+  ctx.fillStyle = p.belly;
+  roundRect(ctx, 65, 110 + bounceY, 60 * s, 45 * s, 18);
 
   // Head
   ctx.fillStyle = p.body;
   ctx.beginPath();
-  ctx.arc(cx + 30, cy - 18, 22 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Snout
-  ctx.fillStyle = p.body;
-  ctx.beginPath();
-  ctx.ellipse(cx + 48, cy - 12, 14 * s, 10 * s, 0.1, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Mouth
-  ctx.fillStyle = '#2a2020';
-  ctx.beginPath();
-  ctx.ellipse(cx + 50, cy - 8, 8 * s, (3 + a.extra * 5) * s, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Nostrils
-  ctx.fillStyle = p.bodyDark;
-  ctx.beginPath();
-  ctx.arc(cx + 54, cy - 15, 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cx + 58, cy - 13, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Eyes
-  ctx.fillStyle = p.eyeWhite;
-  ctx.beginPath();
-  ctx.arc(cx + 35, cy - 25, 9 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.eye;
-  ctx.beginPath();
-  ctx.arc(cx + 37, cy - 25, 5 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.eyeWhite;
-  ctx.beginPath();
-  ctx.ellipse(cx + 37, cy - 25, 5 * s, 1.5 * s, 0, 0, Math.PI * 2);
+  ctx.arc(96, 68 + bounceY, 40 * s, 0, Math.PI * 2);
   ctx.fill();
 
   // Horns
   if (tags.hasHorns) {
     ctx.fillStyle = '#e8d44d';
     ctx.beginPath();
-    ctx.moveTo(cx + 18, cy - 35);
-    ctx.lineTo(cx + 10, cy - 55);
-    ctx.lineTo(cx + 26, cy - 32);
+    ctx.moveTo(68, 30 + bounceY);
+    ctx.lineTo(55, 5 + bounceY);
+    ctx.lineTo(80, 28 + bounceY);
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(cx + 30, cy - 36);
-    ctx.lineTo(cx + 28, cy - 56);
-    ctx.lineTo(cx + 38, cy - 34);
+    ctx.moveTo(124, 30 + bounceY);
+    ctx.lineTo(137, 5 + bounceY);
+    ctx.lineTo(112, 28 + bounceY);
     ctx.fill();
   }
 
-  // Feet
+  // Dragon ears (side nubs)
+  ctx.fillStyle = p.accent;
+  ctx.beginPath();
+  ctx.moveTo(56, 48 + bounceY);
+  ctx.lineTo(46, 28 + bounceY);
+  ctx.lineTo(70, 40 + bounceY);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(136, 48 + bounceY);
+  ctx.lineTo(146, 28 + bounceY);
+  ctx.lineTo(122, 40 + bounceY);
+  ctx.fill();
+
+  // Eyes (dragon has slit pupils)
+  drawEyes(ctx, 96, 62 + bounceY, 'slit', p.eye, p.eyeWhite, a.blink, 1);
+
+  // Nose
   ctx.fillStyle = p.bodyDark;
-  roundRect(ctx, cx - 20, cy + 28, 22 * s, 16 * s, 8);
-  roundRect(ctx, cx + 8, cy + 28, 22 * s, 16 * s, 8);
+  ctx.beginPath();
+  ctx.moveTo(96, 72 + bounceY);
+  ctx.lineTo(91, 78 + bounceY);
+  ctx.lineTo(101, 78 + bounceY);
+  ctx.fill();
+
+  // Mouth (open, showing fire-breath potential)
+  drawMouth(ctx, 96, 80 + bounceY, 'open', p.bodyDark, 0.9);
+
+  // Small flame puff in mouth when extra is positive
+  if (a.extra > 0.1) {
+    ctx.fillStyle = 'rgba(255,150,30,0.3)';
+    ctx.beginPath();
+    ctx.arc(96 + a.extra * 20, 80 + bounceY, 5 + a.extra * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ── Fox ──
@@ -1037,12 +1040,14 @@ function drawGeneric(ctx: CanvasRenderingContext2D, a: { bounceY: number; extra:
     ctx.save();
     ctx.translate(cx - 5, cy - 10);
     ctx.rotate(-0.2 + a.extra * 0.5);
-    ctx.fillStyle = p.accent + '88';
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = p.accent;
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.quadraticCurveTo(-22, -28, -8, -45);
     ctx.quadraticCurveTo(4, -24, 0, 0);
     ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -1230,6 +1235,13 @@ export function recolorPet(pet: PetConfig, palette: PetPalette): PetConfig {
 // Simple color math
 function darken(hex: string): string { return shiftColor(hex, -25); }
 function lighten(hex: string): string { return shiftColor(hex, 25); }
+function hexToRgba(hex: string, alpha: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = (num >> 16) & 0xFF;
+  const g = (num >> 8) & 0xFF;
+  const b = num & 0xFF;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 function shiftColor(hex: string, amount: number): string {
   const num = parseInt(hex.replace('#', ''), 16);
@@ -1259,9 +1271,16 @@ export function getDefaultPets(): PetConfig[] {
 
   // Generate spritesheets
   for (const pet of _defaults) {
-    const drawer = SPECIES_DRAWERS[pet.tags!.species] || drawGeneric;
-    pet.spritesheet = generateSpritesheet(drawer, pet.palette!, pet.tags!);
-    pet.thumbnail = pet.spritesheet;
+    try {
+      const drawer = SPECIES_DRAWERS[pet.tags!.species] || drawGeneric;
+      pet.spritesheet = generateSpritesheet(drawer, pet.palette!, pet.tags!);
+      pet.thumbnail = pet.spritesheet;
+    } catch (err) {
+      console.error(`[PetGen] Failed to generate spritesheet for ${pet.id}:`, err);
+      // Fallback: use a tiny placeholder
+      pet.spritesheet = 'data:image/webp;base64,';
+      pet.thumbnail = pet.spritesheet;
+    }
   }
 
   return _defaults;

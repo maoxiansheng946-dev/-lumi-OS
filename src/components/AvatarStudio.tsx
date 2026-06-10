@@ -52,6 +52,8 @@ export function AvatarStudio({
   onChangeAccessories?: (ids: string[]) => void;
 }) {
   const pets = getDefaultPets();
+  const [customPets, setCustomPets] = useState<PetConfig[]>([]);
+  const allPets = [...pets, ...customPets];
   const [activePet, setActivePet] = useState<PetConfig>(
     pets.find(p => p.id === selectedPetId) || pets[0],
   );
@@ -102,8 +104,11 @@ export function AvatarStudio({
       if (!res.ok) throw new Error((await res.json()).error || 'Generation failed');
       const result = await res.json();
       const newPet = generateCustomPet(result.petName, result.tags as CustomPetTags);
-      handleSelectPet(newPet);
+      setCustomPets(prev => [newPet, ...prev]);
+      setActivePet(newPet);
+      onSelectPet(newPet);
       setTab('gallery');
+      setAnimKey(k => k + 1);
       toast.success(`${newPet.name} 已生成！`);
     } catch (err: any) {
       toast.error(err.message || '生成失败');
@@ -251,11 +256,13 @@ export function AvatarStudio({
           {tab === 'gallery' ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[12px] font-bold uppercase tracking-wider text-white/45">内置形象</p>
-                <span className="text-[12px] text-white/30 font-mono">{pets.length} 款</span>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-white/45">形象画廊</p>
+                <span className="text-[12px] text-white/30 font-mono">{allPets.length} 款</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {pets.map(pet => (
+                {allPets.map(pet => {
+                  const isCustom = customPets.some(cp => cp.id === pet.id);
+                  return (
                   <motion.button
                     key={pet.id}
                     whileHover={{ scale: 1.03 }}
@@ -269,22 +276,25 @@ export function AvatarStudio({
                     }`}
                   >
                     {/* Preview */}
-                    <div className="w-full aspect-square rounded-lg bg-white/[0.02] flex items-center justify-center overflow-hidden mb-1.5">
-                      <div className="scale-[0.25] origin-center">
+                    <div className="w-full aspect-square rounded-lg bg-white/[0.03] flex items-center justify-center overflow-hidden mb-1.5">
+                      <div className="scale-[0.30] origin-center">
                         <PetAvatar
                           pet={pet}
-                          animation={hoveredId === pet.id ? 'idle' : 'idle'}
-                          scale={0.35}
+                          animation="idle"
+                          scale={0.45}
                           accessoryIds={equippedAccessories}
                         />
                       </div>
                     </div>
                     {/* Info */}
                     <div className="flex items-center gap-1.5">
-                      <span className="text-white/40 scale-75">{PET_ICONS[pet.id] || <Cat size={14} />}</span>
+                      <span className="text-white/40 scale-75">{PET_ICONS[pet.id] || <Sparkles size={14} />}</span>
                       <span className="text-[12px] font-bold text-white/60 truncate flex-1">{pet.name}</span>
                     </div>
-                    <div className="text-[12px] text-white/35 mt-0.5">{pet.author}</div>
+                    <div className="text-[12px] text-white/35 mt-0.5 flex items-center gap-1.5">
+                      {pet.author}
+                      {isCustom && <span className="w-1 h-1 rounded-full bg-fuchsia-400 inline-block" />}
+                    </div>
                     {activePet.id === pet.id && (
                       <Check size={12} className="absolute top-2 right-2 text-cyan-400" />
                     )}
@@ -296,7 +306,8 @@ export function AvatarStudio({
                       <Download size={10} className="text-white/50" />
                     </button>
                   </motion.button>
-                ))}
+                  );
+                })}
               </div>
               {/* Import */}
               <input ref={importRef} type="file" accept=".json" onChange={handleImportClick} className="hidden" />
