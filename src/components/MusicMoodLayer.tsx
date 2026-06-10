@@ -1,7 +1,8 @@
-import { motion, AnimatePresence } from 'motion/react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useMusicPlayer, MusicLyricLine, MusicScene } from '../hooks/useMusicPlayer';
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+
+// ── LRC parsing ──
 
 function parseLRC(lrc: string): MusicLyricLine[] {
   if (!lrc) return [];
@@ -22,287 +23,305 @@ function getCurrentLyricIndex(lyrics: MusicLyricLine[], progress: number): numbe
   return -1;
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60); const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+// ── Paper & ink palette ──
 
-// ── Emotion → lyric color ──
-function emotionLyricColor(scene: MusicScene): string {
-  const v = scene.emotion?.valence ?? 0.3;
-  const a = scene.emotion?.arousal ?? 0.5;
-  // valence drives warm/cool, arousal drives saturation
-  if (v > 0.4 && a > 0.5) return '#fbbf24'; // warm excited = gold
-  if (v > 0.4) return '#f59e0b';             // warm calm = amber
-  if (v < -0.2 && a < 0.3) return '#6366f1';  // sad calm = indigo
-  if (v < -0.2) return '#38bdf8';             // sad active = sky
-  if (a > 0.7) return '#a78bfa';              // high arousal neutral = violet
-  if (a < 0.3) return '#94a3b8';              // low arousal = slate
-  return scene.colors.accent;
-}
-
-// ── Pixel terrain ──
-function PixelTerrain({ scene, isPlaying }: { scene: MusicScene; isPlaying: boolean }) {
-  const terrainColors = scene.terrainColors || [scene.colors.primary, scene.colors.secondary, scene.colors.accent, scene.colors.primary + '88'];
-  const blocks = useMemo(() => {
-    const arr: { x: number; w: number; h: number; c: string }[] = [];
-    const count = 50;
-    for (let i = 0; i < count; i++) {
-      arr.push({
-        x: (i / count) * 100,
-        w: 2 + Math.random() * 4,
-        h: (1 + Math.random() * 6) * 4,
-        c: terrainColors[Math.floor(Math.random() * terrainColors.length)],
-      });
-    }
-    return arr;
-  }, [terrainColors]);
-
-  // Scene-specific extras
-  const isCosmos = scene.scene === 'cosmos' || scene.scene === 'starlight';
-  const isForest = scene.scene === 'forest';
-  const isOldtown = scene.scene === 'oldtown' || scene.scene === 'memory';
-  const isRain = scene.scene === 'rain';
-  const isFestival = scene.scene === 'festival' || scene.scene === 'neon';
-
-  const stars = useMemo(() =>
-    isCosmos ? Array.from({ length: 40 }, (_, i) => ({ x: Math.random() * 100, y: Math.random() * 60, s: 1 + Math.random() * 2 })) : [], [isCosmos]);
-
-  const buildings = useMemo(() =>
-    isOldtown ? Array.from({ length: 8 }, (_, i) => ({ x: 5 + i * 12, w: 6 + Math.random() * 4, h: 20 + Math.random() * 30 })) : [], [isOldtown]);
-
-  const trees = useMemo(() =>
-    isForest ? Array.from({ length: 12 }, (_, i) => ({ x: 3 + i * 8.5, h: 15 + Math.random() * 25 })) : [], [isForest]);
-
-  const fireworks = useMemo(() =>
-    isFestival ? Array.from({ length: 6 }, (_, i) => ({ x: 10 + Math.random() * 80, y: 5 + Math.random() * 40, delay: i * 1.2 })) : [], [isFestival]);
-
-  const raindrops = useMemo(() =>
-    isRain ? Array.from({ length: 30 }, (_, i) => ({ x: Math.random() * 100, delay: Math.random() * 3, dur: 0.6 + Math.random() * 1 })) : [], [isRain]);
-
-  return (
-    <div className="absolute bottom-0 left-0 right-0 h-1/3 pointer-events-none overflow-hidden" style={{ imageRendering: 'pixelated' as any }}>
-      {/* Ground blocks */}
-      {blocks.map((b, i) => (
-        <motion.div key={i} className="absolute bottom-0" style={{ left: `${b.x}%`, width: `${b.w}%`, height: b.h, background: `${b.c}22` }}
-          animate={isPlaying ? { height: [b.h, b.h + 2, b.h] } : {}} transition={{ duration: 2 + Math.random() * 4, repeat: Infinity, delay: Math.random() * 2 }} />
-      ))}
-      {/* Horizon line */}
-      <div className="absolute bottom-0 left-0 right-0 h-[2px]" style={{ background: `${scene.colors.accent}15` }} />
-
-      {/* Stars / cosmos */}
-      {stars.map((s, i) => (
-        <motion.div key={`st${i}`} className="absolute rounded-sm" style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.s, height: s.s, background: '#fff' }}
-          animate={{ opacity: [0.1, 0.6, 0.1] }} transition={{ duration: 2 + Math.random() * 4, repeat: Infinity, delay: Math.random() * 3 }} />
-      ))}
-
-      {/* Buildings / oldtown */}
-      {buildings.map((b, i) => (
-        <motion.div key={`bd${i}`} className="absolute bottom-0" style={{ left: `${b.x}%`, width: `${b.w}%`, height: `${b.h}px`, background: `${terrainColors[i % terrainColors.length]}18`, border: `1px solid ${terrainColors[i % terrainColors.length]}10` }}
-          animate={{ height: [b.h, b.h + 2, b.h] }} transition={{ duration: 3 + Math.random() * 5, repeat: Infinity, delay: Math.random() * 2 }} />
-      ))}
-
-      {/* Trees / forest */}
-      {trees.map((t, i) => (
-        <motion.div key={`tr${i}`} className="absolute bottom-0 flex flex-col items-center" style={{ left: `${t.x}%` }}>
-          <div style={{ width: 6, height: t.h, background: `${terrainColors[Math.floor(i / 3)]}18` }} />
-          <div style={{ width: 16, height: 12, background: `${terrainColors[i % terrainColors.length]}10`, borderRadius: '2px', marginTop: -4 }} />
-        </motion.div>
-      ))}
-
-      {/* Fireworks */}
-      {fireworks.map((f, i) => (
-        <motion.div key={`fw${i}`} className="absolute" style={{ left: `${f.x}%`, top: `${f.y}%` }}>
-          <motion.div className="rounded-full" style={{ width: 3, height: 3, background: terrainColors[i % terrainColors.length] }}
-            animate={isPlaying ? { scale: [0, 8, 0], opacity: [1, 1, 0] } : {}}
-            transition={{ duration: 2, repeat: Infinity, delay: f.delay, ease: 'easeOut' }} />
-        </motion.div>
-      ))}
-
-      {/* Rain */}
-      {raindrops.map((r, i) => (
-        <motion.div key={`rn${i}`} className="absolute top-0" style={{ left: `${r.x}%`, width: 1, height: 8, background: `${scene.colors.accent}30` }}
-          animate={isPlaying ? { y: [0, 400, 0] } : {}} transition={{ duration: r.dur, repeat: Infinity, delay: r.delay, ease: 'linear' }} />
-      ))}
-    </div>
-  );
-}
-
-// ── Lyric bubble with emotion-driven coloring ──
-function LyricBubble({ text, isActive, isPrev, scene, index }: { text: string; isActive: boolean; isPrev: boolean; scene: MusicScene; index: number }) {
-  const angle = (index * 1.7 + 0.5) * Math.PI;
-  const radius = isActive ? 32 : isPrev ? 38 : 44;
-  const x = 50 + Math.cos(angle) * radius;
-  const y = 50 + Math.sin(angle) * radius;
-  const rotate = Math.cos(angle) * 4;
-  const lyricColor = emotionLyricColor(scene);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 60, scale: 0.7 }}
-      animate={{ opacity: isActive ? 1 : isPrev ? 0.2 : 0.06, y: 0, scale: isActive ? 1 : 0.82, rotate }}
-      exit={{ opacity: 0, y: -80, scale: 0.5 }}
-      transition={{ type: 'spring', stiffness: 60, damping: 16, mass: isActive ? 0.7 : 1.5 }}
-      className="absolute pointer-events-none" style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
-    >
-      <div className="px-5 py-3" style={{ background: isActive ? `${lyricColor}0d` : 'transparent', border: isActive ? `1px solid ${lyricColor}20` : '1px solid transparent', borderRadius: '6px', boxShadow: isActive ? `0 0 30px ${lyricColor}10` : 'none' }}>
-        <p className="text-center leading-loose font-mono" style={{
-          color: isActive ? lyricColor : '#ffffff10',
-          fontSize: isActive ? '1.1rem' : '0.8rem',
-          textShadow: isActive ? `0 0 14px ${lyricColor}44` : 'none',
-        }}>{text}</p>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── Lumi center presence with emotion-driven color ──
-function LumiPresence({ scene, isPlaying }: { scene: MusicScene; isPlaying: boolean }) {
-  const whispers = useMemo(() => ['我在这里','♪','听','♫','陪伴你','·','嗯','♩'], []);
-  const [whisper, setWhisper] = useState('');
-  const [visible, setVisible] = useState(false);
-  const lumColor = emotionLyricColor(scene);
-
-  useEffect(() => {
-    if (!isPlaying) { setVisible(false); return; }
-    const show = () => { setWhisper(whispers[Math.floor(Math.random() * whispers.length)]); setVisible(true); setTimeout(() => setVisible(false), 2400); };
-    show();
-    const timer = setInterval(show, 6000);
-    return () => clearInterval(timer);
-  }, [isPlaying]);
-
-  return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <motion.div className="rounded-full" style={{ width: 120, height: 120, background: `radial-gradient(circle, ${lumColor}18, transparent 70%)` }}
-        animate={isPlaying ? { scale: [0.9, 1.15, 0.9], opacity: [0.25, 0.55, 0.25] } : { scale: 1, opacity: 0.18 }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} />
-      <motion.div className="absolute rounded-full" style={{ width: 60, height: 60, background: `radial-gradient(circle, ${lumColor}25, transparent 70%)` }}
-        animate={isPlaying ? { scale: [1, 1.3, 1], opacity: [0.35, 0.75, 0.35] } : { scale: 1, opacity: 0.25 }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }} />
-      <motion.div className="absolute w-[6px] h-[6px] rounded-full" style={{ background: lumColor, boxShadow: `0 0 10px ${lumColor}` }}
-        animate={{ opacity: [0.45, 1, 0.45] }} transition={{ duration: 2.5, repeat: Infinity }} />
-      <AnimatePresence>
-        {visible && (
-          <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className="absolute text-[11px] font-mono tracking-widest" style={{ color: lumColor + '66', top: 'calc(50% - 10px)' }}>{whisper}</motion.p>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── Scene ambient FX ──
-function SceneFX({ scene }: { scene: MusicScene }) {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div className="absolute inset-0 opacity-[0.018]" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.2) 2px, rgba(0,0,0,0.2) 4px)' }} />
-      {(['festival','fireworks','neon','arcade'].includes(scene.scene)) && (
-        <motion.div className="absolute w-[80vw] h-[80vw] rounded-full blur-[200px]" style={{ background: scene.colors.primary, top: '-20%', left: '-20%', opacity: 0.05 }}
-          animate={{ scale: [1, 1.2, 1], opacity: [0.03, 0.06, 0.03] }} transition={{ duration: 8, repeat: Infinity }} />
-      )}
-      <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse 75% 65% at 50% 50%, transparent 8%, ${scene.colors.bg}dd 100%)` }} />
-    </div>
-  );
-}
-
-// ── Particles ──
-const PARTICLE_SHAPES: Record<string, { size: number; char: string; glow: boolean }> = {
-  stars:{size:3,char:'·',glow:true},fireflies:{size:4,char:'○',glow:true},rain:{size:2,char:'│',glow:false},
-  hearts:{size:5,char:'♥',glow:true},sparks:{size:4,char:'◇',glow:true},petals:{size:4,char:'❀',glow:false},
-  snow:{size:3,char:'·',glow:false},dust:{size:1,char:'·',glow:false},
+type InkPalette = {
+  paper: string;
+  paperR: number; paperG: number; paperB: number;
+  accentR: number; accentG: number; accentB: number;
 };
 
-function PixelParticles({ scene, isPlaying }: { scene: MusicScene; isPlaying: boolean }) {
-  const shape = PARTICLE_SHAPES[scene.particles] || PARTICLE_SHAPES.stars;
-  const items = useMemo(() => Array.from({ length: scene.particles === 'none' ? 0 : 25 }, (_, i) => ({
-    id: i, x: Math.random() * 100, delay: Math.random() * 5, duration: 7 + Math.random() * 16,
-    dy: -(10 + Math.random() * 45),
-    color: [scene.colors.primary, scene.colors.secondary, scene.colors.accent][Math.floor(Math.random() * 3)],
-  })), [scene]);
-  if (!isPlaying || items.length === 0) return null;
+function paletteFromScene(scene: MusicScene | null): InkPalette {
+  const v = scene?.emotion?.valence ?? 0.3;
+  const a = scene?.emotion?.arousal ?? 0.5;
+  const warmMix = Math.max(0, v);
+  const coolMix = Math.max(0, -v);
+  const paperR = Math.round(245 - coolMix * 12 + warmMix * 6);
+  const paperG = Math.round(235 - coolMix * 6 - warmMix * 2);
+  const paperB = Math.round(222 - coolMix * 2 - warmMix * 10);
+  return {
+    paper: `rgb(${paperR},${paperG},${paperB})`,
+    paperR, paperG, paperB,
+    accentR: 180 + Math.round(v * 50),
+    accentG: 90 + Math.round(a * 80),
+    accentB: 60 + Math.round(Math.abs(v) * 40),
+  };
+}
+
+// ── Fast organic noise ──
+
+function noise(x: number, y: number, t: number): number {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {items.map(p => (
-        <motion.div key={p.id} className="absolute" style={{ left: `${p.x}%`, top: `${70 + Math.random() * 30}%`, color: p.color, fontSize: shape.size * 5, opacity: 0, textShadow: shape.glow ? `0 0 8px ${p.color}` : 'none' }}
-          animate={{ y: p.dy, opacity: [0, 0.5, 0.2, 0] }} transition={{ duration: p.duration / scene.intensity, delay: p.delay, repeat: Infinity, ease: 'linear' }}>{shape.char}</motion.div>
-      ))}
-    </div>
-  );
+    Math.sin(x * 1.37 + t * 0.8) * Math.cos(y * 0.91 - t * 0.5) +
+    Math.sin(x * 2.15 - y * 1.43 + t * 1.3) * 0.5 +
+    Math.cos(x * 0.37 + y * 2.27 + t * 0.6) * 0.35 +
+    Math.sin((x + y) * 1.73 + t * 0.9) * 0.25
+  ) / 2.1;
+}
+
+interface InkParticle {
+  x: number; y: number;
+  vx: number; vy: number;
+  life: number; maxLife: number;
+  size: number;
 }
 
 // ── Main ──
+
 export function MusicMoodLayer() {
-  const { visible, isPlaying, track, progress, duration, lumiReason, lyrics, scene, play, pause, next, prev, seek, hide } = useMusicPlayer();
+  const { visible, isPlaying, track, progress, duration, lyrics, scene, play, pause, hide } = useMusicPlayer();
+
   const [parsedLyrics, setParsedLyrics] = useState<MusicLyricLine[]>([]);
-  const [showControls, setShowControls] = useState(true);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const timeRef = useRef(0);
+  const particlesRef = useRef<InkParticle[]>([]);
+  const frameRef = useRef(0);
 
-  useEffect(() => { if (lyrics.length > 0) setParsedLyrics(lyrics); else if (typeof (lyrics as any) === 'string') setParsedLyrics(parseLRC(lyrics as any)); }, [lyrics]);
+  useEffect(() => {
+    if (lyrics.length > 0) setParsedLyrics(lyrics);
+    else if (typeof (lyrics as any) === 'string') setParsedLyrics(parseLRC(lyrics as any));
+  }, [lyrics]);
 
-  const resetControlsTimer = useCallback(() => { setShowControls(true); if (idleTimer.current) clearTimeout(idleTimer.current); idleTimer.current = setTimeout(() => setShowControls(false), 4000); }, []);
-  useEffect(() => { if (!visible) return; window.addEventListener('mousemove', resetControlsTimer); window.addEventListener('touchstart', resetControlsTimer); resetControlsTimer(); return () => { window.removeEventListener('mousemove', resetControlsTimer); window.removeEventListener('touchstart', resetControlsTimer); if (idleTimer.current) clearTimeout(idleTimer.current); }; }, [visible, resetControlsTimer]);
-  const handleKeyDown = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') hide(); if (e.key === ' ') { e.preventDefault(); isPlaying ? pause() : play(); resetControlsTimer(); } }, [hide, isPlaying, pause, play, resetControlsTimer]);
-  useEffect(() => { if (visible) { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); } }, [visible, handleKeyDown]);
-
+  const palette = useMemo(() => paletteFromScene(scene), [scene]);
+  const intensity = scene?.intensity ?? 0.5;
   const currentLyricIdx = useMemo(() => getCurrentLyricIndex(parsedLyrics, progress), [parsedLyrics, progress]);
-  const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
-  const visibleBubbles = useMemo(() => { const idx = Math.max(0, currentLyricIdx); const arr: any[] = []; if (idx > 0) arr.push({ ...parsedLyrics[idx - 1], index: idx - 1, isActive: false }); arr.push({ ...parsedLyrics[idx], index: idx, isActive: true }); if (idx + 1 < parsedLyrics.length) arr.push({ ...parsedLyrics[idx + 1], index: idx + 1, isActive: false }); return arr; }, [parsedLyrics, currentLyricIdx]);
+
+  // ── Keyboard ──
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') hide();
+    if (e.key === ' ') { e.preventDefault(); isPlaying ? pause() : play(); }
+  }, [hide, isPlaying, pause, play]);
+
+  useEffect(() => {
+    if (visible) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [visible, handleKeyDown]);
+
+  // ── Canvas render loop ──
+  useEffect(() => {
+    if (!visible || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d')!;
+    let running = true;
+
+    // Paper grain — pre-baked noise texture
+    const grainCanvas = document.createElement('canvas');
+    grainCanvas.width = 256; grainCanvas.height = 256;
+    const gctx = grainCanvas.getContext('2d')!;
+    const grainData = gctx.createImageData(256, 256);
+    for (let i = 0; i < grainData.data.length; i += 4) {
+      const v = Math.random() * 6;
+      grainData.data[i] = grainData.data[i + 1] = grainData.data[i + 2] = v;
+      grainData.data[i + 3] = 10;
+    }
+    gctx.putImageData(grainData, 0, 0);
+
+    const render = () => {
+      if (!running) return;
+      const w = canvas.width = window.innerWidth;
+      const h = canvas.height = window.innerHeight;
+      const cx = w / 2, cy = h * 0.48;
+      const t = timeRef.current;
+      const dt = 1 / 60;
+      timeRef.current += dt;
+
+      // ── 1. Paper background ──
+      ctx.fillStyle = palette.paper;
+      ctx.fillRect(0, 0, w, h);
+      for (let gx = 0; gx < w; gx += 256)
+        for (let gy = 0; gy < h; gy += 256)
+          ctx.drawImage(grainCanvas, gx, gy);
+      const vg = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.55, cx, cy, Math.max(w, h) * 0.8);
+      vg.addColorStop(0, 'rgba(0,0,0,0)');
+      vg.addColorStop(1, 'rgba(0,0,0,0.06)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, w, h);
+
+      // ── 2. Ink mass ──
+      const inkRadius = Math.min(w, h) * (0.18 + intensity * 0.08);
+      const breathe = 1 + Math.sin(t * 0.7) * 0.06 * intensity + Math.sin(t * 1.3) * 0.04;
+
+      // Halo wash
+      const haloGrad = ctx.createRadialGradient(cx, cy, inkRadius * breathe * 0.6, cx, cy, inkRadius * breathe * 1.8);
+      haloGrad.addColorStop(0, `rgba(${palette.accentR},${palette.accentG},${palette.accentB},0.06)`);
+      haloGrad.addColorStop(0.5, `rgba(${palette.accentR},${palette.accentG},${palette.accentB},0.025)`);
+      haloGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = haloGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Mid-density blobs
+      const rings = 14;
+      for (let i = 0; i < rings; i++) {
+        const a = (i / rings) * Math.PI * 2;
+        const nd = noise(Math.cos(a) * 3 + t * 0.3, Math.sin(a) * 3 + t * 0.3, t * 0.2);
+        const r = inkRadius * breathe * (0.65 + nd * 0.38);
+        const ix = cx + Math.cos(a) * r * 0.35;
+        const iy = cy + Math.sin(a) * r * 0.25;
+        const bg = ctx.createRadialGradient(ix, iy, 0, ix, iy, r);
+        bg.addColorStop(0, 'rgba(42,36,24,0.11)');
+        bg.addColorStop(0.5, 'rgba(42,36,24,0.035)');
+        bg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.arc(ix, iy, r, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Core
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, inkRadius * breathe * 0.6);
+      coreGrad.addColorStop(0, 'rgba(34,28,16,0.68)');
+      coreGrad.addColorStop(0.45, 'rgba(42,36,24,0.30)');
+      coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath(); ctx.arc(cx, cy, inkRadius * breathe * 0.6, 0, Math.PI * 2); ctx.fill();
+
+      // Pulse ripple
+      if (isPlaying) {
+        const pulse = Math.abs(Math.sin(t * 1.8 + intensity * 3)) * 0.35 + 0.08;
+        const rg = ctx.createRadialGradient(cx, cy, inkRadius * breathe * 0.25, cx, cy, inkRadius * breathe * (0.85 + pulse));
+        rg.addColorStop(0, 'rgba(42,36,24,0.05)');
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(cx - inkRadius * 2, cy - inkRadius * 2, inkRadius * 4, inkRadius * 4);
+      }
+
+      // ── 3. Particles ──
+      const rate = isPlaying ? intensity * 16 : 2;
+      if (Math.random() < rate * dt * 10) {
+        const a = Math.random() * Math.PI * 2;
+        const d = inkRadius * breathe * (0.65 + Math.random() * 0.45);
+        particlesRef.current.push({
+          x: cx + Math.cos(a) * d,
+          y: cy + Math.sin(a) * d,
+          vx: Math.cos(a) * (0.2 + Math.random() * 0.7),
+          vy: Math.sin(a) * (0.2 + Math.random() * 0.7) - 0.3,
+          life: 1, maxLife: 0.8 + Math.random() * 2.2,
+          size: 1 + Math.random() * 2.5,
+        });
+      }
+      for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+        const p = particlesRef.current[i];
+        p.life -= dt / p.maxLife;
+        if (p.life <= 0) { particlesRef.current.splice(i, 1); continue; }
+        p.x += p.vx * dt * 40; p.y += p.vy * dt * 40;
+        p.vx *= 0.995; p.vy *= 0.995;
+        const alpha = p.life * 0.2;
+        ctx.fillStyle = `rgba(${palette.accentR},${palette.accentG},${palette.accentB},${alpha})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── 4. Lyrics ──
+      if (parsedLyrics.length > 0 && currentLyricIdx >= 0) {
+        const cl = parsedLyrics[currentLyricIdx];
+        const pl = currentLyricIdx > 0 ? parsedLyrics[currentLyricIdx - 1] : null;
+        const nl = currentLyricIdx < parsedLyrics.length - 1 ? parsedLyrics[currentLyricIdx + 1] : null;
+        const lyricY = cy + inkRadius * breathe * 0.8 + 40;
+        const fs = Math.min(w * 0.04, 28);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (pl) {
+          ctx.font = `${fs * 0.72}px "STSong", "Songti SC", "SimSun", serif`;
+          ctx.fillStyle = 'rgba(42,36,24,0.10)';
+          ctx.fillText(pl.text, cx, lyricY - fs * 1.5);
+        }
+        if (nl) {
+          ctx.font = `${fs * 0.65}px "STSong", "Songti SC", "SimSun", serif`;
+          ctx.fillStyle = 'rgba(42,36,24,0.05)';
+          ctx.fillText(nl.text, cx, lyricY + fs * 1.25);
+        }
+        // Current — with subtle ink bleed noise
+        const bleed = Math.min(1, (progress - cl.time) / 1.5);
+        const ca = 0.5 + bleed * 0.3;
+        ctx.font = `${fs}px "STSong", "Songti SC", "SimSun", serif`;
+        for (let s = 0; s < 3; s++) {
+          const sx = cx + noise(cx * 0.01, lyricY * 0.01 + s, t * 0.5) * 2;
+          const sy = lyricY + noise(cx * 0.01 + s, lyricY * 0.01, t * 0.5) * 1.5;
+          ctx.fillStyle = `rgba(34,28,16,${ca * (0.06 + s * 0.03)})`;
+          ctx.fillText(cl.text, sx, sy);
+        }
+        ctx.fillStyle = `rgba(34,28,16,${ca})`;
+        ctx.fillText(cl.text, cx, lyricY);
+      } else {
+        const markY = cy + inkRadius * 0.8 + 30;
+        ctx.font = `${Math.min(w * 0.06, 40)}px serif`;
+        ctx.fillStyle = 'rgba(42,36,24,0.06)';
+        ctx.textAlign = 'center';
+        ctx.fillText('♪', cx, markY);
+      }
+
+      // ── 5. Progress brush line ──
+      const progressY = h - 55;
+      const pct = duration > 0 ? progress / duration : 0;
+      const sw = w * 0.50;
+      const sx = (w - sw) / 2;
+      const segs = 50;
+
+      // Background line
+      ctx.strokeStyle = 'rgba(42,36,24,0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, progressY);
+      for (let i = 0; i <= segs; i++) {
+        const px = sx + (sw / segs) * i;
+        const py = progressY + Math.sin(px * 0.02 + t * 0.3) * 1.2;
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Played portion
+      if (pct > 0.005) {
+        ctx.strokeStyle = `rgba(${palette.accentR},${palette.accentG},${palette.accentB},0.42)`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, progressY);
+        for (let i = 0; i <= Math.floor(segs * pct); i++) {
+          const px = sx + (sw / segs) * i;
+          const py = progressY + Math.sin(px * 0.02 + t * 0.3) * 1.2;
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      frameRef.current = requestAnimationFrame(render);
+    };
+
+    frameRef.current = requestAnimationFrame(render);
+    return () => { running = false; cancelAnimationFrame(frameRef.current); };
+  }, [visible, palette, isPlaying, intensity, parsedLyrics, currentLyricIdx, progress, duration, scene]);
+
+  useEffect(() => { if (!visible) particlesRef.current = []; }, [visible]);
 
   if (!visible || !scene) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div key="music-mood" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed inset-0 z-[9999] pointer-events-auto select-none overflow-hidden" style={{ background: scene.colors.bg }}>
-        <SceneFX scene={scene} />
-        <PixelParticles scene={scene} isPlaying={isPlaying} />
-        <PixelTerrain scene={scene} isPlaying={isPlaying} />
-        <LumiPresence scene={scene} isPlaying={isPlaying} />
-        <div className="absolute inset-0">
-          <AnimatePresence mode="popLayout">
-            {visibleBubbles.map((b) => (
-              <LyricBubble key={b.index} text={b.text} isActive={b.isActive} isPrev={b.index === currentLyricIdx - 1} scene={scene} index={b.index} />
-            ))}
-          </AnimatePresence>
-          {parsedLyrics.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <motion.p animate={{ opacity: [0.2, 0.5, 0.2] }} transition={{ duration: 4, repeat: Infinity }} className="font-mono text-2xl" style={{ color: scene.colors.accent + '44' }}>♪</motion.p>
-            </div>
-          )}
-        </div>
-        {lumiReason && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 1.5 }} className="absolute top-10 left-8 max-w-[260px]">
-            <p className="text-[11px] tracking-wide leading-relaxed font-semibold font-mono" style={{ color: scene.colors.accent, textShadow: `0 0 16px ${scene.colors.accent}44` }}>{lumiReason}</p>
-          </motion.div>
-        )}
-        {scene.reason && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.8, duration: 1 }} className="absolute top-10 right-8 px-3 py-1.5 rounded border font-mono text-[9px] max-w-[200px]" style={{ background: scene.colors.accent + '10', borderColor: scene.colors.accent + '30', color: scene.colors.accent + 'aa' }}>{scene.reason}</motion.div>
-        )}
-        <motion.div key={track?.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute bottom-24 right-8 text-right">
-          <h3 className="text-[12px] text-white/50 tracking-wide font-mono">{track?.name || ''}</h3>
-          <p className="text-[9px] text-white/15 mt-0.5 font-mono">{track?.artists?.join(' · ') || ''}</p>
+    <motion.div
+      key="music-mood"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.6, ease: [0.22, 1, 0.36, 1] }}
+      className="fixed inset-0 z-[9999] select-none"
+    >
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Track info — bottom right, whisper */}
+      {track && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6, duration: 1 }}
+          className="absolute bottom-14 right-8 text-right"
+        >
+          <p className="text-[11px] tracking-wide font-serif" style={{ color: 'rgba(42,36,24,0.42)' }}>
+            {track.name}
+          </p>
+          <p className="text-[9px] mt-0.5 font-serif" style={{ color: 'rgba(42,36,24,0.22)' }}>
+            {track.artists?.join(' · ') || ''}
+          </p>
         </motion.div>
-        <AnimatePresence>
-          {showControls && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[8px] font-mono text-white/12 w-7 text-right">{formatTime(progress)}</span>
-                <div className="w-[200px] h-[3px] cursor-pointer rounded-full" style={{ background: scene.colors.accent + '12' }} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek((e.clientX - r.left) / r.width * duration); }}>
-                  <div className="h-full rounded-full transition-all" style={{ width: `${progressPercent}%`, background: scene.colors.accent + '88' }} />
-                </div>
-                <span className="text-[8px] font-mono text-white/12 w-7">{formatTime(duration)}</span>
-              </div>
-              <div className="flex items-center gap-10">
-                <motion.button onClick={prev} whileTap={{ scale: 0.7 }} className="text-white/18 hover:text-white/50"><SkipBack size={14} strokeWidth={2} /></motion.button>
-                <motion.button onClick={isPlaying ? pause : play} whileTap={{ scale: 0.85 }} className="w-9 h-9 flex items-center justify-center rounded-sm" style={{ border: `2px solid ${scene.colors.accent}44`, background: `${scene.colors.accent}08` }}>
-                  {isPlaying ? <Pause size={12} style={{ color: scene.colors.accent }} /> : <Play size={12} style={{ color: scene.colors.accent }} className="ml-0.5" />}
-                </motion.button>
-                <motion.button onClick={next} whileTap={{ scale: 0.7 }} className="text-white/18 hover:text-white/50"><SkipForward size={14} strokeWidth={2} /></motion.button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </AnimatePresence>
+      )}
+    </motion.div>
   );
 }
