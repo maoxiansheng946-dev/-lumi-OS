@@ -83,7 +83,8 @@ export function parseDeepSeekResponse(rawResponse: any): NormalizedLLMResponse {
   const message = rawResponse.choices?.[0]?.message;
   if (!message) return { text: null, toolCalls: null };
 
-  const text = message.content || null;
+  // Reasoning models (v4-pro, v4-flash, reasoner) put output in reasoning_content; content may be empty
+  const text = message.content || message.reasoning_content || null;
   const reasoningContent = message.reasoning_content || null;
   const usage = extractUsage(rawResponse);
 
@@ -371,6 +372,11 @@ export async function makeLLMCall(
   getArk?: () => any,
 ): Promise<NormalizedLLMResponse> {
   // ── Privacy gate: strict mode blocks cloud providers ──
+  // Reasoning models need high token budget — their CoT eats into max_tokens
+  const maxTokens = isReasoningModel(config.model)
+    ? Math.max(config.maxTokens || 8000, 4000)
+    : config.maxTokens;
+
   if (isStrictPrivacy()) {
     if (config.provider === 'auto') {
       // In strict mode, auto routes to local-only dispatch
@@ -378,7 +384,7 @@ export async function makeLLMCall(
       const localGetters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.(), getLmStudio, isLmStudioAvailable: () => !!getLmStudio?.() };
       if (getOllama?.()) {
         try {
-          const req = formatDeepSeekRequest({ model: 'llama3.2', messages, toolDeclarations, maxTokens: config.maxTokens, userId: config.userId });
+          const req = formatDeepSeekRequest({ model: 'llama3.2', messages, toolDeclarations, maxTokens: maxTokens, userId: config.userId });
           const client = getOllama();
           const res = await withCloudResilience(
             () => client.chat.completions.create(req),
@@ -388,7 +394,7 @@ export async function makeLLMCall(
         } catch {
           if (getLmStudio?.()) {
             try {
-              const req = formatDeepSeekRequest({ model: config.model, messages, toolDeclarations, maxTokens: config.maxTokens, userId: config.userId });
+              const req = formatDeepSeekRequest({ model: config.model, messages, toolDeclarations, maxTokens: maxTokens, userId: config.userId });
               const client = getLmStudio();
               const res = await client.chat.completions.create(req);
               return parseOpenAIResponse(res);
@@ -398,7 +404,7 @@ export async function makeLLMCall(
         }
       }
       if (getLmStudio?.()) {
-        const req = formatDeepSeekRequest({ model: config.model, messages, toolDeclarations, maxTokens: config.maxTokens, userId: config.userId });
+        const req = formatDeepSeekRequest({ model: config.model, messages, toolDeclarations, maxTokens: maxTokens, userId: config.userId });
         const client = getLmStudio();
         const res = await client.chat.completions.create(req);
         return parseOpenAIResponse(res);
@@ -412,7 +418,7 @@ export async function makeLLMCall(
   if (config.provider === 'auto' && getOllama) {
     const { dispatchLLMCall } = await import('./dispatch');
     const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.(), getLmStudio, isLmStudioAvailable: () => !!getLmStudio?.() };
-    const result = await dispatchLLMCall(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: config.maxTokens, userId: config.userId }, getters);
+    const result = await dispatchLLMCall(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: maxTokens, userId: config.userId }, getters);
     return { text: result.text, toolCalls: result.toolCalls, usage: result.usage };
   }
 
@@ -431,7 +437,7 @@ export async function makeLLMCall(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       ...(isLocal ? {} : { userId: config.userId }),
     });
 
@@ -450,7 +456,7 @@ export async function makeLLMCall(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
     });
 
     const modelInstance = client.getGenerativeModel(modelConfig);
@@ -469,7 +475,7 @@ export async function makeLLMCall(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       userId: config.userId,
     });
 
@@ -488,7 +494,7 @@ export async function makeLLMCall(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
     });
 
     const response = await withCloudResilience(
@@ -504,6 +510,10 @@ export async function makeLLMCall(
 // ── Streaming LLM Call Router ──
 
 export type StreamCallback = (chunk: string) => void;
+
+function isReasoningModel(model: string): boolean {
+  return /reasoner|v4-(pro|flash)|o[13]|o4-mini|r1/i.test(model);
+}
 
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
@@ -524,11 +534,16 @@ export async function makeLLMCallStreaming(
     requireLocalProvider(config.provider);
   }
 
+  // Reasoning models need high token budget
+  const maxTokens = isReasoningModel(config.model)
+    ? Math.max(config.maxTokens || 8000, 4000)
+    : config.maxTokens;
+
   // ── Auto/hybrid dispatch: local Ollama → cloud DeepSeek fallback ──
   if (config.provider === 'auto' && getOllama) {
     const { dispatchLLMCallStreaming } = await import('./dispatch');
     const getters = { getDeepSeek, getGemini, getOpenAI: getOpenAI || (() => null), getAnthropic: getAnthropic || (() => null), getQwen: getQwen || (() => null), getArk: getArk || (() => null), getOllama, isOllamaAvailable: () => !!getOllama?.(), getLmStudio, isLmStudioAvailable: () => !!getLmStudio?.() };
-    const result = await dispatchLLMCallStreaming(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: config.maxTokens, userId: config.userId, signal: config.signal }, onChunk, getters);
+    const result = await dispatchLLMCallStreaming(messages, toolDeclarations, { provider: 'deepseek', model: 'deepseek-chat', maxTokens: maxTokens, userId: config.userId, signal: config.signal }, onChunk, getters);
     return { text: result.text, toolCalls: result.toolCalls, usage: result.usage };
   }
 
@@ -548,7 +563,7 @@ export async function makeLLMCallStreaming(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
       ...(isLocal ? {} : { userId: config.userId }),
     });
     params.stream = true;
@@ -572,6 +587,8 @@ export async function makeLLMCallStreaming(
 
         if (delta.reasoning_content) {
           accumulatedReasoning.push(delta.reasoning_content);
+          // Reasoning model → stream thinking as visible output when content is empty
+          if (!delta.content) onChunk(delta.reasoning_content);
         }
 
         if (delta.tool_calls) {
@@ -592,7 +609,7 @@ export async function makeLLMCallStreaming(
 
     const usage = extractUsage({ usage: streamUsage });
 
-    const text = accumulatedText.length > 0 ? accumulatedText.join('') : null;
+    const text = accumulatedText.length > 0 ? accumulatedText.join('') : (accumulatedReasoning.length > 0 ? accumulatedReasoning.join('') : null);
     const reasoningContent = accumulatedReasoning.length > 0 ? accumulatedReasoning.join('') : null;
     if (toolCallAccumulators.size > 0) {
       const toolCalls: ParsedToolCall[] = [...toolCallAccumulators.values()].map(acc => {
@@ -614,7 +631,7 @@ export async function makeLLMCallStreaming(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
     });
 
     const modelInstance = client.getGenerativeModel(modelConfig);
@@ -664,7 +681,7 @@ export async function makeLLMCallStreaming(
       model: config.model,
       messages,
       toolDeclarations,
-      maxTokens: config.maxTokens,
+      maxTokens: maxTokens,
     });
 
     const stream: any = await withCloudResilience(

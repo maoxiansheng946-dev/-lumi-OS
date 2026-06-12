@@ -126,7 +126,7 @@ export function registerTaskHandler(
       const complexCategories = ['command', 'code', 'question', 'analysis'];
       const isComplex = complexCategories.includes(cognition.intent.category);
       if (activeProvider === 'deepseek') {
-        activeModel = isComplex ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+        activeModel = isComplex ? 'deepseek-v4-pro' : 'deepseek-chat';
       } else if (activeProvider === 'qwen') {
         activeModel = isComplex ? 'qwen-max' : 'qwen-plus';
       } else if (activeProvider === 'gemini') {
