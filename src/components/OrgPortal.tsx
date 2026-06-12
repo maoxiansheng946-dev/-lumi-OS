@@ -16,7 +16,7 @@ interface OrgStatus {
 
 export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const t = useT();
-  const { user } = useApp();
+  const { user, refreshUser, orgConnection } = useApp();
   const [status, setStatus] = useState<OrgStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'select' | 'join' | 'create'>('select');
@@ -27,11 +27,23 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
-    fetch('/api/org/status', { credentials: 'include' })
-      .then(r => r.json())
-      .then(s => setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole }))
-      .catch(() => setStatus({ connected: false, orgId: null, orgRole: null }))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const checkStatus = async (retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const s = await fetch('/api/org/status', { credentials: 'include' }).then(r => r.json());
+          if (!cancelled) {
+            setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole });
+            setLoading(false);
+            if (s.orgId) return; // connected, done
+          }
+        } catch {}
+        if (i < retries) await new Promise(r => setTimeout(r, 800));
+      }
+      if (!cancelled) setLoading(false);
+    };
+    checkStatus();
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleCreateOrg = async () => {
@@ -48,10 +60,16 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
       const data = await res.json();
       if (res.ok) {
         setCreateResult('success');
-        setCreateMsg(data.upgrade
-          ? 'Organization created. Server is restarting as org — this page will reload in a few seconds.'
-          : 'Organization created successfully.');
-        if (data.upgrade) setTimeout(() => window.location.reload(), 3000);
+        setCreateMsg('Organization created successfully. Refreshing session...');
+        // Refresh user session so JWT picks up the orgId
+        try { await refreshUser(); } catch {}
+        // Re-check org status
+        setTimeout(async () => {
+          try {
+            const s = await fetch('/api/org/status', { credentials: 'include' }).then(r => r.json());
+            setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole });
+          } catch {}
+        }, 500);
       } else {
         setCreateResult('error');
         setCreateMsg(data.error || 'Failed to create organization');
@@ -83,15 +101,15 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  // Already connected to an org
-  if (status?.connected) {
+  // Already connected to an org (check both API status and app context)
+  if (status?.connected || orgConnection?.orgId) {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8">
         <div className="max-w-md mx-auto space-y-6">
           <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-6 text-center">
             <CheckCircle size={40} className="mx-auto text-green-400 mb-3" />
             <h2 className="text-xl font-bold text-white mb-1">{t.orgConnected || 'Connected to Organization'}</h2>
-            <p className="text-white/40 text-sm mb-4">Role: {status.orgRole || 'member'}</p>
+            <p className="text-white/40 text-sm mb-4">Role: {status?.orgRole || orgConnection?.orgRole || 'member'}</p>
             <a
               href="/index.org.html"
               className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"

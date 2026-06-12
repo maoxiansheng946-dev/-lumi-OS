@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield,
@@ -19,7 +19,6 @@ import {
   AlertCircle,
   Loader2,
   LogOut,
-  Terminal,
   Cloud,
   Volume2
 } from 'lucide-react';
@@ -51,7 +50,6 @@ function buildSidebarGroups(t: any) {
         { id: 'neural', label: t.neuralEngine || 'Neural Engine', icon: <BrainCircuit size={16} /> },
         { id: 'llm-providers', label: t.llmProviders || 'LLM Providers', icon: <BrainCircuit size={16} /> },
         { id: 'voice-services', label: t.voiceServices || 'Voice Services', icon: <Mic size={16} /> },
-        { id: 'skills-tools', label: t.skillServices || 'Skills & Tools', icon: <Sparkle size={16} /> },
       ],
     },
     {
@@ -200,8 +198,6 @@ export function Settings({
         return <LLMProvidersPage t={t} providerStatus={providerStatus} />;
       case 'voice-services':
         return <VoiceServicesPage t={t} />;
-      case 'skills-tools':
-        return <SkillsToolsPage t={t} />;
       case 'sync':
         return (
           <div className="space-y-8">
@@ -880,89 +876,6 @@ function VoiceServicesPage({ t }: { t: any }) {
           </div>
         </div>
       </SettingsSection>
-    </div>
-  );
-}
-
-function SkillsToolsPage({ t }: { t: any }) {
-  return (
-    <div className="space-y-8">
-      <SettingsSection title={t.skillServices || "Skills & Tools"} icon={<Sparkle size={18} className="text-celestial-saturn" />}>
-        <p className="text-sm text-white/40 max-w-xl mb-6">
-          {t.apiMatrixSkillsDesc || 'API keys for premium skill services — music, video, code sandboxing, and more.'}
-        </p>
-        <div className="grid grid-cols-1 gap-6">
-          <ApiKeyField icon={<Sparkle size={18} className="text-amber-400" />} label={t.minimaxLabel || 'MiniMax (Music + Video + TTS + Voice Clone)'} placeholder={t.minimaxPlaceholder || 'Enter MiniMax API key...'} storageKey="lumi_minimax_key" serverKey="MINIMAX_API_KEY" hint={t.minimaxHint || 'Powers music, video, image, TTS, and voice cloning. Get your key at platform.minimaxi.com'} t={t} />
-          <NeteaseLoginButton />
-          <ApiKeyField icon={<Terminal size={18} className="text-green-400" />} label={t.e2bLabel || 'E2B (Code Sandbox)'} placeholder={t.e2bPlaceholder || 'Enter E2B API key...'} storageKey="lumi_e2b_key" serverKey="E2B_API_KEY" hint={t.e2bHint || 'Secure cloud sandbox for executing Python and JavaScript code. Get your key at e2b.dev'} t={t} />
-        </div>
-      </SettingsSection>
-    </div>
-  );
-}
-
-function NeteaseLoginButton() {
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  const startLogin = async () => {
-    setLoading(true);
-    setDone(false);
-    try {
-      const res = await fetch('/api/ncm/login', { method: 'POST' });
-      const data = await res.json();
-      if (data.qrUrl) {
-        setQrUrl(data.qrUrl);
-        pollRef.current = setInterval(async () => {
-          try {
-            const statusRes = await fetch('/api/ncm/login/status');
-            const status = await statusRes.json();
-            if (status.done) {
-              setDone(true);
-              setQrUrl(null);
-              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-            }
-          } catch {}
-        }, 2000);
-      }
-    } catch (e: any) {
-      alert('登录失败: ' + (e.message || String(e)));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-start gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-      <div className="flex items-center gap-2">
-        <Music size={16} className="text-red-400" />
-        <span className="text-sm font-medium text-white/80">网易云账号登录</span>
-        {done && <span className="text-[10px] text-emerald-400 font-mono">LOGIN DONE</span>}
-      </div>
-      <p className="text-[11px] text-white/40">扫码登录后 VIP 歌曲可正常播放。凭证持久保存，只需登录一次。</p>
-      {qrUrl && (
-        <div className="flex flex-col items-center gap-2">
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`}
-            alt="QR Code"
-            className="w-48 h-48 rounded-lg border border-white/10"
-          />
-          <span className="text-[10px] text-white/30">用手机网易云 App 扫描二维码</span>
-        </div>
-      )}
-      <button
-        onClick={startLogin}
-        disabled={loading || done}
-        className="px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm hover:bg-red-500/30 transition-all disabled:opacity-30"
-      >
-        {loading ? '获取中...' : done ? '登录完成' : '扫码登录'}
-      </button>
     </div>
   );
 }

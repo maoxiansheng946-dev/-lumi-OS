@@ -22,6 +22,13 @@ export function createOrganization(name: string, slug: string, ownerUid: string)
     resourceId: org.id,
     details: { name, slug },
   });
+  // Auto-install legal agent templates (fire-and-forget)
+  import('../legal/templates').then(({ installLegalTemplates }) => {
+    const count = installLegalTemplates(org.id);
+    if (count > 0) console.log(`[Org] Installed ${count} legal agent templates for org ${org.id}`);
+  }).catch((err: any) => {
+    console.warn('[Org] Failed to install legal templates:', err.message);
+  });
   return org;
 }
 

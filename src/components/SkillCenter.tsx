@@ -46,6 +46,7 @@ interface MarketplaceSkill {
   requiresApiKey?: boolean; apiKeyEnv?: string; apiKeyUrl?: string;
   requiresSetup?: boolean; setupNote?: string;
   npmPackage?: string; repoUrl?: string;
+  runtime?: 'internal' | 'external'; externalCommand?: string;
 }
 
 interface InstalledSkill {
@@ -97,6 +98,10 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
   const [githubResults, setGithubResults] = useState<ExternalResult[]>([]);
   const [searchingExternal, setSearchingExternal] = useState(false);
   const [installProgress, setInstallProgress] = useState<{ skillId: string; stage: string } | null>(null);
+  const [detailSkill, setDetailSkill] = useState<MarketplaceSkill | InstalledSkill | null>(null);
+  const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({});
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const socket = useSocket();
 
   const [translationReady, setTranslationReady] = useState(false);
@@ -151,7 +156,14 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
     setSearchingExternal(false);
   }, []);
 
-  useEffect(() => { fetchMarketplace(); fetchInstalled(); fetchCategories(); }, [fetchMarketplace, fetchInstalled, fetchCategories]);
+  const fetchSavedKeys = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings/keys', { credentials: 'include' });
+      if (res.ok) setSavedKeys(await res.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchMarketplace(); fetchInstalled(); fetchCategories(); fetchSavedKeys(); }, [fetchMarketplace, fetchInstalled, fetchCategories, fetchSavedKeys]);
   useEffect(() => { if (activeTab === 'team') fetchAgents(); }, [activeTab, fetchAgents]);
 
   // Debounced external search
@@ -237,6 +249,23 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
       toast.success(`${enabled ? t.skillEnabledToast : t.skillDisabledToast} ${name}`);
       fetchInstalled();
     } catch {}
+  };
+
+  const handleSaveKey = async (envKey: string, value: string) => {
+    if (!value.trim()) return;
+    setSavingKey(envKey);
+    try {
+      await fetch('/api/settings/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: { [envKey]: value.trim() } }),
+        credentials: 'include',
+      });
+      setSavedKeys(prev => ({ ...prev, [envKey]: true }));
+      setKeyInputs(prev => { const n = { ...prev }; delete n[envKey]; return n; });
+      toast.success(`${envKey} saved`);
+    } catch { toast.error('Failed to save key'); }
+    finally { setSavingKey(null); }
   };
 
   const handleConnectExternal = async () => {
@@ -533,7 +562,8 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all group"
+                    onClick={() => setDetailSkill(skill)}
+                    className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all group cursor-pointer"
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
@@ -600,7 +630,7 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
                         </span>
                       </div>
                       <Button
-                        onClick={() => handleInstall(skill)}
+                        onClick={(e) => { e.stopPropagation(); handleInstall(skill); }}
                         disabled={skill.installed || installing === skill.id}
                         className={`text-xs font-bold px-3 py-1.5 h-auto rounded-xl transition-all ${
                           skill.installed
@@ -734,7 +764,8 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all"
+                      onClick={() => setDetailSkill(skill)}
+                      className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0">
@@ -742,19 +773,19 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
                           <span className="text-xs text-white/55 font-mono">{skill.toolCount} {t.toolsCount || 'tools'}{skill.installedAt ? ` · ${new Date(skill.installedAt).toLocaleDateString()}` : ''}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => handleToggle(skill.name, !skill.enabled)}
+                          <button onClick={(e) => { e.stopPropagation(); handleToggle(skill.name, !skill.enabled); }}
                             className={`p-2 rounded-lg transition-colors ${skill.enabled ? 'text-green-400 hover:bg-green-500/10' : 'text-white/45 hover:bg-white/5'}`}
                             title={skill.enabled ? (t.skillDisableBtn || 'Disable') : (t.skillEnableBtn || 'Enable')}
                           >
                             {skill.enabled ? <Power size={13} /> : <PowerOff size={13} />}
                           </button>
-                          <button onClick={() => handlePublish(skill.name)}
+                          <button onClick={(e) => { e.stopPropagation(); handlePublish(skill.name); }}
                             className="p-2 hover:bg-violet-500/10 rounded-lg text-white/45 hover:text-violet-400 transition-colors"
                             title={t.publishBtn || 'Publish'}
                           >
                             <Upload size={13} />
                           </button>
-                          <button onClick={() => handleUninstall(skill.name)}
+                          <button onClick={(e) => { e.stopPropagation(); handleUninstall(skill.name); }}
                             className="p-2 hover:bg-red-500/10 rounded-lg text-white/45 hover:text-red-400 transition-colors"
                             title={t.uninstallBtn || 'Uninstall'}
                           >
@@ -928,6 +959,223 @@ export function SkillCenter({ t, lang }: { t: any; lang: 'en' | 'zh' }) {
             )}
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Skill Detail Modal */}
+      <AnimatePresence>
+        {detailSkill && (() => {
+          const isMarketSkill = 'id' in detailSkill;
+          const mSkill: MarketplaceSkill | undefined = isMarketSkill
+            ? detailSkill as MarketplaceSkill
+            : marketSkills.find(s => s.id === `skill-${(detailSkill as InstalledSkill).name}`);
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+              onClick={() => setDetailSkill(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-celestial-deep border border-white/10 rounded-3xl p-8 max-w-lg w-full max-h-[85vh] overflow-y-auto space-y-6"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 ${
+                      mSkill ? ICON_CLASSES[mSkill.icon] || 'bg-white/5 text-white/55 border-white/10' : 'bg-white/5 text-white/55 border-white/10'
+                    }`}>
+                      {mSkill ? (ICON_COMPONENTS[mSkill.icon] || <Zap size={22} />) : <Zap size={22} />}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">
+                        {mSkill?.name ?? (detailSkill as InstalledSkill).name}
+                      </h3>
+                      {mSkill && (
+                        <span className="text-xs text-white/55 font-mono">
+                          v {mSkill.version || '1.0'} &middot; {mSkill.toolCount || 1} tools
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDetailSkill(null)}
+                    className="p-2 rounded-lg hover:bg-white/5 text-white/45 hover:text-white/70 transition-colors text-xl leading-none"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                {/* Meta row */}
+                <div className="flex flex-wrap items-center gap-3 text-xs text-white/45">
+                  {mSkill && (
+                    <>
+                      <span className="flex items-center gap-1"><Tag size={10} /> {mSkill.category}</span>
+                      <span>{mSkill.author}</span>
+                      <span className="flex items-center gap-1"><Download size={10} /> {mSkill.downloads.toLocaleString()}</span>
+                      <span className="flex items-center gap-1"><Star size={10} className="text-amber-400" fill="currentColor" /> {mSkill.rating > 0 ? mSkill.rating.toFixed(1) : '--'}</span>
+                    </>
+                  )}
+                  {!isMarketSkill && detailSkill && (
+                    <>
+                      <span>{(detailSkill as InstalledSkill).toolCount} tools</span>
+                      {(detailSkill as InstalledSkill).installedAt && (
+                        <span>Installed {new Date((detailSkill as InstalledSkill).installedAt).toLocaleDateString()}</span>
+                      )}
+                      <span>{(detailSkill as InstalledSkill).source}</span>
+                    </>
+                  )}
+                </div>
+
+                {/* Full description */}
+                <p className="text-sm text-white/60 leading-relaxed">
+                  {mSkill?.description ?? (detailSkill as InstalledSkill).description}
+                </p>
+
+                {/* External runtime info */}
+                {mSkill?.runtime === 'external' && (
+                  <div className="p-4 bg-cyan-500/5 border border-cyan-500/10 rounded-2xl space-y-2">
+                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-cyan-400">
+                      <ExternalLink size={12} /> External Runtime
+                    </span>
+                    {mSkill.externalCommand && (
+                      <p className="text-sm font-mono text-cyan-300/70 break-all">{mSkill.externalCommand}</p>
+                    )}
+                    <p className="text-[12px] text-cyan-400/60">
+                      This skill runs as an external CLI agent. No MCP server process is created.
+                    </p>
+                  </div>
+                )}
+
+                {/* Setup notes */}
+                {mSkill?.requiresSetup && mSkill.setupNote && (
+                  <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-2xl">
+                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase text-purple-400 mb-2">
+                      <Wrench size={12} /> Setup Required
+                    </span>
+                    <p className="text-sm text-purple-200/70 leading-relaxed">{mSkill.setupNote}</p>
+                  </div>
+                )}
+
+                {/* API Key configuration */}
+                {mSkill?.requiresApiKey && mSkill.apiKeyEnv && (
+                  <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Key size={12} className="text-amber-400" />
+                      <span className="text-xs font-bold uppercase text-amber-400">API Key Required</span>
+                    </div>
+                    <p className="text-sm text-amber-300/70">
+                      Requires <strong>{mSkill.apiKeyEnv}</strong>
+                      {mSkill.apiKeyUrl && (
+                        <> &mdash; <a href={mSkill.apiKeyUrl} target="_blank" rel="noopener" className="underline hover:text-amber-200">get API key</a></>
+                      )}
+                    </p>
+                    {savedKeys[mSkill.apiKeyEnv] ? (
+                      <span className="flex items-center gap-1 text-sm text-green-400"><CheckCircle size={14} /> {t.keyConfigured || 'Key configured'}</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={keyInputs[mSkill.apiKeyEnv] || ''}
+                          onChange={e => setKeyInputs(prev => ({ ...prev, [mSkill.apiKeyEnv]: e.target.value }))}
+                          placeholder="sk-..."
+                          className="flex-1 px-3 py-2 bg-white/10 border border-amber-500/20 rounded-xl text-white text-sm placeholder:text-white/35 focus:outline-none focus:border-amber-500/50"
+                        />
+                        <Button
+                          onClick={() => handleSaveKey(mSkill.apiKeyEnv!, keyInputs[mSkill.apiKeyEnv!] || '')}
+                          disabled={savingKey === mSkill.apiKeyEnv || !keyInputs[mSkill.apiKeyEnv!]?.trim()}
+                          className="shrink-0 px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold rounded-xl disabled:opacity-40"
+                        >
+                          {savingKey === mSkill.apiKeyEnv ? <RefreshCw size={12} className="animate-spin" /> : 'Save'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* External links */}
+                {mSkill && (mSkill.npmPackage || mSkill.repoUrl) && (
+                  <div className="flex items-center gap-3 text-xs">
+                    {mSkill.npmPackage && (
+                      <a href={`https://www.npmjs.com/package/${mSkill.npmPackage}`} target="_blank" rel="noopener" className="flex items-center gap-1 text-cyan-400 hover:underline">
+                        <ExternalLink size={10} /> npm
+                      </a>
+                    )}
+                    {mSkill.repoUrl && (
+                      <a href={mSkill.repoUrl} target="_blank" rel="noopener" className="flex items-center gap-1 text-purple-400 hover:underline">
+                        <ExternalLink size={10} /> GitHub
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Tags for installed */}
+                {!isMarketSkill && detailSkill && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(detailSkill as InstalledSkill).autoGenerated && (
+                      <span className="px-2 py-0.5 bg-emerald-500/10 rounded-full text-xs text-emerald-400 font-bold">{t.autoGenerated || 'Auto-generated'}</span>
+                    )}
+                    {(detailSkill as InstalledSkill).connected && (
+                      <span className="px-2 py-0.5 bg-green-500/10 rounded-full text-xs text-green-400 font-bold">{t.connected || 'Connected'}</span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      (detailSkill as InstalledSkill).enabled ? 'bg-green-500/10 text-green-400' : 'bg-white/5 text-white/45'
+                    }`}>
+                      {(detailSkill as InstalledSkill).enabled ? (t.enabled || 'Enabled') : (t.disabled || 'Disabled')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                  {mSkill && isMarketSkill ? (
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleInstall(mSkill); setDetailSkill(null); }}
+                      disabled={mSkill.installed || installing === mSkill.id}
+                      className={`text-xs font-bold px-5 py-2.5 h-auto rounded-xl ${
+                        mSkill.installed
+                          ? 'bg-green-500/20 text-green-400 cursor-default'
+                          : 'bg-celestial-saturn text-black hover:scale-105'
+                      }`}
+                    >
+                      {mSkill.installed ? (
+                        <><CheckCircle size={14} className="mr-1" /> {t.installedStatus || 'Installed'}</>
+                      ) : installing === mSkill.id ? (
+                        <><RefreshCw size={14} className="mr-1 animate-spin" /> {t.installingStatus || 'Installing...'}</>
+                      ) : (
+                        <><Download size={14} className="mr-1" /> {t.installBtn || 'Install'}</>
+                      )}
+                    </Button>
+                  ) : detailSkill ? (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggle((detailSkill as InstalledSkill).name, !(detailSkill as InstalledSkill).enabled); }}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${
+                          (detailSkill as InstalledSkill).enabled
+                            ? 'text-white/55 hover:bg-white/5'
+                            : 'text-green-400 bg-green-500/10 hover:bg-green-500/20'
+                        }`}
+                      >
+                        {(detailSkill as InstalledSkill).enabled ? <PowerOff size={13} /> : <Power size={13} />}
+                        {(detailSkill as InstalledSkill).enabled ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUninstall((detailSkill as InstalledSkill).name); setDetailSkill(null); }}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                      >
+                        <Trash2 size={13} /> Uninstall
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

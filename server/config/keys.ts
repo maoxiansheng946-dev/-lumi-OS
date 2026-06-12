@@ -20,6 +20,7 @@ interface KeyStore {
   NETEASE_PRIVATE_KEY?: string;
   ALIYUN_AK_ID?: string;
   ALIYUN_AK_SECRET?: string;
+  SILICONFLOW_API_KEY?: string;
 }
 
 /** Which circuit-breaker provider(s) a given key name affects */
@@ -90,5 +91,6 @@ export function getAllKeyNames(): (keyof KeyStore)[] {
     'NETEASE_PRIVATE_KEY',
     'ALIYUN_AK_ID',
     'ALIYUN_AK_SECRET',
+    'SILICONFLOW_API_KEY',
   ];
 }

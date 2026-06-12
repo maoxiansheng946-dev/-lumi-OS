@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Building2, BookOpen, Package, Users, Settings,
   ClipboardCheck, ScrollText, MessageSquare, ArrowLeft,
-  Shield, User, Briefcase, Home,
+  Shield, User, Briefcase, Home, Scale,
 } from 'lucide-react';
 import { BranchDashboard } from './BranchDashboard';
 import { KnowledgeBaseBrowser } from './KnowledgeBaseBrowser';
@@ -14,10 +14,11 @@ import { CentralLumiChat } from './CentralLumiChat';
 import { OrgMembers } from './OrgMembers';
 import { OrgSettings } from './OrgSettings';
 import { AuditLogViewer } from './AuditLogViewer';
+import { LegalHub } from './LegalHub';
 import { useApp } from '../../contexts/AppContext';
 import { useT } from '../../lib/useT';
 
-type SubView = 'dashboard' | 'kb' | 'kb-edit' | 'templates' | 'templates-create' | 'review' | 'chat' | 'members' | 'settings' | 'audit';
+type SubView = 'dashboard' | 'kb' | 'kb-edit' | 'templates' | 'templates-create' | 'review' | 'chat' | 'members' | 'settings' | 'audit' | 'legal';
 
 interface NavItem {
   id: SubView;
@@ -39,6 +40,7 @@ export function OrgHub() {
     { id: 'review', label: t.orgReview, icon: <ClipboardCheck size={16} />, roles: ['owner', 'admin'] },
     { id: 'members', label: t.orgMembers, icon: <Users size={16} />, roles: ['owner', 'admin'] },
     { id: 'audit', label: t.orgAudit, icon: <ScrollText size={16} />, roles: ['owner', 'admin'] },
+    { id: 'legal', label: t.legalHub || 'Law Firm', icon: <Scale size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
     { id: 'settings', label: t.orgSettings, icon: <Settings size={16} />, roles: ['owner', 'admin'] },
   ], [t]);
 
@@ -76,6 +78,7 @@ export function OrgHub() {
       case 'members': return <OrgMembers />;
       case 'settings': return <OrgSettings />;
       case 'audit': return <AuditLogViewer />;
+      case 'legal': return <LegalHub />;
       default: return <BranchDashboard />;
     }
   };
@@ -127,7 +130,7 @@ export function OrgHub() {
           ))}
           <div className="my-2 border-t border-white/5" />
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'home' } }))}
+            onClick={() => { window.location.href = '/'; }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/60 hover:bg-white/5 transition-all"
           >
             <ArrowLeft size={16} />

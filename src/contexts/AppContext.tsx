@@ -227,6 +227,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const customAuth = await authService.getMe();
       if (customAuth) {
         setUser({ ...customAuth.user, provider: 'custom' } as any);
+        // Sync org connection from user data
+        const u = customAuth.user as any;
+        if (u?.orgId) {
+          const conn: OrgConnection = { orgId: u.orgId, orgRole: u.orgRole || 'member', orgName: '', connected: true };
+          setOrgConnection(conn);
+          localStorage.setItem('lumi_org_connection', JSON.stringify(conn));
+        }
         try { setAgents(await agentService.listAgents()); } catch {}
         // Load persisted notifications from server
         try {
@@ -265,10 +272,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       try {
         const me = await authService.getMe();
-        if (!me && !cancelled) {
-          // No valid token — try auto-login bootstrap (local admin account)
-          // Retry up to 8 times with backoff — the bundled Node.js server
-          // may take a few seconds to start on slower machines (macOS WebKit).
+        // Re-bootstrap if session exists but lacks orgId (stale token from before org creation)
+        const needsRebootstrap = !me || !(me.user as any)?.orgId;
+        if (needsRebootstrap && !cancelled) {
+          // Clear stale token so apiBridge sends fresh one after bootstrap
+          try { localStorage.removeItem('lumi_auth_token'); } catch {}
           let result = await authService.bootstrap();
           for (let retry = 0; !result.success && retry < 8 && !cancelled; retry++) {
             const delay = 500 + retry * 500; // 0.5s, 1s, 1.5s, ..., 4s

@@ -24,6 +24,7 @@ import { registerInputTools } from './input_tools';
 import { registerComputerUseTool } from './computer_use_tool';
 import { registerPythonTools } from './python_tools';
 import { registerBiometricTools } from './biometric_tools';
+import { registerLegalTools } from './legal_tools';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -60,6 +61,7 @@ export function registerAllTools(
   registerComputerUseTool(registry);
   registerPythonTools(registry);
   registerBiometricTools(registry);
+  registerLegalTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

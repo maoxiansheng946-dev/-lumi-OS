@@ -6,6 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { requireAuth, requireOrgRole, requireOrgMember, optionalAuth } from '../middleware/auth';
 import * as Org from './org';
 import * as EDB from './db';
@@ -42,6 +43,14 @@ export function mountOrgRoutes(router: Router, io?: SocketIOServer) {
       return;
     }
     const org = Org.createOrganization(name, slug, req.user!.uid);
+    // Re-sign JWT with orgId so the user's current session picks it up immediately
+    const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
+    const newToken = jwt.sign(
+      { uid: req.user!.uid, username: req.user!.username, role: req.user!.role, orgId: org.id, orgRole: 'owner' },
+      JWT_SECRET,
+      { expiresIn: '24h' },
+    );
+    res.cookie('token', newToken, { httpOnly: true, secure: false, sameSite: 'lax', maxAge: 24 * 60 * 60 * 1000 });
     persistRole('org', org.id);
     res.status(201).json(org);
   });

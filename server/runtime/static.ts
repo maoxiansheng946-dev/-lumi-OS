@@ -12,11 +12,11 @@ export async function setupStatic(app: express.Express, __filename: string, __di
     isBundledServer ||
     (!isSourceServer && process.env.NODE_ENV !== "development" && fs.existsSync(path.join(process.cwd(), "dist")));
 
-  // Org serves the workbench, personal serves the full web app
-  const defaultFile = role === 'org' ? 'index.org.html' : 'index.html';
+  // Personal desktop at /, org workbench at /index.org.html — both coexist
+  const defaultFile = 'index.html';
 
   if (!isProduction) {
-    console.log(`Starting in DEVELOPMENT mode (Vite) as ${role}...`);
+    console.log(`Starting in DEVELOPMENT mode (Vite)...`);
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },

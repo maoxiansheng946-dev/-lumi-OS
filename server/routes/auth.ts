@@ -63,7 +63,11 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       // Fire-and-forget: sync to Supabase for SaaS
       syncUserToSupabase(user.uid, username, user.password);
 
-      const token = jwt.sign({ uid: user.uid, username, role: user.role }, jwtSecret, { expiresIn: "24h" });
+      const memberships = (db.orgMemberships || []).filter((m: any) => m.userId === user.uid && m.status === 'active');
+      const membership = memberships.sort((a: any, b: any) => (b.joinedAt || b.createdAt || '').localeCompare(a.joinedAt || a.createdAt || ''))[0];
+      const tokenPayload: any = { uid: user.uid, username, role: user.role };
+      if (membership) { tokenPayload.orgId = membership.orgId; tokenPayload.orgRole = membership.role; }
+      const token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: "24h" });
       res.cookie("token", token, getCookieOptions());
       const { password: _, ...userWithoutPassword } = user;
       return res.json({ success: true, user: userWithoutPassword, token });
@@ -85,7 +89,9 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       const user = db.users.find((u: any) => u.uid === decoded.uid);
       if (!user) return res.status(401).json({ error: "User not found" });
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      const resp: any = { user: userWithoutPassword };
+      if (decoded.orgId) { resp.user.orgId = decoded.orgId; resp.user.orgRole = decoded.orgRole; }
+      res.json(resp);
     } catch (e) {
       res.status(401).json({ error: "Invalid token" });
     }
@@ -132,14 +138,20 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       }
     }
 
+    const memberships = (db.orgMemberships || []).filter((m: any) => m.userId === admin.uid && m.status === 'active');
+    const membership = memberships.sort((a: any, b: any) => (b.joinedAt || b.createdAt || '').localeCompare(a.joinedAt || a.createdAt || ''))[0];
+    const tokenPayload: any = { uid: admin.uid, username: "admin", role: admin.role };
+    if (membership) { tokenPayload.orgId = membership.orgId; tokenPayload.orgRole = membership.role; }
     const token = jwt.sign(
-      { uid: admin.uid, username: "admin", role: admin.role },
+      tokenPayload,
       jwtSecret,
       { expiresIn: "24h" },
     );
     res.cookie("token", token, getCookieOptions());
     const { password: _, ...userWithoutPassword } = admin;
-    return res.json({ success: true, user: userWithoutPassword, token });
+    const userResp: any = { ...userWithoutPassword };
+    if (membership) { userResp.orgId = membership.orgId; userResp.orgRole = membership.role; }
+    return res.json({ success: true, user: userResp, token });
   });
 
   router.post("/auth/change-password", async (req, res) => {
