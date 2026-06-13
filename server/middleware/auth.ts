@@ -124,6 +124,22 @@ export function requireOrgMember(req: Request, res: Response, next: NextFunction
   next();
 }
 
+/**
+ * Resolve the domain and orgId from auth context for writing new records.
+ */
+export function resolveDomain(user: AuthUser): { domain: string; orgId: string } {
+  if (user.orgId) return { domain: 'work', orgId: user.orgId };
+  return { domain: 'personal', orgId: '' };
+}
+
+/**
+ * Build a filter predicate for data reads based on the auth context.
+ */
+export function domainFilter(user: AuthUser): (record: { domain?: string; orgId?: string }) => boolean {
+  if (user.orgId) return (r) => r.orgId === user.orgId && r.domain === 'work';
+  return (r) => (!r.orgId || r.orgId === '') && r.domain !== 'work';
+}
+
 /** Require biometric verification for sensitive operations.
  *  Placeholder — Phase 3 enables voiceprint+face gating.
  *  Currently logs intent and passes through (soft enforcement). */

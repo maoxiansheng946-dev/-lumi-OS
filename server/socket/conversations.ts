@@ -1,14 +1,33 @@
 import { Socket } from "socket.io";
+import jwt from "jsonwebtoken";
 import { readDB } from "../../db_layer";
+
+const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
+
+function getOrgIdFromSocket(socket: Socket): string | undefined {
+  try {
+    const authToken = socket.handshake?.auth?.token;
+    if (authToken) {
+      const decoded: any = jwt.verify(authToken, JWT_SECRET);
+      return decoded.orgId;
+    }
+  } catch {}
+  return undefined;
+}
 
 export function registerConversationHandlers(socket: Socket, getUserId: (s: Socket) => string) {
   socket.on("chat:conversations", async () => {
     try {
       const uid = getUserId(socket);
+      const orgId = getOrgIdFromSocket(socket);
       const db = readDB();
 
       const convs = (db.conversations || [])
-        .filter((c: any) => c.userId === uid)
+        .filter((c: any) => {
+          if (c.userId !== uid) return false;
+          if (orgId) return c.orgId === orgId;
+          return (!c.orgId || c.orgId === '');
+        })
         .sort((a: any, b: any) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
         .slice(0, 30);
 
@@ -47,7 +66,32 @@ export function registerConversationHandlers(socket: Socket, getUserId: (s: Sock
         socket.emit("chat:messages", { conversationId: '', messages: [] });
         return;
       }
+      const uid = getUserId(socket);
+      const orgId = getOrgIdFromSocket(socket);
       const db = readDB();
+
+      // Ownership + domain verification
+      const conv = (db.conversations || []).find((c: any) => c.id === data.conversationId);
+      if (!conv) {
+        socket.emit("chat:messages", { conversationId: data.conversationId, messages: [] });
+        return;
+      }
+      if (conv.userId !== uid) {
+        socket.emit("chat:messages", { conversationId: data.conversationId, messages: [] });
+        return;
+      }
+      if (orgId) {
+        if (conv.orgId !== orgId) {
+          socket.emit("chat:messages", { conversationId: data.conversationId, messages: [] });
+          return;
+        }
+      } else {
+        if (conv.orgId && conv.orgId !== '') {
+          socket.emit("chat:messages", { conversationId: data.conversationId, messages: [] });
+          return;
+        }
+      }
+
       const interactions = (db.interactions || [])
         .filter((i: any) => i.conversationId === data.conversationId)
         .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())

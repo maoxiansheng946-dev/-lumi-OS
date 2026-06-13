@@ -95,6 +95,9 @@ function migrateSchema(): Promise<void> {
     db!.run("ALTER TABLE interactions ADD COLUMN orgId TEXT DEFAULT ''", onAlter);
     db!.run("ALTER TABLE agents ADD COLUMN domain TEXT DEFAULT 'personal'", onAlter);
     db!.run("ALTER TABLE agents ADD COLUMN orgId TEXT DEFAULT ''", onAlter);
+    // Add domain + orgId to conversations for personal/work isolation
+    db!.run("ALTER TABLE conversations ADD COLUMN domain TEXT DEFAULT 'personal'", onAlter);
+    db!.run("ALTER TABLE conversations ADD COLUMN orgId TEXT DEFAULT ''", onAlter);
     // Add memories table if it doesn't exist
     db!.run(`CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
@@ -164,6 +167,8 @@ function migrateSchema(): Promise<void> {
     db!.run(`CREATE INDEX IF NOT EXISTS idx_interactions_org ON interactions(orgId, userId)`, onAlter);
     db!.run(`CREATE INDEX IF NOT EXISTS idx_agents_user_domain ON agents(userId, domain)`, onAlter);
     db!.run(`CREATE INDEX IF NOT EXISTS idx_agents_org ON agents(orgId, userId)`, onAlter);
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_conversations_user_domain ON conversations(userId, domain)`, onAlter);
+    db!.run(`CREATE INDEX IF NOT EXISTS idx_conversations_org ON conversations(orgId, userId)`, onAlter);
     resolve();
   });
 }
@@ -252,7 +257,9 @@ function createTables(): Promise<void> {
         summary TEXT DEFAULT '',
         messageCount INTEGER DEFAULT 0,
         lastActiveAt TEXT NOT NULL,
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        domain TEXT DEFAULT 'personal',
+        orgId TEXT DEFAULT ''
       );
 
       CREATE TABLE IF NOT EXISTS voice_profiles (
@@ -549,7 +556,7 @@ async function loadMemoryDB(): Promise<void> {
     founderVision,
     memories: (memories || []).map((m: any) => ({ ...m, domain: m.domain || 'personal', orgId: m.orgId || '' })),
     reminders: remindersRaw || [],
-    conversations: conversationsRaw || [],
+    conversations: (conversationsRaw || []).map((c: any) => ({ ...c, domain: c.domain || 'personal', orgId: c.orgId || '' })),
     settings: settings || [],
     voiceProfiles: voiceProfiles || {},
     tokenUsage: tokenUsageRaw || [],
@@ -709,9 +716,9 @@ async function persistMemoryDB(): Promise<void> {
     },
     {
       name: 'conversations',
-      createSQL: `CREATE TABLE _temp_conversations (id TEXT PRIMARY KEY, userId TEXT NOT NULL, agentId TEXT, title TEXT DEFAULT '', status TEXT DEFAULT 'active', summary TEXT DEFAULT '', messageCount INTEGER DEFAULT 0, lastActiveAt TEXT NOT NULL, createdAt TEXT NOT NULL)`,
-      insertSQL: `INSERT INTO _temp_conversations (id, userId, agentId, title, status, summary, messageCount, lastActiveAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      rows: () => (memoryDB.conversations || []).map((c: any) => [c.id, c.userId, c.agentId || '', c.title || '', c.status || 'active', c.summary || '', c.messageCount || 0, c.lastActiveAt, c.createdAt]),
+      createSQL: `CREATE TABLE _temp_conversations (id TEXT PRIMARY KEY, userId TEXT NOT NULL, agentId TEXT, title TEXT DEFAULT '', status TEXT DEFAULT 'active', summary TEXT DEFAULT '', messageCount INTEGER DEFAULT 0, lastActiveAt TEXT NOT NULL, createdAt TEXT NOT NULL, domain TEXT DEFAULT 'personal', orgId TEXT DEFAULT '')`,
+      insertSQL: `INSERT INTO _temp_conversations (id, userId, agentId, title, status, summary, messageCount, lastActiveAt, createdAt, domain, orgId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rows: () => (memoryDB.conversations || []).map((c: any) => [c.id, c.userId, c.agentId || '', c.title || '', c.status || 'active', c.summary || '', c.messageCount || 0, c.lastActiveAt, c.createdAt, c.domain || 'personal', c.orgId || '']),
     },
     {
       name: 'marketplace_skills',

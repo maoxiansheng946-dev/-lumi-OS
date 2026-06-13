@@ -216,7 +216,17 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
     try {
       const decoded: any = jwt.verify(token, jwtSecret);
       const { orgId } = req.body;
-      if (!orgId) return res.status(400).json({ error: "orgId is required" });
+
+      // Allow clearing org context (return to personal mode)
+      if (orgId === null || orgId === undefined || orgId === '') {
+        const personalToken = jwt.sign(
+          { uid: decoded.uid, username: decoded.username, role: decoded.role || 'user' },
+          jwtSecret,
+          { expiresIn: "24h" }
+        );
+        res.cookie("token", personalToken, getCookieOptions());
+        return res.json({ success: true, orgId: null, orgRole: null });
+      }
 
       const membership = getMember(orgId, decoded.uid);
       if (!membership || membership.status !== 'active') {

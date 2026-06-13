@@ -88,6 +88,8 @@ export interface ConsolidationContext {
   userId: string;
   provider: 'deepseek' | 'qwen' | 'openai' | 'gemini' | 'anthropic';
   model: string;
+  domain?: string;
+  orgId?: string;
 }
 
 /**
@@ -103,7 +105,7 @@ export async function consolidateEpisodic(
   getAnthropic?: () => any,
   getQwen?: () => any,
 ): Promise<Memory | null> {
-  const episodic = getUnconsolidatedEpisodic(ctx.userId);
+  const episodic = getUnconsolidatedEpisodic(ctx.userId, ctx.domain, ctx.orgId);
 
   if (episodic.length < minCount) {
     return null;
@@ -188,6 +190,8 @@ export async function selfReflect(
     tier: 'growth',
     limit: 20,
     minConfidence: 0.5,
+    domain: ctx.domain,
+    orgId: ctx.orgId,
   });
 
   if (growthMemories.length === 0) {
@@ -272,6 +276,8 @@ export async function consolidateNarrative(
     after: cutoff,
     limit: 50,
     minConfidence: 0.3,
+    domain: ctx.domain,
+    orgId: ctx.orgId,
   });
 
   if (memories.length < minMemories) return null;

@@ -2,6 +2,7 @@
  * agent:chat socket handler — the core conversational AI pipeline
  */
 import { Socket } from "socket.io";
+import jwt from "jsonwebtoken";
 import { readDB, writeDB } from "../../db_layer";
 import { pushNotification } from "../routes/notifications";
 import { NormalizedMessage, makeLLMCall, StreamCallback } from "../llm/providers";
@@ -29,6 +30,8 @@ import { emitMusicAtmosphere } from "../socket/music";
 import { searchKnowledgeBase } from "../org/kb";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 import { buildProfessionOverlay } from "../autonomy/professions";
+
+const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
 export function registerChatHandler(
   socket: Socket,
@@ -62,9 +65,24 @@ export function registerChatHandler(
 
   socket.on("agent:chat", async (data: { text: string; history: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string }) => {
     console.log('[ChatHandler] agent:chat RECEIVED:', JSON.stringify(data).slice(0, 300));
-    const { text, history, personalityId = "lumi", category, agentId, domain, orgId, mode: payloadMode, source } = data;
+    const { text, history, personalityId = "lumi", category, agentId, mode: payloadMode, source } = data;
     const uid = userIdFn(socket);
     console.log('[ChatHandler] uid:', uid, 'agentId:', agentId, 'source:', source);
+
+    // Extract org context from the authenticated socket token (not client payload)
+    let resolvedDomain = 'personal';
+    let resolvedOrgId = '';
+    try {
+      const authToken = socket.handshake?.auth?.token;
+      if (authToken) {
+        const decoded: any = jwt.verify(authToken, JWT_SECRET);
+        if (decoded.orgId) {
+          resolvedDomain = 'work';
+          resolvedOrgId = decoded.orgId;
+        }
+      }
+    } catch {}
+    console.log('[ChatHandler] domain:', resolvedDomain, 'orgId:', resolvedOrgId);
 
     // Abort any previous chat session for this user
     const prevController = chatSessionMap.get(uid);
@@ -107,9 +125,9 @@ export function registerChatHandler(
 
       // Org: search company KB when in work domain
       let kbContext: string | undefined;
-      if (domain === 'work' && orgId) {
+      if (resolvedDomain === 'work' && resolvedOrgId) {
         try {
-          const kbResults = await searchKnowledgeBase(orgId, text, 3);
+          const kbResults = await searchKnowledgeBase(resolvedOrgId, text, 3);
           if (kbResults.length > 0) {
             kbContext = kbResults
               .map(r => `[${r.title}] ${r.chunk}`)
@@ -129,7 +147,7 @@ export function registerChatHandler(
 
       // ── Conversation mode: get/create conversation, apply mode from payload ──
       const conversation = agentId
-        ? getOrCreateActiveConversation(uid, agentId)
+        ? getOrCreateActiveConversation(uid, agentId, resolvedDomain, resolvedOrgId)
         : null;
       const conversationId = conversation?.id;
       // Cross-session continuity: inject previous conversation context if starting fresh
@@ -524,7 +542,7 @@ export function registerChatHandler(
         // Load conversation history from persistence (survives page reload / reconnect)
         let persistedHistory: NormalizedMessage[] = [];
         if (agentId) {
-          const conv = getOrCreateActiveConversation(uid, agentId);
+          const conv = getOrCreateActiveConversation(uid, agentId, resolvedDomain, resolvedOrgId);
           const msgs = getMessagesByTokenBudget(conv.id);
           persistedHistory = msgs
             .filter((m: any) => m.message || m.response)
@@ -704,8 +722,8 @@ export function registerChatHandler(
         role: "user", personality: personality.id, timestamp: new Date().toISOString(),
         cognitiveIntent: cognition.intent.category,
         llmWasCalled,
-        domain: domain || 'personal',
-        orgId: orgId || '',
+        domain: resolvedDomain,
+        orgId: resolvedOrgId,
       });
       writeDB(db);
 
@@ -734,7 +752,7 @@ export function registerChatHandler(
               userId: uid, type: mem.type, content: mem.content,
               keywords: mem.keywords, confidence: Math.min((mem.confidence || 0.5) + 0.2, 1.0),
               sourceInteractionId: interactionId, agentId: agentId || '',
-            } as any, { domain, orgId: orgId || '' });
+            } as any, { domain: resolvedDomain, orgId: resolvedOrgId });
           }
           console.log(`[ChatHandler] Correction learned: ${corrected.memories.length} memories with boosted confidence`);
 
@@ -813,7 +831,7 @@ export function registerChatHandler(
             userId: uid, type: mem.type, content: mem.content,
             keywords: mem.keywords, confidence: mem.confidence, sourceInteractionId: interactionId,
             agentId: agentId || '',
-          } as any, { parentId, location: locationTag, domain, orgId: orgId || '' });
+          } as any, { parentId, location: locationTag, domain: resolvedDomain, orgId: resolvedOrgId });
         }
         for (const rem of extracted.reminders) {
           addReminder({ userId: uid, content: rem.content, dueAt: rem.dueAt, sourceInteractionId: interactionId });

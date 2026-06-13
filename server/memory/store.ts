@@ -328,6 +328,8 @@ export function queryMemories(q: MemoryQuery): Memory[] {
     if (q.before && new Date(m.createdAt).getTime() > cutoffB) return false;
     if (q.after && new Date(m.createdAt).getTime() < cutoffA) return false;
     if (q.location !== undefined && (m.location || '') !== q.location) return false;
+    if (q.domain !== undefined && (m.domain || 'personal') !== q.domain) return false;
+    if (q.orgId !== undefined && (m.orgId || '') !== q.orgId) return false;
     return true;
   });
 
@@ -643,12 +645,14 @@ export function decayMemories(userId: string): void {
 }
 
 /** Get episodic memories that are ready for consolidation (unconsolidated, count >= threshold) */
-export function getUnconsolidatedEpisodic(userId: string): Memory[] {
+export function getUnconsolidatedEpisodic(userId: string, domain?: string, orgId?: string): Memory[] {
   return getMemoryStore().filter(m =>
     m.userId === userId &&
     m.tier === 'episodic' &&
     !m.parentId &&
-    m.confidence >= 0.2,
+    m.confidence >= 0.2 &&
+    (domain ? (m.domain || 'personal') === domain : true) &&
+    (orgId !== undefined ? (m.orgId || '') === orgId : true)
   );
 }
 

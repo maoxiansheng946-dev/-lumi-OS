@@ -40,6 +40,8 @@ export function mountMemoryRoutes(
         query: search,
         limit,
         minConfidence: 0,
+        domain: decoded.orgId ? 'work' : 'personal',
+        orgId: decoded.orgId || '',
       });
       res.json(memories);
     } catch (e) {
@@ -66,7 +68,7 @@ export function mountMemoryRoutes(
         keywords: keywords || [],
         confidence: confidence || 0.5,
         sourceInteractionId: 'manual',
-      });
+      }, { domain: decoded.orgId ? 'work' : 'personal', orgId: decoded.orgId || '' });
       broadcastMemoryChange(decoded.uid, 'added', memory.id);
       res.json(memory);
     } catch (e: any) {
@@ -234,10 +236,14 @@ export function mountMemoryRoutes(
       if (!token) return res.status(401).json({ error: 'Authentication required' });
       let userId = 'anonymous';
       try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
+      let orgIdCtx = '', domainCtx = 'personal';
+      try { const dc: any = jwt.verify(token, jwtSecret); orgIdCtx = dc.orgId || ''; domainCtx = dc.orgId ? 'work' : 'personal'; } catch {}
       const ctx: ConsolidationContext = {
         userId,
         provider: (req.body.provider as any) || 'deepseek',
         model: (req.body.model as any) || 'deepseek-chat',
+        domain: domainCtx,
+        orgId: orgIdCtx,
       };
       const minCount = Number(req.body.minCount) || 10;
       const result = await consolidateEpisodic(
@@ -263,10 +269,14 @@ export function mountMemoryRoutes(
       if (!token) return res.status(401).json({ error: 'Authentication required' });
       let userId = 'anonymous';
       try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
+      let orgIdCtx2 = '', domainCtx2 = 'personal';
+      try { const dc: any = jwt.verify(token, jwtSecret); orgIdCtx2 = dc.orgId || ''; domainCtx2 = dc.orgId ? 'work' : 'personal'; } catch {}
       const ctx: ConsolidationContext = {
         userId,
         provider: (req.body.provider as any) || 'deepseek',
         model: (req.body.model as any) || 'deepseek-chat',
+        domain: domainCtx2,
+        orgId: orgIdCtx2,
       };
       const result = await selfReflect(
         ctx,
@@ -287,10 +297,10 @@ export function mountMemoryRoutes(
   router.get("/memory/growth", (req, res) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: 'Authentication required' });
-    let userId = 'anonymous';
-    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
-    const growth = queryMemories({ userId, tier: 'growth', limit: Number(req.query.limit) || 50, minConfidence: 0.4 });
-    const core = queryMemories({ userId, tier: 'core_identity', limit: 10 });
+    let userId = 'anonymous'; let orgId = ''; let domain = 'personal';
+    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; orgId = decoded.orgId || ''; domain = decoded.orgId ? 'work' : 'personal'; } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    const growth = queryMemories({ userId, tier: 'growth', limit: Number(req.query.limit) || 50, minConfidence: 0.4, domain, orgId });
+    const core = queryMemories({ userId, tier: 'core_identity', limit: 10, domain, orgId });
     res.json({ growth, coreIdentity: core });
   });
 
@@ -298,11 +308,11 @@ export function mountMemoryRoutes(
   router.get("/memory/tiers", (req, res) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: 'Authentication required' });
-    let userId = 'anonymous';
-    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    let userId = 'anonymous'; let orgId = ''; let domain = 'personal';
+    try { const decoded: any = jwt.verify(token, jwtSecret); userId = decoded.uid; orgId = decoded.orgId || ''; domain = decoded.orgId ? 'work' : 'personal'; } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const tiers: Record<string, any[]> = {};
     for (const tier of ['core_identity', 'growth', 'internalized', 'episodic']) {
-      tiers[tier] = queryMemories({ userId, tier: tier as any, limit: Number(req.query.limit) || 100 });
+      tiers[tier] = queryMemories({ userId, tier: tier as any, limit: Number(req.query.limit) || 100, domain, orgId });
     }
     res.json({ tiers });
   });
@@ -311,13 +321,16 @@ export function mountMemoryRoutes(
   router.put("/memory/:id/tier", (req, res) => {
     const token2 = req.cookies.token;
     if (!token2) return res.status(401).json({ error: 'Authentication required' });
-    try { jwt.verify(token2, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    let decoded: any;
+    try { decoded = jwt.verify(token2, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
     const { tier } = req.body;
     const validTiers = ['episodic', 'internalized', 'growth', 'core_identity'];
     if (!tier || !validTiers.includes(tier)) {
       return res.status(400).json({ error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` });
     }
-    const all = queryMemories({ limit: 9999 });
+    const orgId = decoded.orgId || '';
+    const domain = decoded.orgId ? 'work' : 'personal';
+    const all = queryMemories({ limit: 9999, domain, orgId });
     const mem = all.find(m => m.id === req.params.id);
     if (!mem) return res.status(404).json({ error: 'Memory not found' });
 
@@ -349,7 +362,7 @@ export function mountMemoryRoutes(
       const decoded: any = jwt.verify(token, jwtSecret);
       const agentId = (req.query.agentId as string) || '';
       const before = (req.query.before as string) || undefined;
-      const all = queryMemories({ userId: decoded.uid, agentId, limit: 9999, minConfidence: 0, before });
+      const all = queryMemories({ userId: decoded.uid, agentId, limit: 9999, minConfidence: 0, before, domain: decoded.orgId ? 'work' : 'personal', orgId: decoded.orgId || '' });
       const tree = buildTree(all);
       res.json({ tree });
     } catch (e: any) {
@@ -461,8 +474,11 @@ Rules:
   router.put("/memory/:id/protect", (req, res) => {
     const token3 = req.cookies.token;
     if (!token3) return res.status(401).json({ error: 'Authentication required' });
-    try { jwt.verify(token3, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
-    const all = queryMemories({ limit: 9999 });
+    let decoded3: any;
+    try { decoded3 = jwt.verify(token3, jwtSecret); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+    const orgId3 = decoded3.orgId || '';
+    const domain3 = decoded3.orgId ? 'work' : 'personal';
+    const all = queryMemories({ limit: 9999, domain: domain3, orgId: orgId3 });
     const mem = all.find(m => m.id === req.params.id);
     if (!mem) return res.status(404).json({ error: 'Memory not found' });
 
@@ -528,6 +544,8 @@ Rules:
         before: end,
         limit,
         minConfidence: 0,
+        domain: decoded.orgId ? 'work' : 'personal',
+        orgId: decoded.orgId || '',
       });
 
       // Group by date

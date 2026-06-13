@@ -18,6 +18,10 @@ export interface Conversation {
   recentTopics?: string[];
   /** ISO timestamp of the last topic change */
   lastTopicChangeAt?: string;
+  /** Domain: personal or work */
+  domain?: string;
+  /** orgId when in work domain */
+  orgId?: string;
 }
 
 export interface MessageRecord {
@@ -35,7 +39,7 @@ export interface MessageRecord {
   timestamp: string;
 }
 
-export function getOrCreateActiveConversation(userId: string, agentId?: string): Conversation {
+export function getOrCreateActiveConversation(userId: string, agentId?: string, domain?: string, orgId?: string): Conversation {
   const db = readDB();
   if (!db.conversations) db.conversations = [];
 
@@ -56,17 +60,20 @@ export function getOrCreateActiveConversation(userId: string, agentId?: string):
     messageCount: 0,
     lastActiveAt: now,
     createdAt: now,
+    domain: domain || 'personal',
+    orgId: orgId || '',
   };
   db.conversations.push(conv);
   writeDB(db);
   return conv;
 }
 
-export function closeConversation(conversationId: string, summary?: string): Conversation | null {
+export function closeConversation(conversationId: string, summary?: string, userId?: string): Conversation | null {
   const db = readDB();
   if (!db.conversations) return null;
   const conv = db.conversations.find((c: Conversation) => c.id === conversationId);
   if (!conv) return null;
+  if (userId && conv.userId !== userId) return null;
   conv.status = 'closed';
   conv.summary = summary || '';
   conv.lastActiveAt = new Date().toISOString();
@@ -74,11 +81,17 @@ export function closeConversation(conversationId: string, summary?: string): Con
   return conv;
 }
 
-export function getActiveConversation(userId: string, agentId?: string): Conversation | null {
+export function getActiveConversation(userId: string, agentId?: string, orgId?: string): Conversation | null {
   const db = readDB();
   if (!db.conversations) return null;
   return db.conversations.find(
-    (c: Conversation) => c.userId === userId && (agentId ? c.agentId === agentId : true) && c.status === 'active'
+    (c: Conversation) => {
+      if (c.userId !== userId) return false;
+      if (agentId && c.agentId !== agentId) return false;
+      if (c.status !== 'active') return false;
+      if (orgId) return c.orgId === orgId;
+      return (!c.orgId || c.orgId === '');
+    }
   ) || null;
 }
 
@@ -92,11 +105,15 @@ export function setConversationMode(conversationId: string, mode: string): void 
   writeDB(db);
 }
 
-export function getUserConversations(userId: string, limit = 20, offset = 0): Conversation[] {
+export function getUserConversations(userId: string, limit = 20, offset = 0, orgId?: string): Conversation[] {
   const db = readDB();
   if (!db.conversations) return [];
   return db.conversations
-    .filter((c: Conversation) => c.userId === userId)
+    .filter((c: Conversation) => {
+      if (c.userId !== userId) return false;
+      if (orgId) return c.orgId === orgId;
+      return (!c.orgId || c.orgId === '');
+    })
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
     .slice(offset, offset + limit);
 }
@@ -111,6 +128,8 @@ export function addMessage(msg: {
   personality?: string;
   mode?: string;
   toolCalls?: any;
+  domain?: string;
+  orgId?: string;
 }): string {
   const db = readDB();
   const id = 'msg_' + crypto.randomUUID();
@@ -128,6 +147,8 @@ export function addMessage(msg: {
     personality: msg.personality || '',
     mode: msg.mode || '',
     toolCalls: msg.toolCalls ? JSON.stringify(msg.toolCalls) : '',
+    domain: msg.domain || 'personal',
+    orgId: msg.orgId || '',
     timestamp: now,
   };
 
@@ -363,11 +384,15 @@ export function getTopicContext(conversationId: string): string | null {
   return lines.join('\n');
 }
 
-export function getUnclosedConversation(userId: string): Conversation | null {
+export function getUnclosedConversation(userId: string, orgId?: string): Conversation | null {
   const db = readDB();
   if (!db.conversations) return null;
   const convs = db.conversations.filter(
-    (c: Conversation) => c.userId === userId && c.status === 'active'
+    (c: Conversation) => {
+      if (c.userId !== userId || c.status !== 'active') return false;
+      if (orgId) return c.orgId === orgId;
+      return (!c.orgId || c.orgId === '');
+    }
   );
   if (convs.length === 0) return null;
   return convs.reduce((a: Conversation, b: Conversation) =>

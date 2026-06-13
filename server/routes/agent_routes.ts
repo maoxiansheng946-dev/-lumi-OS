@@ -3,7 +3,7 @@ import { readDB, writeDB } from "../../db_layer";
 import { getOrCreateActiveConversation, getActiveConversation, getMessages, addMessage } from "../conversation/manager";
 import { getKey } from "../config/keys";
 import { makeLLMCall, NormalizedMessage } from "../llm/providers";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, resolveDomain } from "../middleware/auth";
 
 const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -31,7 +31,13 @@ export function mountAgentRoutes(
   router.get("/agents/sanctuaries", requireAuth, (req, res) => {
     try {
       const db = readDB();
-      const sanctuaries = (db.agents || []).filter((a: any) => a.ownerUid === req.user!.uid && a.territory === 'sanctuary').map((a: any) => ({ id: a.id, name: a.name, relationshipType: a.relationshipType || 'close_friend', isFrozen: a.isFrozen ?? true, memoryCount: (db.memories || []).filter((m: any) => m.agentId === a.id).length, createdAt: a.createdAt, lastActiveAt: a.lastActiveAt }));
+      const orgId = req.user!.orgId;
+      const sanctuaries = (db.agents || []).filter((a: any) => {
+        if (!a.ownerUid || a.ownerUid !== req.user!.uid) return false;
+        if (a.territory !== 'sanctuary') return false;
+        if (orgId) return a.orgId === orgId;
+        return (!a.orgId || a.orgId === '');
+      }).map((a: any) => ({ id: a.id, name: a.name, relationshipType: a.relationshipType || 'close_friend', isFrozen: a.isFrozen ?? true, memoryCount: (db.memories || []).filter((m: any) => m.agentId === a.id).length, createdAt: a.createdAt, lastActiveAt: a.lastActiveAt }));
       res.json({ sanctuaries });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -67,7 +73,15 @@ export function mountAgentRoutes(
   });
 
   router.get("/agents", requireAuth, (req, res) => {
-    try { res.json(readDB().agents.filter((a: any) => !a.id.startsWith('ephemeral_') && (!a.ownerUid || a.ownerUid === req.user!.uid))); }
+    try {
+      const orgId = req.user!.orgId;
+      res.json(readDB().agents.filter((a: any) => {
+        if (a.id.startsWith('ephemeral_')) return false;
+        if (!a.ownerUid || a.ownerUid !== req.user!.uid) return false;
+        if (orgId) return a.orgId === orgId;
+        return (!a.orgId || a.orgId === '');
+      }));
+    }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -75,7 +89,8 @@ export function mountAgentRoutes(
     try {
       const { name, category, data, personalityId, modelPreference, memoryScope, autonomyLevel, territory, distilledFrom, evidenceMap, relationshipType, isFrozen, seedMemoryIds, executionMode, runtime, externalCommand } = req.body;
       const db = readDB(); const isSanctuary = territory === 'sanctuary';
-      const agent: any = { id: Math.random().toString(36).substring(2, 15), ownerUid: req.user!.uid, name, category: category || (relationshipType || 'friend'), data: data || '{}', status: "active", personalityId: personalityId || 'lumi', modelPreference: modelPreference || '', memoryScope: isSanctuary ? 'private' : (memoryScope || 'shared'), autonomyLevel: isSanctuary ? 'reactive' : (autonomyLevel || 'reactive'), runtimeConfig: '{}', territory: territory || 'open', distilledFrom: distilledFrom || '', evidenceMap: evidenceMap || [], relationshipType: relationshipType || '', isFrozen: isFrozen ?? isSanctuary, seedMemoryIds: seedMemoryIds || [], executionMode: executionMode || '', runtime: runtime || 'internal', externalCommand: externalCommand || '', createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), skillTags: [], knowledgeDomains: [], allowCrossPollination: !isSanctuary };
+      const dc = resolveDomain(req.user!);
+      const agent: any = { id: Math.random().toString(36).substring(2, 15), ownerUid: req.user!.uid, name, category: category || (relationshipType || 'friend'), data: data || '{}', status: "active", personalityId: personalityId || 'lumi', modelPreference: modelPreference || '', memoryScope: isSanctuary ? 'private' : (memoryScope || 'shared'), autonomyLevel: isSanctuary ? 'reactive' : (autonomyLevel || 'reactive'), runtimeConfig: '{}', territory: territory || 'open', distilledFrom: distilledFrom || '', evidenceMap: evidenceMap || [], relationshipType: relationshipType || '', isFrozen: isFrozen ?? isSanctuary, seedMemoryIds: seedMemoryIds || [], executionMode: executionMode || '', runtime: runtime || 'internal', externalCommand: externalCommand || '', domain: dc.domain, orgId: dc.orgId, createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), skillTags: [], knowledgeDomains: [], allowCrossPollination: !isSanctuary };
       db.agents.push(agent); writeDB(db); res.json(agent);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
