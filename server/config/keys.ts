@@ -23,6 +23,7 @@ interface KeyStore {
   SILICONFLOW_API_KEY?: string;
   XIAOMI_API_KEY?: string;
   KIMI_API_KEY?: string;
+  GLM_API_KEY?: string;
   RELAY_API_KEY?: string;
   RELAY_BASE_URL?: string;
 }
@@ -98,6 +99,7 @@ export function getAllKeyNames(): (keyof KeyStore)[] {
     'SILICONFLOW_API_KEY',
     'XIAOMI_API_KEY',
     'KIMI_API_KEY',
+    'GLM_API_KEY',
     'RELAY_API_KEY',
     'RELAY_BASE_URL',
   ];

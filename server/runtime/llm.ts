@@ -16,6 +16,7 @@ let lmstudio: OpenAI | null = null;
 let lmstudioDetected = false;
 let xiaomi: OpenAI | null = null;
 let kimi: OpenAI | null = null;
+let glm: OpenAI | null = null;
 let relay: OpenAI | null = null;
 
 /** Read Ollama base URL from settings (user-configured) or env var */
@@ -57,6 +58,7 @@ export interface LLMClients {
   isLmStudioAvailable: () => boolean;
   getXiaomi: () => OpenAI | null;
   getKimi: () => OpenAI | null;
+  getGlm: () => OpenAI | null;
   getRelay: () => OpenAI | null;
 }
 
@@ -193,6 +195,17 @@ function getKimi() {
   return kimi;
 }
 
+function getGlm() {
+  const key = process.env.GLM_API_KEY || getKey('GLM_API_KEY');
+  if (!glm && key) {
+    glm = new OpenAI({
+      apiKey: key,
+      baseURL: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+    });
+  }
+  return glm;
+}
+
 function getRelay() {
   const key = process.env.RELAY_API_KEY || getKey('RELAY_API_KEY');
   const baseUrl = process.env.RELAY_BASE_URL || getKey('RELAY_BASE_URL') || 'https://api.example.com/v1';
@@ -228,5 +241,5 @@ export function createLLMRuntime(): LLMClients {
   // Fire-and-forget: detect local Ollama and LM Studio in background
   detectOllama();
   detectLmStudio();
-  return { getOpenAI, getAnthropic, getGemini, getDeepSeek, getQwen, getArk, getOllama, isOllamaAvailable, getLmStudio, isLmStudioAvailable, getXiaomi, getKimi, getRelay };
+  return { getOpenAI, getAnthropic, getGemini, getDeepSeek, getQwen, getArk, getOllama, isOllamaAvailable, getLmStudio, isLmStudioAvailable, getXiaomi, getKimi, getGlm, getRelay };
 }

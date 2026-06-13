@@ -18,6 +18,7 @@ interface LLMGetters {
   getQwen?: () => any;
   getXiaomi?: () => any;
   getKimi?: () => any;
+  getGlm?: () => any;
   getRelay?: () => any;
 }
 
@@ -134,7 +135,7 @@ export async function executeNextAutonomousTask(
       context,
       undefined, undefined, // ollama, lmstudio
       undefined, // ark
-      getters.getXiaomi, getters.getKimi, getters.getRelay,
+      getters.getXiaomi, getters.getKimi, getters.getGlm, getters.getRelay,
     );
 
     const toolCallCount = result.toolCalls.length;

@@ -17,6 +17,7 @@ export const LLM_PRIORITY: Array<{ provider: string; label: string }> = [
   { provider: 'openai', label: 'OpenAI' },
   { provider: 'gemini', label: 'Gemini' },
   { provider: 'anthropic', label: 'Anthropic' },
+  { provider: 'glm', label: 'GLM / 智谱' },
 ];
 
 export const STT_PRIORITY: Array<{ provider: string; label: string }> = [
@@ -162,6 +163,7 @@ export function getAvailableLLMProviders(): Record<string, boolean> {
     openai: !!(process.env.OPENAI_API_KEY),
     gemini: !!(process.env.GEMINI_API_KEY),
     anthropic: !!(process.env.ANTHROPIC_API_KEY),
+    glm: !!(process.env.GLM_API_KEY),
   };
 }
 

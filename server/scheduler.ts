@@ -39,6 +39,7 @@ type LLMGetters = {
   getQwen?: () => any;
   getXiaomi?: () => any;
   getKimi?: () => any;
+  getGlm?: () => any;
   getRelay?: () => any;
 };
 
@@ -322,6 +323,7 @@ export function registerScheduledTasks(
   getQwen?: () => any,
   getXiaomi?: () => any,
   getKimi?: () => any,
+  getGlm?: () => any,
   getRelay?: () => any,
 ) {
   /** Get all unique user IDs from DB (registered users + anonymous fallback) */
@@ -1606,7 +1608,7 @@ Output ONLY the prediction message — no preamble, no labels.`;
 
       const getters: LLMGetters = {
         getDeepSeek, getGemini, getOpenAI, getAnthropic, getQwen,
-        getXiaomi, getKimi, getRelay,
+        getXiaomi, getKimi, getGlm, getRelay,
       };
 
       for (const userId of userIds) {

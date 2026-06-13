@@ -147,6 +147,9 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
         anthropic: { available: envOrStore('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' },
         qwen: { available: envOrStore('QWEN_API_KEY', 'DASHSCOPE_API_KEY') || envOrStore('DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'), model: process.env.QWEN_MODEL || 'qwen-plus' },
         ark: { available: envOrStore('ARK_API_KEY', 'ARK_API_KEY'), model: process.env.ARK_MODEL || 'doubao-1-5-pro-32k' },
+        xiaomi: { available: envOrStore('XIAOMI_API_KEY', 'XIAOMI_API_KEY'), model: process.env.XIAOMI_MODEL || 'xiaomi-chat' },
+        kimi: { available: envOrStore('KIMI_API_KEY', 'KIMI_API_KEY'), model: process.env.KIMI_MODEL || 'moonshot-v1-8k' },
+        glm: { available: envOrStore('GLM_API_KEY', 'GLM_API_KEY'), model: process.env.GLM_MODEL || 'glm-4-plus' },
         ollama: { available: ollamaAvailable, model: 'local' },
         lmstudio: { available: lmstudioAvailable, model: 'local' },
       },
@@ -165,6 +168,9 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
         anthropic: apiKey || process.env.ANTHROPIC_API_KEY || stored.ANTHROPIC_API_KEY,
         qwen: apiKey || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || stored.QWEN_API_KEY || stored.DASHSCOPE_API_KEY,
         ark: apiKey || process.env.ARK_API_KEY || stored.ARK_API_KEY,
+        xiaomi: apiKey || process.env.XIAOMI_API_KEY || stored.XIAOMI_API_KEY,
+        kimi: apiKey || process.env.KIMI_API_KEY || stored.KIMI_API_KEY,
+        glm: apiKey || process.env.GLM_API_KEY || stored.GLM_API_KEY,
       };
       const key = keyMap[provider];
       if (!key) {

@@ -5,7 +5,7 @@ import { recordWorkflow, WorkflowStep } from '../skills/worklog';
 import { recordLatency } from '../monitor/latency_store';
 
 export interface LLMConfig {
-  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'relay' | 'auto';
+  provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto';
   model: string;
   maxTokens?: number;
   userId?: string;
@@ -43,6 +43,7 @@ export async function runWithTools(
   getArk?: () => any,
   getXiaomi?: () => any,
   getKimi?: () => any,
+  getGlm?: () => any,
   getRelay?: () => any,
 ): Promise<LLMResult> {
   const executionLog: ToolExecutionRecord[] = [];
@@ -82,6 +83,7 @@ export async function runWithTools(
           getArk || (() => null),
           getXiaomi || (() => null),
           getKimi || (() => null),
+          getGlm || (() => null),
           getRelay || (() => null),
         )
       : await makeLLMCall(
@@ -98,6 +100,7 @@ export async function runWithTools(
           getArk || (() => null),
           getXiaomi || (() => null),
           getKimi || (() => null),
+          getGlm || (() => null),
           getRelay || (() => null),
         );
     recordLatency('llm', Date.now() - llmStart);
@@ -240,6 +243,7 @@ export async function analyzeScreen(
   getArk?: () => any,
   getXiaomi?: () => any,
   getKimi?: () => any,
+  getGlm?: () => any,
   getRelay?: () => any,
 ): Promise<string> {
   const { base64, mime } = parseScreenshotBase64(imageBase64);
@@ -283,7 +287,7 @@ export async function analyzeScreen(
     { provider: provider as any, model, maxTokens: 1000 },
     getDeepSeek || (() => null), getGemini || (() => null),
     getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk,
-    getXiaomi, getKimi, getRelay,
+    getXiaomi, getKimi, getGlm, getRelay,
   );
 
   return result.text || 'Vision analysis returned no text.';
@@ -303,8 +307,9 @@ export async function runWithVision(
   getArk?: () => any,
   getXiaomi?: () => any,
   getKimi?: () => any,
+  getGlm?: () => any,
   getRelay?: () => any,
 ): Promise<string> {
-  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk, getXiaomi, getKimi, getRelay);
+  const result = await makeLLMCall(messages, [], config, getDeepSeek || (() => null), getGemini || (() => null), getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk, getXiaomi, getKimi, getGlm, getRelay);
   return result.text || '';
 }
