@@ -53,6 +53,22 @@ interface ConnectedServer {
 
 const SKILLS_DIR = path.join(os.homedir(), 'lumi_skills');
 
+function expandPortablePath(value: string): string {
+  if (value === '~') return os.homedir();
+  if (value.startsWith('~/') || value.startsWith('~\\')) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value.replace(/\$\{LUMI_SKILLS_DIR\}/g, SKILLS_DIR);
+}
+
+function toPortableSkillPath(filePath: string): string {
+  const relative = path.relative(SKILLS_DIR, filePath);
+  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+    return `~/lumi_skills/${relative.split(path.sep).join('/')}`;
+  }
+  return filePath;
+}
+
 interface CrashTracker {
   consecutiveCrashes: number;
   lastCrashTime: string;
@@ -406,7 +422,7 @@ main().catch((err) => { console.error('[npm-skill] Fatal:', err); process.exit(1
         toolCount: lumi.toolCount,
       };
     } else {
-      const indexPath = path.join(skillDir, 'index.ts');
+      const indexPath = toPortableSkillPath(path.join(skillDir, 'index.ts'));
       // Build env map from lumi.envKeys (array of key names to pass through from stored keys)
       let env: Record<string, string> | undefined;
       if (lumi.envKeys && Array.isArray(lumi.envKeys)) {
@@ -536,8 +552,8 @@ main().catch((err) => { console.error('[npm-skill] Fatal:', err); process.exit(1
         }
       }
       transport = new StdioClientTransport({
-        command: config.command,
-        args: config.args || [],
+        command: expandPortablePath(config.command),
+        args: (config.args || []).map(arg => expandPortablePath(arg)),
         env: Object.keys(resolvedEnv).length > 0 ? resolvedEnv : (config.env || undefined),
       });
     } else {

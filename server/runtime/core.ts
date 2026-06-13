@@ -30,7 +30,7 @@ export function createApp(): AppContext {
     }
   });
 
-  const PORT = 3000;
+  const PORT = Number.parseInt(process.env.PORT || '', 10) || 3000;
   const HOST = process.env.HOST || (process.env.LUMI_DESKTOP === "1" ? "127.0.0.1" : "0.0.0.0");
 
   // Allow credentials from any origin (Tauri webview, localhost, etc.)

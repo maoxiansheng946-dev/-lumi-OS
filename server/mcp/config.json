@@ -14,7 +14,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-sqlite",
-        "C:\\Users\\Administrator\\LumiOS\\data\\lumi.db"
+        "data/lumi.db"
       ],
       "enabled": false
     },
@@ -93,7 +93,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\weather\\index.ts"
+        "~/lumi_skills/weather/index.ts"
       ],
       "description": "Lumi Official: weather",
       "enabled": true,
@@ -149,7 +149,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\document-polish-and-structure\\index.ts"
+        "~/lumi_skills/document-polish-and-structure/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -162,7 +162,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\generate-pdf-document\\index.ts"
+        "~/lumi_skills/generate-pdf-document/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -175,7 +175,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\pdf-creator-tool\\index.ts"
+        "~/lumi_skills/pdf-creator-tool/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -188,7 +188,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\workflow-builder\\index.ts"
+        "~/lumi_skills/workflow-builder/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -201,7 +201,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\deployment-config-generator\\index.ts"
+        "~/lumi_skills/deployment-config-generator/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -214,7 +214,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\project-deployment-setup\\index.ts"
+        "~/lumi_skills/project-deployment-setup/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -240,7 +240,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\demo-ppt-creation\\index.ts"
+        "~/lumi_skills/demo-ppt-creation/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -253,7 +253,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\locate-and-launch-netease\\index.ts"
+        "~/lumi_skills/locate-and-launch-netease/index.ts"
       ],
       "enabled": false,
       "source": "local",
@@ -266,7 +266,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\picture-drawing-assistant\\index.ts"
+        "~/lumi_skills/picture-drawing-assistant/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -279,7 +279,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\pikachu-drawing\\index.ts"
+        "~/lumi_skills/pikachu-drawing/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -292,7 +292,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\resolve-stop-intent\\index.ts"
+        "~/lumi_skills/resolve-stop-intent/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -305,7 +305,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\stop-intent-resolver\\index.ts"
+        "~/lumi_skills/stop-intent-resolver/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -318,7 +318,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\wechat-launcher\\index.ts"
+        "~/lumi_skills/wechat-launcher/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -331,7 +331,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\wps-ppt-creator\\index.ts"
+        "~/lumi_skills/wps-ppt-creator/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -344,7 +344,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\one-piece-analyzer\\index.ts"
+        "~/lumi_skills/one-piece-analyzer/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -357,7 +357,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\ai-research-ppt-outline\\index.ts"
+        "~/lumi_skills/ai-research-ppt-outline/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -370,7 +370,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\pdftools\\index.ts"
+        "~/lumi_skills/pdftools/index.ts"
       ],
       "enabled": true,
       "source": "local",
@@ -382,7 +382,7 @@
       "command": "npx",
       "args": [
         "tsx",
-        "C:\\Users\\Administrator\\lumi_skills\\system-diagnostics\\index.ts"
+        "~/lumi_skills/system-diagnostics/index.ts"
       ],
       "enabled": true,
       "source": "local",

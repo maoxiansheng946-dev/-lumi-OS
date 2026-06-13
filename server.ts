@@ -17,7 +17,8 @@ process.on('unhandledRejection', (reason) => {
 
 import { fileURLToPath } from "url";
 import path from "path";
-import { execSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
+import { promisify } from "util";
 import express from "express";
 import { createApp } from "./server/runtime/core";
 import { createLLMRuntime } from "./server/runtime/llm";
@@ -55,19 +56,44 @@ apiRouter.use("/", lapRoutes);
 let ncmLoginPolling: ReturnType<typeof setTimeout> | null = null;
 let ncmLoginQrUrl: string | null = null;
 let ncmLoginDone = false;
+const execFileP = promisify(execFile);
+const NPX_BIN = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+async function runNcmCli(args: string[], timeout = 10000): Promise<{ stdout: string; stderr: string }> {
+  const result = await execFileP(NPX_BIN, ['@music163/ncm-cli', ...args], {
+    timeout,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
+  return {
+    stdout: String(result.stdout || ''),
+    stderr: String(result.stderr || ''),
+  };
+}
+
+function normalizeNcmAppId(value: unknown): string | null {
+  const appId = String(value ?? '').trim();
+  return /^\d{1,32}$/.test(appId) ? appId : null;
+}
+
+function normalizeNcmPrivateKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const privateKey = value.trim();
+  if (privateKey.length < 16 || privateKey.length > 12000) return null;
+  return privateKey.replace(/\r\n/g, '\n').replace(/\n/g, '\\n');
+}
 
 // Configure ncm-cli credentials (appId + privateKey from developer.music.163.com)
 apiRouter.post('/ncm/configure', async (req, res) => {
   try {
     const { appId, privateKey } = req.body || {};
-    if (!appId?.trim() || !privateKey?.trim()) {
+    const safeAppId = normalizeNcmAppId(appId);
+    const safePrivateKey = normalizeNcmPrivateKey(privateKey);
+    if (!safeAppId || !safePrivateKey) {
       return res.json({ success: false, error: 'appId and privateKey are required' });
     }
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execP = promisify(exec);
-    await execP(`npx @music163/ncm-cli config set appId "${appId.trim()}"`, { timeout: 10000 });
-    await execP(`npx @music163/ncm-cli config set privateKey "${privateKey.trim().replace(/\n/g, '\\n')}"`, { timeout: 10000 });
+    await runNcmCli(['config', 'set', 'appId', safeAppId], 10000);
+    await runNcmCli(['config', 'set', 'privateKey', safePrivateKey], 10000);
     console.log('[NCM] Credentials configured.');
     res.json({ success: true });
   } catch (e: any) {
@@ -77,10 +103,7 @@ apiRouter.post('/ncm/configure', async (req, res) => {
 
 apiRouter.get('/ncm/configure/status', async (_req, res) => {
   try {
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execP = promisify(exec);
-    const result = await execP('npx @music163/ncm-cli config list', { timeout: 8000 });
+    const result = await runNcmCli(['config', 'list'], 8000);
     const stdout = result.stdout || '';
     const hasAppId = stdout.includes('appId:') && !stdout.includes('appId: (未配置)');
     const hasPrivateKey = stdout.includes('privateKey:') && !stdout.includes('privateKey: (未配置)');
@@ -92,10 +115,7 @@ apiRouter.get('/ncm/configure/status', async (_req, res) => {
 
 apiRouter.post('/ncm/login', async (_req, res) => {
   try {
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execP = promisify(exec);
-    const result = await execP('npx @music163/ncm-cli login --background --output json', { timeout: 15000 });
+    const result = await runNcmCli(['login', '--background', '--output', 'json'], 15000);
     const data = JSON.parse(result.stdout);
     ncmLoginQrUrl = data.qrCodeUrl || data.clickableUrl || null;
     ncmLoginDone = false;
@@ -104,7 +124,7 @@ apiRouter.post('/ncm/login', async (_req, res) => {
     if (ncmLoginPolling) clearInterval(ncmLoginPolling);
     ncmLoginPolling = setInterval(async () => {
       try {
-        const check = await execP('npx @music163/ncm-cli login --check --output json', { timeout: 8000 });
+        const check = await runNcmCli(['login', '--check', '--output', 'json'], 8000);
         const cd = JSON.parse(check.stdout);
         if (cd.success) {
           ncmLoginDone = true;
@@ -123,24 +143,21 @@ apiRouter.post('/ncm/login', async (_req, res) => {
 // On startup: configure ncm-cli (mpv path + credentials), then check login
 (async () => {
   try {
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execP = promisify(exec);
     const fs = await import('fs');
 
     // Configure mpv player path so ncm-cli can find it
     const mpvPath = process.env.MPV_PATH
       || (fs.existsSync('C:/Program Files/MPV Player/mpv.exe') ? 'C:/Program Files/MPV Player/mpv.exe' : 'mpv');
-    await execP(`npx @music163/ncm-cli config set player "${mpvPath}"`, { timeout: 10000 }).catch(() => {});
+    await runNcmCli(['config', 'set', 'player', mpvPath], 10000).catch(() => {});
     console.log(`[NCM] Player configured: ${mpvPath}`);
 
     const { getKey } = await import('./server/config/keys');
-    const appId = getKey('NETEASE_APP_ID');
-    const privateKey = getKey('NETEASE_PRIVATE_KEY');
+    const appId = normalizeNcmAppId(getKey('NETEASE_APP_ID'));
+    const privateKey = normalizeNcmPrivateKey(getKey('NETEASE_PRIVATE_KEY'));
     if (appId && privateKey) {
-      await execP(`npx @music163/ncm-cli config set appId "${appId}"`, { timeout: 10000 }).catch(() => {});
-      await execP(`npx @music163/ncm-cli config set privateKey "${privateKey.replace(/\n/g, '\\n')}"`, { timeout: 10000 }).catch(() => {});
-      const check = await execP('npx @music163/ncm-cli login --check --output json', { timeout: 10000 });
+      await runNcmCli(['config', 'set', 'appId', appId], 10000).catch(() => {});
+      await runNcmCli(['config', 'set', 'privateKey', privateKey], 10000).catch(() => {});
+      const check = await runNcmCli(['login', '--check', '--output', 'json'], 10000);
       const data = JSON.parse(check.stdout);
       if (data.success) {
         ncmLoginDone = true;
@@ -152,12 +169,10 @@ apiRouter.post('/ncm/login', async (_req, res) => {
 
 // ── Auto-detect mpv for ncm-cli playback ──
 (async () => {
-  const { exec: execCb } = await import('child_process');
-  const { promisify: utilPromisify } = await import('util');
-  const execP = utilPromisify(execCb);
+  const fs = await import('fs');
   try {
     // Check if mpv is already configured
-    const { stdout: existingPlayer } = await execP('npx @music163/ncm-cli config get player', { timeout: 8000 });
+    const { stdout: existingPlayer } = await runNcmCli(['config', 'get', 'player'], 8000);
     if (existingPlayer.includes('mpv') || existingPlayer.includes('orpheus')) {
       console.log('[NCM] Player already configured:', existingPlayer.trim());
       return;
@@ -167,19 +182,20 @@ apiRouter.post('/ncm/login', async (_req, res) => {
   }
   try {
     // Find mpv in PATH or common install locations
-    const { stdout: whichOut } = await execP(process.platform === 'win32' ? 'where mpv 2>nul || echo NOT_FOUND' : 'which mpv 2>/dev/null || echo NOT_FOUND', { timeout: 5000 });
-    if (!whichOut.includes('NOT_FOUND')) {
-      await execP('npx @music163/ncm-cli config set player mpv', { timeout: 8000 });
+    try {
+      await execFileP(process.platform === 'win32' ? 'where.exe' : 'which', ['mpv'], { timeout: 5000, windowsHide: true });
+      await runNcmCli(['config', 'set', 'player', 'mpv'], 8000);
       console.log('[NCM] Auto-configured player: mpv');
       return;
+    } catch {
+      // mpv is not in PATH; continue with common install locations.
     }
     // Check common Windows install path
     if (process.platform === 'win32') {
-      const { stdout: checkPath } = await execP('dir "C:\\Program Files\\MPV Player\\mpv.exe" 2>nul && echo FOUND || echo NOT_FOUND', { timeout: 5000 });
-      if (checkPath.includes('FOUND')) {
+      if (fs.existsSync('C:\\Program Files\\MPV Player\\mpv.exe')) {
         // Add to PATH for current process
         process.env.PATH = (process.env.PATH || '') + ';C:\\Program Files\\MPV Player';
-        await execP('npx @music163/ncm-cli config set player mpv', { timeout: 8000 });
+        await runNcmCli(['config', 'set', 'player', 'mpv'], 8000);
         console.log('[NCM] Auto-configured player: mpv (C:\\Program Files\\MPV Player)');
         return;
       }
@@ -216,7 +232,11 @@ initSocketRuntime({ io, jwtSecret: JWT_SECRET, llm });
 
 // Cleanup mpv on exit so music stops when server shuts down
 process.on('exit', () => {
-  try { execSync('taskkill //F //IM "mpv.exe"', { timeout: 3000, stdio: 'ignore' }); } catch {}
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill.exe', ['/F', '/IM', 'mpv.exe'], { timeout: 3000, stdio: 'ignore' });
+    }
+  } catch {}
 });
 // SIGINT/SIGTERM are handled by bootstrap.ts with proper cleanup + flushDB
 

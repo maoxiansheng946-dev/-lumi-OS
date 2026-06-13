@@ -351,6 +351,12 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       if (!targetUid) return res.status(400).json({ error: "targetUid is required" });
 
       const db = readDB();
+      const currentUser = db.users.find((u: any) => u.uid === decoded.uid);
+      if (!currentUser) return res.status(401).json({ error: "Current user not found" });
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
       const targetUser = db.users.find((u: any) => u.uid === targetUid);
       if (!targetUser) return res.status(404).json({ error: "Target user not found" });
 
