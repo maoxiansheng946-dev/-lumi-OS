@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Building2, BookOpen, Package, Users, Settings,
   ClipboardCheck, ScrollText, MessageSquare, ArrowLeft,
-  Shield, User, Briefcase, Home, Scale,
+  Shield, User, Briefcase, Home, Scale, Palette,
 } from 'lucide-react';
 import { BranchDashboard } from './BranchDashboard';
 import { KnowledgeBaseBrowser } from './KnowledgeBaseBrowser';
@@ -15,10 +15,11 @@ import { OrgMembers } from './OrgMembers';
 import { OrgSettings } from './OrgSettings';
 import { AuditLogViewer } from './AuditLogViewer';
 import { LegalHub } from './LegalHub';
+import { DesignHub } from './DesignHub';
 import { useApp } from '../../contexts/AppContext';
 import { useT } from '../../lib/useT';
 
-type SubView = 'dashboard' | 'kb' | 'kb-edit' | 'templates' | 'templates-create' | 'review' | 'chat' | 'members' | 'settings' | 'audit' | 'legal';
+type SubView = 'dashboard' | 'kb' | 'kb-edit' | 'templates' | 'templates-create' | 'review' | 'chat' | 'members' | 'settings' | 'audit' | 'legal' | 'design';
 
 interface NavItem {
   id: SubView;
@@ -40,7 +41,8 @@ export function OrgHub() {
     { id: 'review', label: t.orgReview, icon: <ClipboardCheck size={16} />, roles: ['owner', 'admin'] },
     { id: 'members', label: t.orgMembers, icon: <Users size={16} />, roles: ['owner', 'admin'] },
     { id: 'audit', label: t.orgAudit, icon: <ScrollText size={16} />, roles: ['owner', 'admin'] },
-    { id: 'legal', label: t.legalHub || 'Law Firm', icon: <Scale size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
+    { id: 'legal', label: t.legalHub || '律所', icon: <Scale size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
+    { id: 'design', label: t.designHub || '设计所', icon: <Palette size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
     { id: 'settings', label: t.orgSettings, icon: <Settings size={16} />, roles: ['owner', 'admin'] },
   ], [t]);
 
@@ -79,6 +81,7 @@ export function OrgHub() {
       case 'settings': return <OrgSettings />;
       case 'audit': return <AuditLogViewer />;
       case 'legal': return <LegalHub />;
+      case 'design': return <DesignHub />;
       default: return <BranchDashboard />;
     }
   };

@@ -83,11 +83,11 @@ function useDesignChat() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt, stream: false }),
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
         credentials: 'include',
       });
       const data = await res.json();
-      setResult(data.response || data.message || JSON.stringify(data));
+      setResult(data.text || data.error || JSON.stringify(data));
     } catch (e: any) {
       setResult('Error: ' + e.message);
     } finally {

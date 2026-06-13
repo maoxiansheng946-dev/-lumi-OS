@@ -32,28 +32,11 @@ function consecutiveCrashes(): number {
   return crashTimestamps.length;
 }
 
-async function rollbackToLastCommit() {
-  console.log('[Launcher] ROLLBACK: git reset --hard HEAD...');
-  return new Promise<void>((resolve) => {
-    const git = spawn('git', ['reset', '--hard', 'HEAD'], {
-      cwd: __dirname,
-      stdio: 'inherit',
-    });
-    git.on('exit', (code) => {
-      if (code !== 0) {
-        console.error('[Launcher] ROLLBACK FAILED — manual intervention needed');
-      } else {
-        console.log('[Launcher] Rollback complete — reverted to last commit');
-      }
-      resolve();
-    });
-  });
-}
-
-function isTypescriptError(stderr: string): boolean {
-  // If the crash is a TS compilation error, don't count it as a "crash" —
-  // it means the upgrade wrote bad code. Rollback immediately.
-  return /TS\d{4,5}|Cannot find module|Unexpected token|SyntaxError|TypeError/.test(stderr);
+async function handleFatalCrashes() {
+  console.error(`[Launcher] ${MAX_CRASH_RETRIES} crashes in ${CRASH_WINDOW_MS / 1000}s — ABORTING.`);
+  console.error('[Launcher] Manual intervention required. Check the server logs above.');
+  console.error('[Launcher] No automatic rollback performed — git state is preserved.');
+  process.exit(1);
 }
 
 function restartServer(): ChildProcess {
@@ -86,7 +69,7 @@ function restartServer(): ChildProcess {
 
     if (crashes >= MAX_CRASH_RETRIES) {
       console.error(`[Launcher] ${MAX_CRASH_RETRIES} crashes in ${CRASH_WINDOW_MS / 1000}s. Rolling back...`);
-      await rollbackToLastCommit();
+      await handleFatalCrashes();
       crashTimestamps = [];
       setTimeout(() => restartServer(), 1000);
       return;

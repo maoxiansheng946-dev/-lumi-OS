@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { ClipboardCheck, CheckCircle, XCircle, MessageSquare, Loader2, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
+import { useSocket } from '../../hooks/useSocket';
 
 interface ReviewTemplate {
   id: string;
@@ -17,15 +18,33 @@ interface ReviewTemplate {
 
 export function TemplateReviewQueue() {
   const t = useT();
+  const socket = useSocket();
   const [queue, setQueue] = useState<ReviewTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ReviewTemplate | null>(null);
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  useEffect(() => { loadQueue(); }, []);
+
   useEffect(() => {
-    loadQueue();
-  }, []);
+    if (!socket) return;
+    const onSubmitted = () => loadQueue();
+    const onApproved = (data: { templateId: string }) => {
+      setQueue(prev => prev.filter(t => t.id !== data.templateId));
+    };
+    const onRejected = (data: { templateId: string }) => {
+      setQueue(prev => prev.filter(t => t.id !== data.templateId));
+    };
+    socket.on('template:submitted', onSubmitted);
+    socket.on('template:approved', onApproved);
+    socket.on('template:rejected', onRejected);
+    return () => {
+      socket.off('template:submitted', onSubmitted);
+      socket.off('template:approved', onApproved);
+      socket.off('template:rejected', onRejected);
+    };
+  }, [socket]);
 
   const loadQueue = async () => {
     try {

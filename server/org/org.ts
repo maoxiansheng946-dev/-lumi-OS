@@ -22,12 +22,18 @@ export function createOrganization(name: string, slug: string, ownerUid: string)
     resourceId: org.id,
     details: { name, slug },
   });
-  // Auto-install legal agent templates (fire-and-forget)
+  // Auto-install legal and design agent templates (fire-and-forget)
   import('../legal/templates').then(({ installLegalTemplates }) => {
     const count = installLegalTemplates(org.id);
     if (count > 0) console.log(`[Org] Installed ${count} legal agent templates for org ${org.id}`);
   }).catch((err: any) => {
     console.warn('[Org] Failed to install legal templates:', err.message);
+  });
+  import('../design/templates').then(({ installDesignTemplates }) => {
+    const count = installDesignTemplates(org.id);
+    if (count > 0) console.log(`[Org] Installed ${count} design agent templates for org ${org.id}`);
+  }).catch((err: any) => {
+    console.warn('[Org] Failed to install design templates:', err.message);
   });
   return org;
 }

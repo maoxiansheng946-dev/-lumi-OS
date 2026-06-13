@@ -154,7 +154,7 @@ export async function bootstrap(ctx: BootstrapContext) {
       }
     } catch {}
 
-    // Auto-install legal agent templates to all orgs
+    // Auto-install legal and design agent templates to all orgs
     import('../legal/templates').then(({ installLegalTemplates }) => {
       const db2 = readDB();
       const orgs = (db2 as any).organizations || [];
@@ -165,6 +165,18 @@ export async function bootstrap(ctx: BootstrapContext) {
       if (total > 0) console.log(`[Org] Installed ${total} legal agent templates across ${orgs.length} org(s)`);
     }).catch((err: any) => {
       console.warn('[Org] Failed to install legal templates:', err.message);
+    });
+
+    import('../design/templates').then(({ installDesignTemplates }) => {
+      const db2 = readDB();
+      const orgs = (db2 as any).organizations || [];
+      let total = 0;
+      for (const org of orgs) {
+        total += installDesignTemplates(org.id);
+      }
+      if (total > 0) console.log(`[Org] Installed ${total} design agent templates across ${orgs.length} org(s)`);
+    }).catch((err: any) => {
+      console.warn('[Org] Failed to install design templates:', err.message);
     });
   });
 

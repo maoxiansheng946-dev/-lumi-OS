@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
+import { useSocket } from '../../hooks/useSocket';
 
 interface Template {
   id: string;
@@ -22,6 +23,7 @@ interface Template {
 
 export function TemplateMarketplace() {
   const t = useT();
+  const socket = useSocket();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filtered, setFiltered] = useState<Template[]>([]);
   const [search, setSearch] = useState('');
@@ -30,9 +32,19 @@ export function TemplateMarketplace() {
   const [selected, setSelected] = useState<Template | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
 
+  useEffect(() => { loadTemplates(); }, []);
+
   useEffect(() => {
-    loadTemplates();
-  }, []);
+    if (!socket) return;
+    const onPublished = () => loadTemplates();
+    const onStatus = () => loadTemplates();
+    socket.on('template:published', onPublished);
+    socket.on('template:status', onStatus);
+    return () => {
+      socket.off('template:published', onPublished);
+      socket.off('template:status', onStatus);
+    };
+  }, [socket]);
 
   useEffect(() => {
     let result = templates;

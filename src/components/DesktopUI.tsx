@@ -1222,6 +1222,27 @@ export function DesktopUI({
         toast(data.message, { duration: 5000 });
       }
     });
+
+    socket.on('wake:detected', (data: { keyword: string }) => {
+      addNotification({ type: 'info', title: '唤醒词检测', message: `检测到唤醒词 "${data.keyword}"` });
+    });
+    socket.on('wake:error', (data: { message: string }) => {
+      console.warn('[Wake] Error:', data.message);
+    });
+    socket.on('wake:started', () => {
+      addNotification({ type: 'info', title: '语音唤醒', message: '语音唤醒服务已启动' });
+    });
+
+    socket.on('token:usage_update', (_data: { totalTokens: number; provider: string }) => {
+      // Token usage updated — TokenDashboard handles REST polling, this is real-time supplement
+    });
+    socket.on('token:quota_update', (data: { used: number; cap: number; remaining: number }) => {
+      const pct = data.used / data.cap;
+      if (pct >= 0.9) {
+        addNotification({ type: 'warning', title: 'Token 配额告警', message: `已使用 ${Math.round(pct * 100)}%（${data.used.toLocaleString()} / ${data.cap.toLocaleString()}）` });
+      }
+    });
+
     return () => {
       socket.off('agent:status', onStatus);
       socket.off('agent:tool_call', onToolCall);
@@ -1231,6 +1252,11 @@ export function DesktopUI({
       socket.off('preferences:changed');
       socket.off('agent:promoted');
       socket.off('agent:notification');
+      socket.off('wake:detected');
+      socket.off('wake:error');
+      socket.off('wake:started');
+      socket.off('token:usage_update');
+      socket.off('token:quota_update');
     };
   }, [socket]);
 

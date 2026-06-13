@@ -34,6 +34,9 @@ import { VoiceProviderSwitch } from './VoiceProviderSwitch';
 import { MCPSettings } from './MCPSettings';
 import { RemoteMCPSettings } from './RemoteMCPSettings';
 import { MessagingHub } from './MessagingHub';
+import { SystemExplorer } from './SystemExplorer';
+import { ContactsPanel } from './ContactsPanel';
+import { OrgBranchPanel } from './OrgBranchPanel';
 
 function buildSidebarGroups(t: any) {
   return [
@@ -61,6 +64,9 @@ function buildSidebarGroups(t: any) {
         { id: 'mcp', label: t.settingsMCP || 'MCP', icon: <Cpu size={16} /> },
         { id: 'remote-mcp', label: t.remoteMCPSidebar || 'Remote MCP', icon: <Globe size={16} /> },
         { id: 'messaging', label: t.messaging || 'Messaging', icon: <MessagesSquare size={16} /> },
+        { id: 'explore', label: t.systemExplorer || 'System Explorer', icon: <Cpu size={16} /> },
+        { id: 'contacts', label: t.contacts || 'Contacts', icon: <Globe size={16} /> },
+        { id: 'branch', label: t.branchTerminal || 'Branch Terminal', icon: <Zap size={16} /> },
       ],
     },
   ];
@@ -238,6 +244,12 @@ export function Settings({
         return <RemoteMCPSettings t={t} />;
       case 'messaging':
         return <MessagingHub t={t} />;
+      case 'explore':
+        return <SystemExplorer />;
+      case 'contacts':
+        return <ContactsPanel />;
+      case 'branch':
+        return <OrgBranchPanel />;
       default:
         return null;
     }
