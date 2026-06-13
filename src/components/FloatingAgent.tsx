@@ -31,19 +31,22 @@ export function FloatingAgent({ t }: { t: any }) {
   useEffect(() => {
     if (!socket || !isOpen) return;
 
-    socket.on("agent:response", (data: { text: string }) => {
+    const onResponse = (data: { text: string }) => {
       setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
       speak(data.text);
       setIsLoading(false);
-    });
+    };
 
-    socket.on("agent:status", (data: { status: string }) => {
+    const onStatus = (data: { status: string }) => {
       setIsLoading(data.status === "thinking");
-    });
+    };
+
+    socket.on("agent:response", onResponse);
+    socket.on("agent:status", onStatus);
 
     return () => {
-      socket.off("agent:response");
-      socket.off("agent:status");
+      socket.off("agent:response", onResponse);
+      socket.off("agent:status", onStatus);
     };
   }, [isOpen, socket, speak]);
 

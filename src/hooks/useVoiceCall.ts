@@ -175,7 +175,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('audio:status', (data: { status: string }) => {
+    const onAudioStatus = (data: { status: string }) => {
       const map: Record<string, CallState> = {
         listening: 'listening',
         thinking: 'thinking',
@@ -205,12 +205,12 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
         prevCallState.current = next;
         return next;
       });
-    });
+    };
 
     // Voice confirmation window — show recognized text during the 600ms delay
-    socket.on('audio:confirm', (data: { text: string }) => {
+    const onAudioConfirm = (data: { text: string }) => {
       onTranscript?.(data.text, true);
-    });
+    };
 
     /**
      * Play a TTS audio chunk using Web Audio API with cross-fade scheduling.
@@ -273,7 +273,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     };
 
     // Handle both old format (raw ArrayBuffer) and new format ({ buffer, volumeGain })
-    socket.on('audio:response', (data: ArrayBuffer | { buffer: ArrayBuffer; volumeGain?: number }) => {
+    const onAudioResponse = (data: ArrayBuffer | { buffer: ArrayBuffer; volumeGain?: number }) => {
       if (!isCallActive.current) { console.log('[VoiceCall] Ignoring audio:response, call ended'); return; }
       const actualBuffer = data instanceof ArrayBuffer ? data : data.buffer;
       const actualGain = data instanceof ArrayBuffer ? undefined : data.volumeGain;
@@ -284,9 +284,9 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
         return;
       }
       playAudioChunk(actualBuffer, actualGain);
-    });
+    };
 
-    socket.on('audio:transcript', (data: { text: string; isFinal: boolean }) => {
+    const onAudioTranscript = (data: { text: string; isFinal: boolean }) => {
       // Reset passive timer — user is speaking
       if (passiveTimer.current) { clearTimeout(passiveTimer.current); passiveTimer.current = null; }
       if (disconnectTimer.current) { clearTimeout(disconnectTimer.current); disconnectTimer.current = null; }
@@ -296,25 +296,25 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       if (data.isFinal) {
         setTimeout(() => setTranscript(''), 2000); // Clear after 2s if final
       }
-    });
+    };
 
-    socket.on('agent:response', (data: { text: string }) => {
+    const onAgentResponse = (data: { text: string }) => {
       setTranscript(''); // Clear user transcript when AI starts responding
       setResponseText(data.text);
       onResponse?.(data.text);
-    });
+    };
 
-    socket.on('audio:error', (data: { message: string }) => {
+    const onAudioError = (data: { message: string }) => {
       setError(data.message);
       setCallState('idle');
-    });
+    };
 
-    socket.on('audio:interrupt-ack', () => {
+    const onAudioInterruptAck = () => {
       stopAllPlayback();
       setCallState('listening');
-    });
+    };
 
-    socket.on('audio:proactive_speak', (data: { audioBuffer: ArrayBuffer; text: string; timestamp: string }) => {
+    const onAudioProactiveSpeak = (data: { audioBuffer: ArrayBuffer; text: string; timestamp: string }) => {
       try {
         // Stop any currently-playing proactive speech before starting new one
         if (proactiveSource.current) {
@@ -358,17 +358,26 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
         console.error('[ProactiveVoice] Playback failed:', err);
         isTtsPlaying.current = false;
       }
-    });
+    };
+
+    socket.on('audio:status', onAudioStatus);
+    socket.on('audio:confirm', onAudioConfirm);
+    socket.on('audio:response', onAudioResponse);
+    socket.on('audio:transcript', onAudioTranscript);
+    socket.on('agent:response', onAgentResponse);
+    socket.on('audio:error', onAudioError);
+    socket.on('audio:interrupt-ack', onAudioInterruptAck);
+    socket.on('audio:proactive_speak', onAudioProactiveSpeak);
 
     return () => {
-      socket.off('audio:status');
-      socket.off('audio:confirm');
-      socket.off('audio:response');
-      socket.off('audio:transcript');
-      socket.off('agent:response');
-      socket.off('audio:error');
-      socket.off('audio:interrupt-ack');
-      socket.off('audio:proactive_speak');
+      socket.off('audio:status', onAudioStatus);
+      socket.off('audio:confirm', onAudioConfirm);
+      socket.off('audio:response', onAudioResponse);
+      socket.off('audio:transcript', onAudioTranscript);
+      socket.off('agent:response', onAgentResponse);
+      socket.off('audio:error', onAudioError);
+      socket.off('audio:interrupt-ack', onAudioInterruptAck);
+      socket.off('audio:proactive_speak', onAudioProactiveSpeak);
     };
   }, [socket, onTranscript, onResponse, stopAllPlayback]);
 

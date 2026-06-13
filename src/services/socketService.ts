@@ -4,10 +4,13 @@ import { getStoredToken } from "./authService";
 
 class SocketService {
   private socket: Socket | null = null;
+  private token: string | null = null;
 
   connect() {
+    const token = getStoredToken();
+
     if (!this.socket) {
-      const token = getStoredToken();
+      this.token = token;
       this.socket = io(getSocketOrigin(), {
         withCredentials: true,
         auth: token ? { token } : undefined,
@@ -27,6 +30,12 @@ class SocketService {
       this.socket.on("connect_error", (err) => {
         console.error("[SocketService] Connect error:", err.message);
       });
+    } else if (token !== this.token) {
+      this.token = token;
+      this.socket.auth = token ? { token } : {};
+      if (this.socket.connected) {
+        this.socket.disconnect().connect();
+      }
     }
     return this.socket;
   }
@@ -39,6 +48,7 @@ class SocketService {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
+      this.token = null;
     }
   }
 }

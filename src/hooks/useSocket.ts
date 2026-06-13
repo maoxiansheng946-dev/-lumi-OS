@@ -1,9 +1,51 @@
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { getSocketOrigin, isTauriRuntime } from '@/services/apiBridge';
-import { getStoredToken } from '@/services/authService';
+import type { Socket } from 'socket.io-client';
+import { isTauriRuntime } from '@/services/apiBridge';
+import { socketService } from '@/services/socketService';
 
 const isTauri = isTauriRuntime();
+let registeredSocket: Socket | null = null;
+let deviceConnectHandler: (() => void) | null = null;
+
+function registerSharedSocketHandlers(socket: Socket) {
+  if (registeredSocket === socket) return;
+
+  if (registeredSocket) {
+    if (deviceConnectHandler) registeredSocket.off('connect', deviceConnectHandler);
+    registeredSocket.off('tool:desktop_exec', desktopExecHandler);
+  }
+
+  const registerDevice = () => {
+    socket.emit('device:register', {
+      name: navigator.platform || 'Unknown Device',
+      type: isTauri ? 'desktop' : 'web',
+      capabilities: {
+        audio: true,
+        video: false,
+        spatial: false,
+        haptic: false,
+        holographic: false,
+      },
+      osInfo: navigator.platform || '',
+    });
+  };
+
+  socket.on('connect', registerDevice);
+  socket.on('tool:desktop_exec', desktopExecHandler);
+  if (socket.connected) registerDevice();
+
+  registeredSocket = socket;
+  deviceConnectHandler = registerDevice;
+}
+
+function desktopExecHandler(data: {
+  correlationId: string;
+  name: string;
+  arguments: Record<string, any>;
+}) {
+  const socket = socketService.getSocket();
+  if (socket) void handleDesktopExec(socket, data);
+}
 
 async function handleDesktopExec(socket: Socket, data: {
   correlationId: string;
@@ -216,39 +258,9 @@ export function useSocket() {
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    const url = getSocketOrigin();
-    const token = getStoredToken();
-    const s = io(url, {
-      withCredentials: true,
-      auth: { token },
-    });
-
-    s.on('connect', () => {
-      console.log('[Socket] Connected to', url);
-
-      // Auto-register this device
-      s.emit('device:register', {
-        name: navigator.platform || 'Unknown Device',
-        type: isTauri ? 'desktop' : 'web',
-        capabilities: {
-          audio: true, // browser generally supports audio
-          video: false, // default, users enable in settings
-          spatial: false,
-          haptic: false,
-          holographic: false,
-        },
-        osInfo: navigator.platform || '',
-      });
-    });
-
-    s.on('tool:desktop_exec', (data) => handleDesktopExec(s, data));
-
+    const s = socketService.connect();
+    registerSharedSocketHandlers(s);
     setSocket(s);
-
-    return () => {
-      s.off('tool:desktop_exec');
-      s.disconnect();
-    };
   }, []);
 
   return socket;

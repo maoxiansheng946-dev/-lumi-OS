@@ -63,11 +63,27 @@ export function useWakeWord({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const enabledRef = useRef(enabled);
   const socketRef = useRef(socket);
+  const wakeHandlersRef = useRef<{
+    detected?: (data: { keyword: string; timestamp: string }) => void;
+    started?: () => void;
+    error?: (data: { message: string }) => void;
+  }>({});
 
   enabledRef.current = enabled;
   socketRef.current = socket;
 
   const accessKey = propKey || localStorage.getItem(PICOVOICE_ACCESS_KEY_STORAGE) || '';
+
+  const removeWakeHandlers = useCallback(() => {
+    const s = socketRef.current;
+    const handlers = wakeHandlersRef.current;
+    if (s) {
+      if (handlers.detected) s.off('wake:detected', handlers.detected);
+      if (handlers.started) s.off('wake:started', handlers.started);
+      if (handlers.error) s.off('wake:error', handlers.error);
+    }
+    wakeHandlersRef.current = {};
+  }, []);
 
   const cleanupAudio = useCallback(() => {
     if (processorRef.current) {
@@ -89,12 +105,10 @@ export function useWakeWord({
     const s = socketRef.current;
     if (s?.connected) {
       s.emit('wake:stop');
-      s.off('wake:detected');
-      s.off('wake:started');
-      s.off('wake:error');
     }
+    removeWakeHandlers();
     cleanupAudio();
-  }, [cleanupAudio]);
+  }, [cleanupAudio, removeWakeHandlers]);
 
   // ── Server-side Qwen ASR wake detection (primary) ──
 
@@ -137,11 +151,9 @@ export function useWakeWord({
       processor.connect(ctx.destination);
 
       // Set up listeners BEFORE emitting wake:start
-      s.off('wake:detected');
-      s.off('wake:started');
-      s.off('wake:error');
+      removeWakeHandlers();
 
-      s.on('wake:detected', (data: { keyword: string; timestamp: string }) => {
+      const onDetected = (data: { keyword: string; timestamp: string }) => {
         console.log('[WakeWord-Qwen] Detected:', data.keyword);
         setLastDetection(data.timestamp);
         onDetection?.();
@@ -151,18 +163,23 @@ export function useWakeWord({
         } else {
           startCallRef.current?.(voiceId, personalityId, agentId);
         }
-      });
+      };
 
-      s.on('wake:started', () => {
+      const onStarted = () => {
         console.log('[WakeWord-Qwen] Server confirmed, listening');
         setIsListening(true);
         setIsSupported(true);
-      });
+      };
 
-      s.on('wake:error', (data: { message: string }) => {
+      const onError = (data: { message: string }) => {
         console.warn('[WakeWord-Qwen] Server error:', data.message);
         setError(data.message);
-      });
+      };
+
+      wakeHandlersRef.current = { detected: onDetected, started: onStarted, error: onError };
+      s.on('wake:detected', onDetected);
+      s.on('wake:started', onStarted);
+      s.on('wake:error', onError);
 
       console.log('[WakeWord-Qwen] Emitting wake:start');
       s.emit('wake:start');
@@ -175,7 +192,7 @@ export function useWakeWord({
         setError(msg);
       }
     }
-  }, [voiceId, personalityId, agentId, startCallRef, cleanupAudio, onDetection, isCallActive, onInterrupt]);
+  }, [voiceId, personalityId, agentId, startCallRef, cleanupAudio, removeWakeHandlers, onDetection, isCallActive, onInterrupt]);
 
   // ── Picovoice on-device detection (fallback) ──
 

@@ -217,7 +217,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   useEffect(() => {
     if (isFounder || !socket) return;
 
-    socket.on("agent:proactive", (data: { message: string; timestamp: string }) => {
+    const onProactive = (data: { message: string; timestamp: string }) => {
       setMessages(prev => {
         if (prev.some(m => m.text === data.message && m.type === 'agent')) return prev;
         return [...prev, {
@@ -229,9 +229,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           source: 'proactive',
         }];
       });
-    });
+    };
 
-    socket.on("agent:chunk", (data: { text: string; agentName: string }) => {
+    const onChunk = (data: { text: string; agentName: string }) => {
       if (streamingMsgId.current) {
         setMessages(prev => prev.map(m =>
           m.id === streamingMsgId.current ? { ...m, text: m.text + data.text } : m
@@ -247,9 +247,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           type: 'agent'
         }]);
       }
-    });
+    };
 
-    socket.on("agent:tool", (data: { name: string; args: any; result?: string; error?: string }) => {
+    const onTool = (data: { name: string; args: any; result?: string; error?: string }) => {
       setMessages(prev => [...prev, {
         id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         userName: data.name,
@@ -262,9 +262,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         toolError: data.error,
         toolStatus: data.error ? 'error' : 'done',
       }]);
-    });
+    };
 
-    socket.on("agent:response", (data: { text: string; agentName: string; source?: string }) => {
+    const onResponse = (data: { text: string; agentName: string; source?: string }) => {
       setIsTyping(false);
       if (streamingMsgId.current) {
         // Finalize streamed message — keep chunked text if response text is empty
@@ -286,9 +286,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         }]);
       }
       // Auto-speak disabled
-    });
+    };
 
-    socket.on("agent:status", (data: { status: string }) => {
+    const onStatus = (data: { status: string }) => {
       setIsTyping(data.status === "thinking");
       if (data.status === "idle" || data.status === "error") {
         // Drop partial streaming chunks that were never finalized
@@ -298,9 +298,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           streamingMsgId.current = null;
         }
       }
-    });
+    };
 
-    socket.on("agent:error", (data: { message: string; code?: string }) => {
+    const onError = (data: { message: string; code?: string }) => {
       setIsTyping(false);
       if (streamingMsgId.current) {
         const sid = streamingMsgId.current;
@@ -308,12 +308,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         streamingMsgId.current = null;
       }
       toast.error(data.message);
-    });
+    };
 
     // conversation_updated: only reload for non-text-chat channels (voice, etc.)
     // Text chat state is managed live via agent:chunk/agent:response — API reload here
     // would replace messages with different ids, causing React to remount & re-animate them.
-    socket.on("chat:conversation_updated", (data: { conversationId: string; agentId: string }) => {
+    const onConversationUpdated = (data: { conversationId: string; agentId: string }) => {
       if (data.agentId !== agentId) return;
       if (textChatActiveRef.current) return;
       if (!streamingMsgId.current) return;
@@ -333,16 +333,24 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           }
         })
         .catch(() => {});
-    });
+    };
+
+    socket.on("agent:proactive", onProactive);
+    socket.on("agent:chunk", onChunk);
+    socket.on("agent:tool", onTool);
+    socket.on("agent:response", onResponse);
+    socket.on("agent:status", onStatus);
+    socket.on("agent:error", onError);
+    socket.on("chat:conversation_updated", onConversationUpdated);
 
     return () => {
-      socket.off("agent:proactive");
-      socket.off("agent:chunk");
-      socket.off("agent:tool");
-      socket.off("agent:response");
-      socket.off("agent:status");
-      socket.off("agent:error");
-      socket.off("chat:conversation_updated");
+      socket.off("agent:proactive", onProactive);
+      socket.off("agent:chunk", onChunk);
+      socket.off("agent:tool", onTool);
+      socket.off("agent:response", onResponse);
+      socket.off("agent:status", onStatus);
+      socket.off("agent:error", onError);
+      socket.off("chat:conversation_updated", onConversationUpdated);
       stop();
     };
   }, [speak, stop, isFounder, socket]);

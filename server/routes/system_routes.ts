@@ -1,6 +1,8 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import os from "os";
+import fs from "fs";
+import path from "path";
 import { readDB, writeDB, isDbDirty } from "../../db_layer";
 import { logger } from "../../logger";
 import { toolRegistry } from "../tools/registry";
@@ -13,12 +15,40 @@ import { mcpManager, getMCPConfig } from "../mcp";
 
 // Cached GPU detection — queried once
 let _cachedGPU: { name?: string; util?: number } | null | undefined;
+const serverStartedAt = new Date().toISOString();
+
+function readPackageMeta(): { name?: string; version?: string } {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+const packageMeta = readPackageMeta();
+
+function getRuntimeVersionInfo() {
+  return {
+    name: packageMeta.name || "lumiOS",
+    version: process.env.LUMI_VERSION || packageMeta.version || "0.0.0",
+    buildId: process.env.LUMI_BUILD_ID || process.env.GIT_COMMIT || null,
+    pid: process.pid,
+    startedAt: serverStartedAt,
+    uptimeSeconds: Math.round(process.uptime()),
+    nodeVersion: process.version,
+    platform: process.platform,
+  };
+}
 
 function sumTimes(times: Record<string, number>): number {
   return (times.user || 0) + (times.nice || 0) + (times.sys || 0) + (times.idle || 0) + (times.irq || 0);
 }
 
 export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
+  router.get("/version", (_req, res) => {
+    res.json(getRuntimeVersionInfo());
+  });
+
   // Health Check
   router.get("/health", (req, res) => {
     try {
@@ -26,6 +56,7 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
       res.json({
         status: isDbDirty() ? "degraded" : "ok",
         timestamp: new Date().toISOString(),
+        runtime: getRuntimeVersionInfo(),
         database: {
           users: db.users.length,
           agents: db.agents.length,

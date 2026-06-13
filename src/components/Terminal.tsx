@@ -85,7 +85,7 @@ export function TerminalWindow({ t: _t, onClose, isActive }: TerminalWindowProps
     // Create terminal session
     socket.emit('terminal:create');
 
-    socket.on('terminal:ready', () => {
+    const onReady = () => {
       term.clear();
       term.focus();
       term.writeln('\x1b[1;32m┌─────────────────────────────────────────┐\x1b[0m');
@@ -93,16 +93,20 @@ export function TerminalWindow({ t: _t, onClose, isActive }: TerminalWindowProps
       term.writeln('\x1b[1;32m│\x1b[0m  Type \x1b[33m`exit`\x1b[0m to close this session          \x1b[1;32m│\x1b[0m');
       term.writeln('\x1b[1;32m└─────────────────────────────────────────┘\x1b[0m');
       term.writeln('');
-    });
+    };
 
-    socket.on('terminal:output', (payload: { data: string }) => {
+    const onOutput = (payload: { data: string }) => {
       term.write(payload.data);
-    });
+    };
 
-    socket.on('terminal:exit', (payload: { code: number }) => {
+    const onExit = (payload: { code: number }) => {
       term.writeln(`\r\n\x1b[33m[Process exited with code ${payload.code}]\x1b[0m`);
       term.writeln('\x1b[33m[Press Enter or close this window]\x1b[0m');
-    });
+    };
+
+    socket.on('terminal:ready', onReady);
+    socket.on('terminal:output', onOutput);
+    socket.on('terminal:exit', onExit);
 
     // Send keystrokes to the shell
     const keyHandler = term.onData((data: string) => {
@@ -132,9 +136,9 @@ export function TerminalWindow({ t: _t, onClose, isActive }: TerminalWindowProps
       resizeObserver.disconnect();
       keyHandler.dispose();
       socket.emit('terminal:destroy');
-      socket.off('terminal:ready');
-      socket.off('terminal:output');
-      socket.off('terminal:exit');
+      socket.off('terminal:ready', onReady);
+      socket.off('terminal:output', onOutput);
+      socket.off('terminal:exit', onExit);
       term.dispose();
       xtermRef.current = null;
     };

@@ -38,14 +38,16 @@ export function ProductDetailPage({ t, product, onBack }: ProductDetailPageProps
 
   useEffect(() => {
     socket.current = socketService.connect();
-    
-    socket.current.on("agent:response", (data: { text: string }) => {
+
+    const onResponse = (data: { text: string }) => {
       setMessages(prev => [...prev, { role: 'agent', text: data.text }]);
       setIsTyping(false);
-    });
+    };
+
+    socket.current.on("agent:response", onResponse);
 
     return () => {
-      socket.current.off("agent:response");
+      socket.current?.off("agent:response", onResponse);
     };
   }, []);
 

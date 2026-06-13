@@ -1183,7 +1183,7 @@ export function DesktopUI({
     socket.on('agent:response', onResponse);
     socket.on('agent:error', onError);
     socket.on('agent:proactive', onProactive);
-    socket.on('preferences:changed', (data: { key: string; value: any }) => {
+    const onPreferencesChanged = (data: { key: string; value: any }) => {
       if (petPrefsSavingRef.current) return; // ignore our own changes
       if (data.key === 'pet' && data.value) {
         const { pet, accessories } = data.value;
@@ -1204,15 +1204,15 @@ export function DesktopUI({
         }
         toast.info('桌面形象已从另一设备同步');
       }
-    });
-    socket.on('agent:promoted', (data: { agentName: string; skillName?: string }) => {
+    };
+    const onAgentPromoted = (data: { agentName: string; skillName?: string }) => {
       const msg = data.skillName
         ? `Agent "${data.agentName}" auto-promoted with skill "${data.skillName}"`
         : `Agent "${data.agentName}" has been auto-created`;
       addNotification({ type: 'system', title: 'Agent Promoted', message: msg });
       toast.info(msg, { duration: 5000 });
-    });
-    socket.on('agent:notification', (data: { type: string; level: string; message: string }) => {
+    };
+    const onAgentNotification = (data: { type: string; level: string; message: string }) => {
       addNotification({ type: data.level === 'critical' ? 'warning' : data.level === 'warning' ? 'warning' : 'info', title: data.type || 'Lumi', message: data.message });
       if (data.level === 'critical') {
         toast.error(data.message, { duration: 10000 });
@@ -1221,27 +1221,36 @@ export function DesktopUI({
       } else {
         toast(data.message, { duration: 5000 });
       }
-    });
+    };
 
-    socket.on('wake:detected', (data: { keyword: string }) => {
+    const onWakeDetected = (data: { keyword: string }) => {
       addNotification({ type: 'info', title: '唤醒词检测', message: `检测到唤醒词 "${data.keyword}"` });
-    });
-    socket.on('wake:error', (data: { message: string }) => {
+    };
+    const onWakeError = (data: { message: string }) => {
       console.warn('[Wake] Error:', data.message);
-    });
-    socket.on('wake:started', () => {
+    };
+    const onWakeStarted = () => {
       addNotification({ type: 'info', title: '语音唤醒', message: '语音唤醒服务已启动' });
-    });
+    };
 
-    socket.on('token:usage_update', (_data: { totalTokens: number; provider: string }) => {
+    const onTokenUsageUpdate = (_data: { totalTokens: number; provider: string }) => {
       // Token usage updated — TokenDashboard handles REST polling, this is real-time supplement
-    });
-    socket.on('token:quota_update', (data: { used: number; cap: number; remaining: number }) => {
+    };
+    const onTokenQuotaUpdate = (data: { used: number; cap: number; remaining: number }) => {
       const pct = data.used / data.cap;
       if (pct >= 0.9) {
         addNotification({ type: 'warning', title: 'Token 配额告警', message: `已使用 ${Math.round(pct * 100)}%（${data.used.toLocaleString()} / ${data.cap.toLocaleString()}）` });
       }
-    });
+    };
+
+    socket.on('preferences:changed', onPreferencesChanged);
+    socket.on('agent:promoted', onAgentPromoted);
+    socket.on('agent:notification', onAgentNotification);
+    socket.on('wake:detected', onWakeDetected);
+    socket.on('wake:error', onWakeError);
+    socket.on('wake:started', onWakeStarted);
+    socket.on('token:usage_update', onTokenUsageUpdate);
+    socket.on('token:quota_update', onTokenQuotaUpdate);
 
     return () => {
       socket.off('agent:status', onStatus);
@@ -1249,14 +1258,14 @@ export function DesktopUI({
       socket.off('agent:response', onResponse);
       socket.off('agent:error', onError);
       socket.off('agent:proactive', onProactive);
-      socket.off('preferences:changed');
-      socket.off('agent:promoted');
-      socket.off('agent:notification');
-      socket.off('wake:detected');
-      socket.off('wake:error');
-      socket.off('wake:started');
-      socket.off('token:usage_update');
-      socket.off('token:quota_update');
+      socket.off('preferences:changed', onPreferencesChanged);
+      socket.off('agent:promoted', onAgentPromoted);
+      socket.off('agent:notification', onAgentNotification);
+      socket.off('wake:detected', onWakeDetected);
+      socket.off('wake:error', onWakeError);
+      socket.off('wake:started', onWakeStarted);
+      socket.off('token:usage_update', onTokenUsageUpdate);
+      socket.off('token:quota_update', onTokenQuotaUpdate);
     };
   }, [socket]);
 
