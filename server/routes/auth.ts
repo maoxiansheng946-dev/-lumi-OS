@@ -69,10 +69,7 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       // Fire-and-forget: sync to Supabase for SaaS
       syncUserToSupabase(user.uid, username, user.password);
 
-      const memberships = (db.orgMemberships || []).filter((m: any) => m.userId === user.uid && m.status === 'active');
-      const membership = memberships.sort((a: any, b: any) => (b.joinedAt || b.createdAt || '').localeCompare(a.joinedAt || a.createdAt || ''))[0];
       const tokenPayload: any = { uid: user.uid, username, role: user.role };
-      if (membership) { tokenPayload.orgId = membership.orgId; tokenPayload.orgRole = membership.role; }
       const token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: "24h" });
       res.cookie("token", token, getCookieOptions());
       const { password: _, ...userWithoutPassword } = user;
@@ -149,10 +146,7 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
       }
     }
 
-    const memberships = (db.orgMemberships || []).filter((m: any) => m.userId === admin.uid && m.status === 'active');
-    const membership = memberships.sort((a: any, b: any) => (b.joinedAt || b.createdAt || '').localeCompare(a.joinedAt || a.createdAt || ''))[0];
     const tokenPayload: any = { uid: admin.uid, username: "admin", role: admin.role };
-    if (membership) { tokenPayload.orgId = membership.orgId; tokenPayload.orgRole = membership.role; }
     const token = jwt.sign(
       tokenPayload,
       jwtSecret,
@@ -161,7 +155,6 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
     res.cookie("token", token, getCookieOptions());
     const { password: _, ...userWithoutPassword } = admin;
     const userResp: any = { ...userWithoutPassword };
-    if (membership) { userResp.orgId = membership.orgId; userResp.orgRole = membership.role; }
     return res.json({ success: true, user: userResp, token });
     } catch (err: any) {
       console.error('[Auth] bootstrap error:', err.message);
