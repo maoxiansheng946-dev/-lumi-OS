@@ -526,6 +526,23 @@ main().catch((err) => { console.error('[npm-skill] Fatal:', err); process.exit(1
   }
 
   private async connectServer(name: string, config: MCPServerConfig): Promise<MCPToolDef[]> {
+    // Dedup: if already connected, return cached tools
+    const existing = this.servers.get(name);
+    if (existing) {
+      try {
+        const tools = await existing.client.listTools();
+        return tools.tools.map((tool: any) => ({
+          serverName: name,
+          name: `mcp_${name}_${tool.name}`,
+          description: tool.description || `${tool.name} (from MCP server: ${name})`,
+          inputSchema: tool.inputSchema || { type: 'object', properties: {} },
+        }));
+      } catch {
+        // Stale connection — clean up and reconnect below
+        this.servers.delete(name);
+      }
+    }
+
     const transportType = config.transport || (config.url ? (config.url.startsWith('wss://') || config.url.startsWith('ws://') ? 'ws' : 'http') : 'stdio');
     let transport: StdioClientTransport | StreamableHTTPClientTransport | WebSocketClientTransport;
 
