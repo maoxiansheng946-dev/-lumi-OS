@@ -2147,11 +2147,9 @@ export function DesktopUI({
             </div>
           </div>
 
-          {orgConnection?.connected && (
-            <div className="flex items-center justify-center">
-              <WorkModeSwitch domain={workDomain} onToggle={() => switchDomain(workDomain === 'personal' ? 'work' : 'personal')} connected={orgConnection.connected} />
-            </div>
-          )}
+          <div className="flex items-center justify-center">
+            <WorkModeSwitch domain={workDomain} onToggle={() => switchDomain(workDomain === 'personal' ? 'work' : 'personal')} connected={orgConnection?.connected ?? false} />
+          </div>
 
           <div className="flex items-center gap-6 flex-1 justify-end">
             <div className="flex items-center gap-4 text-white/55">

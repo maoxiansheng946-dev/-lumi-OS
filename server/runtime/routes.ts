@@ -28,7 +28,7 @@ interface RouteContext {
   llm: {
     getDeepSeek: any; getGemini: any; getOpenAI: any; getAnthropic: any; getQwen: any; getArk: any; getGlm: any;
   };
-  getCookieOptions: () => { httpOnly: true; secure: true; sameSite: "none"; maxAge: number };
+  getCookieOptions: () => { httpOnly: true; secure: boolean; sameSite: "none" | "lax"; maxAge: number };
   io: Server;
 }
 

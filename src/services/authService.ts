@@ -63,7 +63,7 @@ export async function bootstrap(): Promise<{ success: boolean; user?: User; erro
 
 export async function getMe(): Promise<{ user: User } | null> {
   try {
-    const response = await fetch("/api/auth/me");
+    const response = await fetch("/api/auth/me", { credentials: 'include' });
     if (!response.ok) return null;
     return await response.json();
   } catch {

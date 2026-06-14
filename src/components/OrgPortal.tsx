@@ -3,8 +3,9 @@
 // or open the Org workbench if already connected.
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Building2, Plus, Users, ArrowRight, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { Building2, Plus, Users, ArrowRight, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { JoinOrgPage } from './org/JoinOrgPage';
+import { OrgHub } from './org/OrgHub';
 import { useApp } from '../contexts/AppContext';
 import { useT } from '../lib/useT';
 
@@ -101,36 +102,9 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  // Already connected to an org (check both API status and app context)
+  // Already connected to an org — show full org workbench inline
   if (status?.connected || orgConnection?.orgId) {
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8">
-        <div className="max-w-md mx-auto space-y-6">
-          <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-6 text-center">
-            <CheckCircle size={40} className="mx-auto text-green-400 mb-3" />
-            <h2 className="text-xl font-bold text-white mb-1">{t.orgConnected || 'Connected to Organization'}</h2>
-            <p className="text-white/40 text-sm mb-4">Role: {status?.orgRole || orgConnection?.orgRole || 'member'}</p>
-            <a
-              href="/index.org.html"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"
-            >
-              <ExternalLink size={16} />
-              {t.openOrgWorkbench || 'Open Org Workbench'}
-            </a>
-            <p className="text-white/45 text-xs mt-3">
-              {t.orgWorkbenchNote || 'The workbench opens in a new tab. Manage your organization, knowledge base, and team from there.'}
-            </p>
-          </div>
-          {onBack && (
-            <div className="text-center mt-4">
-              <button onClick={onBack} className="text-white/55 text-sm hover:text-white/50">
-                ← {t.back || '返回'}
-              </button>
-            </div>
-          )}
-        </div>
-      </motion.div>
-    );
+    return <OrgHub />;
   }
 
   // Not connected — choose join or create

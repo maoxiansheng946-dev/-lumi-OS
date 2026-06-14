@@ -16,12 +16,11 @@ export function WorkModeSwitch({ domain, onToggle, connected }: Props) {
   return (
     <motion.button
       onClick={onToggle}
-      disabled={!connected && !isWork}
-      className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+      className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer ${
         isWork
           ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40'
           : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
-      } ${!connected && !isWork ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      }`}
       whileTap={{ scale: 0.95 }}
       title={isWork ? 'Switch to personal domain' : connected ? 'Switch to work domain' : 'Not connected to an organization'}
     >

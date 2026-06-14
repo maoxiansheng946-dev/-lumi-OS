@@ -57,18 +57,20 @@ let ncmLoginPolling: ReturnType<typeof setTimeout> | null = null;
 let ncmLoginQrUrl: string | null = null;
 let ncmLoginDone = false;
 const execFileP = promisify(execFile);
-const NPX_BIN = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
-async function runNcmCli(args: string[], timeout = 10000): Promise<{ stdout: string; stderr: string }> {
-  const result = await execFileP(NPX_BIN, ['@music163/ncm-cli', ...args], {
-    timeout,
-    windowsHide: true,
-    maxBuffer: 1024 * 1024,
-  });
-  return {
-    stdout: String(result.stdout || ''),
-    stderr: String(result.stderr || ''),
-  };
+async function runNcmCli(args: string[], timeout = 15000): Promise<{ stdout: string; stderr: string }> {
+  if (process.platform === 'win32') {
+    // MSYS2 bash PATH lacks .cmd entries — go through cmd.exe
+    const cmdline = `npx.cmd @music163/ncm-cli ${args.join(' ')}`;
+    try {
+      const stdout = execFileSync('cmd.exe', ['/c', cmdline], { timeout, windowsHide: true, encoding: 'utf8' });
+      return { stdout, stderr: '' };
+    } catch (e: any) {
+      throw new Error(e.stderr || e.message || String(e));
+    }
+  }
+  const result = await execFileP('npx', ['@music163/ncm-cli', ...args], { timeout, maxBuffer: 1024 * 1024 });
+  return { stdout: String(result.stdout || ''), stderr: String(result.stderr || '') };
 }
 
 function normalizeNcmAppId(value: unknown): string | null {

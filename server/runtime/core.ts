@@ -16,7 +16,7 @@ export interface AppContext {
   PORT: number;
   HOST: string;
   JWT_SECRET: string;
-  getCookieOptions: () => { httpOnly: true; secure: true; sameSite: "none"; maxAge: number };
+  getCookieOptions: () => { httpOnly: true; secure: boolean; sameSite: "none" | "lax"; maxAge: number };
 }
 
 export function createApp(): AppContext {
@@ -70,10 +70,11 @@ export function createApp(): AppContext {
   // Serialize personality file writes to prevent concurrent overwrites
   // SameSite=None requires Secure (Chromium silently rejects otherwise).
   // Chromium allows Secure cookies on localhost/127.0.0.1, so safe to always enable.
-  const getCookieOptions = (): { httpOnly: true; secure: true; sameSite: "none"; maxAge: number } => ({
+  const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+  const getCookieOptions = (): { httpOnly: true; secure: boolean; sameSite: "none" | "lax"; maxAge: number } => ({
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: !isDev,
+    sameSite: isDev ? "lax" : "none",
     maxAge: 24 * 60 * 60 * 1000,
   });
 

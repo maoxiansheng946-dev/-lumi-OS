@@ -126,12 +126,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const switchDomain = async (domain: 'personal' | 'work') => {
-    setWorkDomain(domain);
-    localStorage.setItem('lumi_work_domain', domain);
-    // Notify server to issue a JWT with the org context (or clear it for personal)
+    if (domain === 'personal') {
+      setWorkDomain('personal');
+      localStorage.setItem('lumi_work_domain', 'personal');
+      try {
+        const res = await fetch('/api/auth/switch-org', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId: null }),
+          credentials: 'include',
+        });
+        if (res.ok) {
+          setOrgConnection(null);
+          localStorage.removeItem('lumi_org_connection');
+        }
+      } catch {}
+      return;
+    }
+    // Switch to work: use known org or auto-discover
+    let orgId = orgConnection?.orgId || null;
+    let orgRole = orgConnection?.orgRole || 'member';
+    if (!orgId) {
+      try {
+        const orgsRes = await fetch('/api/auth/orgs', { credentials: 'include' });
+        if (orgsRes.ok) {
+          const { orgs } = await orgsRes.json();
+          if (orgs && orgs.length > 0) {
+            orgId = orgs[0].id;
+            orgRole = orgs[0].role || 'member';
+          }
+        }
+      } catch {}
+    }
+    if (!orgId) return;
+    setWorkDomain('work');
+    localStorage.setItem('lumi_work_domain', 'work');
     try {
-      const orgId = domain === 'work' ? (orgConnection?.orgId || null) : null;
-      const orgRole = domain === 'work' ? (orgConnection?.orgRole || 'member') : null;
       const res = await fetch('/api/auth/switch-org', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,10 +170,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const data = await res.json();
-        // Persist the updated org connection from server response
-        if (data.connection) {
-          setOrgConnection(data.connection);
-          localStorage.setItem('lumi_org_connection', JSON.stringify(data.connection));
+        if (data.orgId) {
+          const conn = { orgId: data.orgId, orgRole: data.orgRole, orgName: '', connected: true };
+          setOrgConnection(conn);
+          localStorage.setItem('lumi_org_connection', JSON.stringify(conn));
         }
       }
     } catch {}
