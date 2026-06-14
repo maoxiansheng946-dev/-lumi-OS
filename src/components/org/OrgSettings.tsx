@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Building2, Settings, Save, Loader2, Trash2, Link, Copy, CheckCircle } from 'lucide-react';
+import { Building2, Settings, Save, Loader2, Trash2, Link, Copy, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
+import { useApp } from '../../contexts/AppContext';
 
 export function OrgSettings() {
   const t = useT();
+  const { orgConnection, switchDomain } = useApp();
   const [org, setOrg] = useState<any>(null);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -14,44 +16,60 @@ export function OrgSettings() {
   const [invitationRole, setInvitationRole] = useState('member');
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadOrg();
-  }, []);
+  }, [orgConnection?.orgId]);
 
   const loadOrg = async () => {
+    setLoading(true);
+    setFeedback(null);
     try {
-      const orgsRes = await fetch('/api/org/org', { credentials: 'include' });
-      if (!orgsRes.ok) return;
-      const orgs = await orgsRes.json();
-      if (orgs.length === 0) return;
-
-      const orgDetailRes = await fetch(`/api/org/org/${orgs[0].id}`, { credentials: 'include' });
-      if (orgDetailRes.ok) {
-        const orgData = await orgDetailRes.json();
-        setOrg(orgData);
-        setName(orgData.name);
+      let orgId = orgConnection?.orgId || '';
+      if (!orgId) {
+        const orgsRes = await fetch('/api/org/org', { credentials: 'include' });
+        const orgs = await orgsRes.json().catch(() => []);
+        if (!orgsRes.ok) throw new Error((orgs as any).error || `Failed to load organizations (${orgsRes.status})`);
+        if (!Array.isArray(orgs) || orgs.length === 0) throw new Error('No organization found');
+        orgId = orgs[0].id || orgs[0].orgId;
       }
-    } catch {} finally { setLoading(false); }
+
+      const orgDetailRes = await fetch(`/api/org/org/${orgId}`, { credentials: 'include' });
+      const orgData = await orgDetailRes.json().catch(() => ({}));
+      if (!orgDetailRes.ok) throw new Error(orgData.error || `Failed to load organization (${orgDetailRes.status})`);
+      setOrg(orgData);
+      setName(orgData.name || '');
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    } finally { setLoading(false); }
   };
 
   const handleSave = async () => {
     if (!org || !name.trim()) return;
     setSaving(true);
+    setFeedback(null);
     try {
-      await fetch(`/api/org/org/${org.id}`, {
+      const res = await fetch(`/api/org/org/${org.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
         credentials: 'include',
       });
-      loadOrg();
-    } catch {} finally { setSaving(false); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+      setOrg(data);
+      setName(data.name || name);
+      setFeedback({ type: 'success', text: t.orgSettingsSaved || 'Organization settings saved' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    } finally { setSaving(false); }
   };
 
   const handleCreateInvitation = async () => {
     if (!org) return;
     setGenerating(true);
+    setFeedback(null);
     try {
       const res = await fetch(`/api/org/org/${org.id}/invitations`, {
         method: 'POST',
@@ -59,17 +77,36 @@ export function OrgSettings() {
         body: JSON.stringify({ role: invitationRole, maxUses: 0 }),
         credentials: 'include',
       });
-      if (res.ok) {
-        const inv = await res.json();
-        setInvitationCode(inv.code);
-      }
-    } catch {} finally { setGenerating(false); }
+      const inv = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(inv.error || `Invitation creation failed (${res.status})`);
+      setInvitationCode(inv.code);
+      setFeedback({ type: 'success', text: t.invitationCreated || 'Invitation code created' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    } finally { setGenerating(false); }
   };
 
   const copyCode = () => {
     navigator.clipboard.writeText(invitationCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDelete = async () => {
+    if (!org || !confirm('This action is irreversible. Are you sure?')) return;
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/org/org/${org.id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Delete failed (${res.status})`);
+      setFeedback({ type: 'success', text: t.organizationDeleted || 'Organization deleted' });
+      setOrg(null);
+      void switchDomain('personal').finally(() => {
+        window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'home' } }));
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    }
   };
 
   if (loading) {
@@ -82,9 +119,19 @@ export function OrgSettings() {
 
   if (!org) {
     return (
-      <div className="p-6 text-center text-white/55">
+      <div className="p-6 text-center text-white/55 space-y-4">
+        {feedback && (
+          <div className={`mx-auto flex max-w-2xl items-start gap-2 rounded-xl border px-4 py-3 text-left text-sm ${
+            feedback.type === 'success'
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+              : 'border-red-500/20 bg-red-500/10 text-red-300'
+          }`}>
+            {feedback.type === 'success' ? <CheckCircle size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
+            <span>{feedback.text}</span>
+          </div>
+        )}
         <Building2 size={32} className="mx-auto mb-2 opacity-30" />
-        No organization found. Create one first.
+        <div>No organization found. Create one first.</div>
       </div>
     );
   }
@@ -95,6 +142,17 @@ export function OrgSettings() {
         <Settings size={24} className="text-white/40" />
         {t.orgSettings}
       </h2>
+
+      {feedback && (
+        <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
+          feedback.type === 'success'
+            ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+            : 'border-red-500/20 bg-red-500/10 text-red-300'
+        }`}>
+          {feedback.type === 'success' ? <CheckCircle size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
+          <span>{feedback.text}</span>
+        </div>
+      )}
 
       {/* General */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
@@ -182,12 +240,7 @@ export function OrgSettings() {
           Deleting your organization is irreversible. All KB articles, templates, and member data will be permanently removed.
         </p>
         <Button
-          onClick={() => {
-            if (confirm('This action is irreversible. Are you sure?')) {
-              fetch(`/api/org/org/${org.id}`, { method: 'DELETE', credentials: 'include' })
-                .then(() => window.location.reload());
-            }
-          }}
+          onClick={handleDelete}
           className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 rounded-lg"
         >
           Delete Organization

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, BookOpen, Tag, Clock, ChevronRight, Loader2, Plus, ArrowLeft } from 'lucide-react';
+import { Search, BookOpen, Tag, Clock, ChevronRight, Loader2, Plus, ArrowLeft, Pencil, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 
@@ -23,21 +23,28 @@ export function KnowledgeBaseBrowser() {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadArticles();
   }, []);
 
   const loadArticles = async () => {
+    setError('');
     try {
       const res = await fetch('/api/org/kb/articles', { credentials: 'include' });
-      if (res.ok) setArticles(await res.json());
-    } catch {} finally { setLoading(false); }
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data.error || `Failed to load articles (${res.status})`);
+      setArticles(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(err.message || String(err));
+    } finally { setLoading(false); }
   };
 
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     setSearching(true);
+    setError('');
     try {
       const res = await fetch('/api/org/kb/search', {
         method: 'POST',
@@ -45,8 +52,12 @@ export function KnowledgeBaseBrowser() {
         body: JSON.stringify({ query, limit: 10 }),
         credentials: 'include',
       });
-      if (res.ok) setSearchResults(await res.json());
-    } catch {} finally { setSearching(false); }
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
+      setSearchResults(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(err.message || String(err));
+    } finally { setSearching(false); }
   }, []);
 
   const handleSearchInput = (val: string) => {
@@ -79,6 +90,13 @@ export function KnowledgeBaseBrowser() {
           <Plus size={14} /> New Article
         </Button>
       </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -176,12 +194,20 @@ export function KnowledgeBaseBrowser() {
             exit={{ opacity: 0, y: 20 }}
             className="fixed inset-y-0 right-0 w-96 bg-black/90 backdrop-blur-xl border-l border-white/10 p-6 overflow-y-auto z-50"
           >
-            <button
-              onClick={() => setSelectedArticle(null)}
-              className="mb-4 flex items-center gap-2 text-sm text-white/40 hover:text-white"
-            >
-              <ArrowLeft size={14} /> {t.back || 'Back'}
-            </button>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setSelectedArticle(null)}
+                className="flex items-center gap-2 text-sm text-white/40 hover:text-white"
+              >
+                <ArrowLeft size={14} /> {t.back || 'Back'}
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb-edit', articleId: selectedArticle.id } }))}
+                className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-xs font-bold text-blue-300 transition-colors hover:bg-blue-500/20"
+              >
+                <Pencil size={13} /> {t.editArticle || 'Edit'}
+              </button>
+            </div>
             <h3 className="text-lg font-bold text-white mb-2">{selectedArticle.title}</h3>
             <div className="flex items-center gap-2 mb-4">
               <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">{selectedArticle.category}</span>

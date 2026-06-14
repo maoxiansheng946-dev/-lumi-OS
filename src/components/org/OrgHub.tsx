@@ -31,6 +31,7 @@ interface NavItem {
 
 export function OrgHub() {
   const [subView, setSubView] = useState<SubView>('dashboard');
+  const [editingArticleId, setEditingArticleId] = useState<string | undefined>(undefined);
   const { workDomain, switchDomain, orgConnection } = useApp();
   const t = useT();
 
@@ -59,6 +60,8 @@ export function OrgHub() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.tab === 'org' && detail?.sub) {
+        if (detail.sub === 'kb-edit') setEditingArticleId(detail.articleId || undefined);
+        else if (detail.sub === 'kb') setEditingArticleId(undefined);
         setSubView(detail.sub as SubView);
       }
     };
@@ -74,7 +77,7 @@ export function OrgHub() {
     switch (subView) {
       case 'dashboard': return <BranchDashboard />;
       case 'kb': return <KnowledgeBaseBrowser />;
-      case 'kb-edit': return <KnowledgeBaseEditor onSaved={() => setSubView('kb')} />;
+      case 'kb-edit': return <KnowledgeBaseEditor articleId={editingArticleId} onSaved={() => { setEditingArticleId(undefined); setSubView('kb'); }} />;
       case 'templates': return <TemplateMarketplace />;
       case 'templates-create': return <TemplateCreator />;
       case 'review': return <TemplateReviewQueue />;
@@ -136,7 +139,11 @@ export function OrgHub() {
           ))}
           <div className="my-2 border-t border-white/5" />
           <button
-            onClick={() => { window.location.href = '/'; }}
+            onClick={() => {
+              void switchDomain('personal').finally(() => {
+                window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'home' } }));
+              });
+            }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/60 hover:bg-white/5 transition-all"
           >
             <ArrowLeft size={16} />

@@ -1517,6 +1517,16 @@ export function DesktopUI({
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
+      if (detail?.tab === 'home') {
+        setOpenWindows([]);
+        setFocusedWindow(null);
+        setWindowOrder([]);
+        setKnowledgeOpen(false);
+        setChatOpen(false);
+        setCanvasOpen(false);
+        setActiveTab('home');
+        return;
+      }
       if (detail?.tab) {
         // Anyone can open the org tab — join/create/connect handled by OrgPortal
         setActiveTab(detail.tab);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, FileText, Tag, Loader2, BookOpen } from 'lucide-react';
+import { Save, FileText, Tag, Loader2, BookOpen, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 
@@ -18,27 +18,46 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
+    setError('');
+    setSuccess('');
     if (articleId) {
       setLoading(true);
       fetch(`/api/org/kb/articles/${articleId}`, { credentials: 'include' })
-        .then(r => r.json())
+        .then(async r => {
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || `Failed to load article (${r.status})`);
+          return data;
+        })
         .then(a => {
-          setTitle(a.title);
-          setContent(a.content);
-          setCategory(a.category);
-          setStatus(a.status);
+          setTitle(a.title || '');
+          setContent(a.content || '');
+          setCategory(a.category || 'general');
+          setStatus(a.status || 'draft');
           try { setTags(JSON.parse(a.tags).join(', ')); } catch { setTags(''); }
         })
-        .catch(() => {})
+        .catch((err: any) => setError(err.message || String(err)))
         .finally(() => setLoading(false));
+    } else {
+      setTitle('');
+      setContent('');
+      setCategory('general');
+      setTags('');
+      setStatus('draft');
     }
   }, [articleId]);
 
   const handleSave = async () => {
-    if (!title.trim() || !content.trim()) return;
+    if (!title.trim() || !content.trim()) {
+      setError(t.articleRequiredFields || 'Title and content are required');
+      return;
+    }
     setSaving(true);
+    setError('');
+    setSuccess('');
     try {
       const url = articleId
         ? `/api/org/kb/articles/${articleId}`
@@ -53,11 +72,15 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         credentials: 'include',
       });
 
-      if (res.ok) {
-        onSaved?.();
-        if (!articleId) { setTitle(''); setContent(''); setTags(''); }
-      }
-    } catch {} finally { setSaving(false); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+
+      setSuccess(articleId ? (t.articleUpdated || 'Article updated') : (t.articleCreated || 'Article created'));
+      if (!articleId) { setTitle(''); setContent(''); setTags(''); }
+      setTimeout(() => onSaved?.(), 350);
+    } catch (err: any) {
+      setError(err.message || String(err));
+    } finally { setSaving(false); }
   };
 
   if (loading) {
@@ -74,6 +97,19 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         <FileText size={24} className="text-blue-400" />
         {articleId ? (t.editArticle || 'Edit Article') : (t.newArticle || 'New Article')}
       </h2>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+      {success && (
+        <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          <CheckCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{success}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <input

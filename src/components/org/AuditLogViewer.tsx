@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
-  ScrollText, Search, Download, Filter, Loader2, ChevronDown,
-  Clock, User, Activity, FileText, X,
+  ScrollText, Search, Download, Filter, Loader2,
+  Clock, User, FileText, AlertCircle, CheckCircle,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
@@ -23,6 +23,7 @@ export function AuditLogViewer() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ userId: '', action: '', resourceType: '' });
   const [showFilters, setShowFilters] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadEntries();
@@ -30,6 +31,7 @@ export function AuditLogViewer() {
 
   const loadEntries = useCallback(async (withFilters?: typeof filters) => {
     setLoading(true);
+    setFeedback(null);
     try {
       const params = new URLSearchParams();
       params.set('limit', '100');
@@ -39,8 +41,12 @@ export function AuditLogViewer() {
         if (withFilters.resourceType) params.set('resourceType', withFilters.resourceType);
       }
       const res = await fetch(`/api/org/audit?${params.toString()}`, { credentials: 'include' });
-      if (res.ok) setEntries(await res.json());
-    } catch {} finally { setLoading(false); }
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error((data as any).error || `Audit log load failed (${res.status})`);
+      setEntries(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    } finally { setLoading(false); }
   }, []);
 
   const handleFilter = () => {
@@ -48,22 +54,28 @@ export function AuditLogViewer() {
   };
 
   const handleExport = async () => {
+    setFeedback(null);
     try {
       const params = new URLSearchParams();
       if (filters.userId) params.set('userId', filters.userId);
       if (filters.action) params.set('action', filters.action);
       if (filters.resourceType) params.set('resourceType', filters.resourceType);
       const res = await fetch(`/api/org/audit/export?${params.toString()}`, { credentials: 'include' });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `audit-export-${Date.now()}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Audit export failed (${res.status})`);
       }
-    } catch {}
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-export-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setFeedback({ type: 'success', text: 'Audit CSV exported' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err.message || String(err) });
+    }
   };
 
   const parseDetails = (detailsStr: string): Record<string, any> => {
@@ -103,6 +115,17 @@ export function AuditLogViewer() {
           </Button>
         </div>
       </div>
+
+      {feedback && (
+        <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
+          feedback.type === 'success'
+            ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+            : 'border-red-500/20 bg-red-500/10 text-red-300'
+        }`}>
+          {feedback.type === 'success' ? <CheckCircle size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
+          <span>{feedback.text}</span>
+        </div>
+      )}
 
       {/* Filter bar */}
       {showFilters && (
