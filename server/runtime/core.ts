@@ -31,7 +31,7 @@ export function createApp(): AppContext {
   });
 
   const PORT = Number.parseInt(process.env.PORT || '', 10) || 3000;
-  const HOST = process.env.HOST || (process.env.LUMI_DESKTOP === "1" ? "127.0.0.1" : "0.0.0.0");
+  const HOST = process.env.HOST || "0.0.0.0";
 
   // Allow credentials from any origin (Tauri webview, localhost, etc.)
   app.use(cors({ origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => cb(null, true), credentials: true }));
