@@ -8,6 +8,10 @@ interface UseVoiceCallOptions {
   onResponse?: (text: string) => void;
 }
 
+interface StartCallOptions {
+  transcriptionOnly?: boolean;
+}
+
 export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallOptions) {
   const [callState, setCallState] = useState<CallState>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -34,6 +38,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
   const passiveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevCallState = useRef<CallState>('idle');
+  const transcriptionOnlyRef = useRef(false);
 
   const updateAudioLevel = useCallback(() => {
     if (!analyser.current) return;
@@ -190,6 +195,10 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
         if (next === 'listening' && prev !== 'listening') {
           if (passiveTimer.current) { clearTimeout(passiveTimer.current); passiveTimer.current = null; }
           if (disconnectTimer.current) { clearTimeout(disconnectTimer.current); disconnectTimer.current = null; }
+          if (transcriptionOnlyRef.current) {
+            prevCallState.current = next;
+            return next;
+          }
           const alwaysOn = localStorage.getItem('lumi_always_on_voice') === 'true';
           const passiveDelay = alwaysOn ? 5 * 60 * 1000 : 15 * 1000;   // 5min in always-on, 15s default
           passiveTimer.current = setTimeout(() => {
@@ -395,10 +404,11 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     }
   }, [callState, socket]);
 
-  const startCall = useCallback(async (voiceId?: string, personalityId: string = 'lumi', agentId?: string) => {
+  const startCall = useCallback(async (voiceId?: string, personalityId: string = 'lumi', agentId?: string, options: StartCallOptions = {}) => {
     try {
       setError(null);
       setCallState('connecting');
+      transcriptionOnlyRef.current = options.transcriptionOnly === true;
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -451,8 +461,9 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
       timerInterval.current = setInterval(() => {
         setElapsedSeconds(Math.floor((Date.now() - callStartTime.current) / 1000));
       }, 1000);
-      socket.emit('audio:start', { voiceId, personalityId, agentId });
+      socket.emit('audio:start', { voiceId, personalityId, agentId, transcriptionOnly: options.transcriptionOnly === true });
     } catch (err: any) {
+      transcriptionOnlyRef.current = false;
       setError(err.message || 'Failed to start voice call');
       setCallState('idle');
     }
@@ -515,6 +526,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse }: UseVoiceCallO
     }
 
     isTtsPlaying.current = false;
+    transcriptionOnlyRef.current = false;
     ttsStartedAt.current = 0;
     setIsMuted(false);
     setElapsedSeconds(0);

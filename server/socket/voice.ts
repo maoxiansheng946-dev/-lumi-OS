@@ -57,6 +57,8 @@ interface AudioSession {
   /** Voiceprint verification: true when owner's voice is recognized */
   voiceprintMatched: boolean;
   voiceprintConfidence: number;
+  /** Meeting mode: STT only, no LLM/TTS/tool processing. */
+  transcriptionOnly: boolean;
 }
 
 // Module-level ambient noise tracking — used by both processVoiceInput and registerVoiceHandlers
@@ -149,6 +151,7 @@ function getAudioSession(socket: Socket): AudioSession {
       agentId: 'lumi',
       voiceprintMatched: true,  // default: allow (no voiceprints enrolled yet)
       voiceprintConfidence: 0,
+      transcriptionOnly: false,
     };
   }
   return socket.data.audioSession as AudioSession;
@@ -757,7 +760,7 @@ export function registerVoiceHandlers(
   sensoryFn: (uid: string) => any,
   getUserId: (s: Socket) => string,
 ) {
-  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string }) => {
+  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string; transcriptionOnly?: boolean }) => {
     logger.info(`[Audio] Voice call started by ${socket.id}`);
     const session = getAudioSession(socket);
     session.isActive = true;
@@ -768,6 +771,7 @@ export function registerVoiceHandlers(
     session.lastChunkTime = 0;
     session.userId = getUserId(socket);
     session.agentId = data.agentId || 'lumi';
+    session.transcriptionOnly = data.transcriptionOnly === true;
     const personalityCfg = personalityRegistry.get(data.personalityId || 'lumi');
     // Use explicit voiceId, then personality's TTS voice, then null (TTS provider default)
     session.currentVoiceId = data.voiceId || personalityCfg?.ttsVoiceId || null;
@@ -866,6 +870,13 @@ export function registerVoiceHandlers(
             socket.emit("audio:confirm", { text });
             logger.info(`[Audio] Heard: "${text}"`);
 
+            if (session.transcriptionOnly) {
+              socket.emit("audio:transcript", { text, isFinal: true });
+              socket.emit("audio:status", { status: "listening" });
+              resetSilenceTimer(session, socket);
+              return;
+            }
+
             // Brief delay before processing (user can barge-in during this window)
             session.bargeinTimer = setTimeout(() => {
               session.bargeinTimer = null;
@@ -951,6 +962,7 @@ export function registerVoiceHandlers(
     session.isProcessing = false;
     session.inputQueue = [];
     session.accumulatedText = '';
+    session.transcriptionOnly = false;
     if (session.silenceTimer) { clearTimeout(session.silenceTimer); session.silenceTimer = null; }
     if (session.ttsAbortController) {
       session.ttsAbortController.abort();

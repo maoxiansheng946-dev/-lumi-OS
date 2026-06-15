@@ -56,6 +56,8 @@ import {
   Circle,
   Calendar,
   Camera,
+  Copy,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from './SharedUI';
@@ -1223,6 +1225,12 @@ function DailyPlans({ t }: { t: any }) {
   );
 }
 
+interface MeetingNote {
+  id: string;
+  text: string;
+  time: number;
+}
+
 export function DesktopUI({ 
   t, 
   user, 
@@ -1256,7 +1264,7 @@ export function DesktopUI({
   const personalScale = useTransform(cameraZ, [0, -1000], [1, 0.4]);
   const personalOpacity = useTransform(cameraZ, [0, -400], [1, 0]);
   const { isTauri } = usePlatform();
-  const { selectedVoiceId, unreadCount, notifications, addNotification, orgConnection, workDomain, switchDomain, operationMode, setOperationMode } = useApp();
+  const { selectedVoiceId, unreadCount, notifications, addNotification, orgConnection, workDomain, switchDomain, operationMode, setOperationMode, aiConfig } = useApp();
 
   const [openWindows, setOpenWindows] = useState<string[]>(activeTab !== 'home' && activeTab !== 'knowledge' ? [activeTab] : []);
   const [minimizedWindows, setMinimizedWindows] = useState<string[]>([]);
@@ -1494,13 +1502,92 @@ export function DesktopUI({
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error'>('idle');
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const seenWorkflowToolEvents = useRef<Set<string>>(new Set());
+  const [meetingNotesOpen, setMeetingNotesOpen] = useState(false);
+  const [meetingStartedAt, setMeetingStartedAt] = useState<number | null>(() => {
+    const saved = localStorage.getItem('lumi_meeting_started_at');
+    return saved ? Number(saved) || null : null;
+  });
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>(() => {
+    try { return JSON.parse(localStorage.getItem('lumi_meeting_notes') || '[]'); } catch { return []; }
+  });
+  const [meetingReport, setMeetingReport] = useState<string>(() => localStorage.getItem('lumi_meeting_report') || '');
+  const [meetingReportGenerating, setMeetingReportGenerating] = useState(false);
+  const meetingModeRef = useRef(operationMode === 'meeting');
+  const meetingVoiceActiveRef = useRef(false);
+  const lastMeetingTranscriptRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
+  useEffect(() => {
+    meetingModeRef.current = operationMode === 'meeting';
+  }, [operationMode]);
+
+  const persistMeetingNotes = useCallback((notes: MeetingNote[]) => {
+    localStorage.setItem('lumi_meeting_notes', JSON.stringify(notes.slice(-300)));
+  }, []);
+
+  const appendMeetingTranscript = useCallback((text: string, isFinal: boolean) => {
+    if (!meetingModeRef.current || !isFinal) return;
+    const clean = text.trim();
+    if (!clean) return;
+    const now = Date.now();
+    if (lastMeetingTranscriptRef.current.text === clean && now - lastMeetingTranscriptRef.current.at < 4000) return;
+    lastMeetingTranscriptRef.current = { text: clean, at: now };
+    setMeetingReport('');
+    localStorage.removeItem('lumi_meeting_report');
+    setMeetingStartedAt(prev => {
+      if (prev) return prev;
+      localStorage.setItem('lumi_meeting_started_at', String(now));
+      return now;
+    });
+    setMeetingNotes(prev => {
+      const next = [...prev, { id: `${now}-${Math.random().toString(36).slice(2, 8)}`, text: clean, time: now }];
+      persistMeetingNotes(next);
+      return next;
+    });
+  }, [persistMeetingNotes]);
 
   const socket = useSocket();
   const musicVisible = useMusicVisible();
   useAmbientPoller(socket); // Ambient awareness: polls window, clipboard, idle state
   const { callState, audioLevel, startCall, startCallRef, endCall, error: callError, transcript, interrupt, toggleMute, isMuted, switchPersonality } = useVoiceCall({
     socket,
+    onTranscript: appendMeetingTranscript,
   });
+  const meetingStartAttemptRef = useRef(0);
+
+  const startStandardVoiceCall = useCallback(() => {
+    void startCall(selectedVoiceId, activePersonality, activePersonality);
+  }, [activePersonality, selectedVoiceId, startCall]);
+
+  const stopMeetingAudio = useCallback(() => {
+    meetingVoiceActiveRef.current = false;
+    if (operationMode === 'meeting') setOperationMode('assistant');
+    if (callState !== 'idle') endCall();
+  }, [callState, endCall, operationMode, setOperationMode]);
+
+  useEffect(() => {
+    if (operationMode !== 'meeting') {
+      if (meetingVoiceActiveRef.current && callState !== 'idle') {
+        meetingVoiceActiveRef.current = false;
+        endCall();
+      }
+      return;
+    }
+
+    setMeetingNotesOpen(true);
+    setMeetingStartedAt(prev => {
+      if (prev) return prev;
+      const now = Date.now();
+      localStorage.setItem('lumi_meeting_started_at', String(now));
+      return now;
+    });
+
+    if (callState === 'idle') {
+      const now = Date.now();
+      if (now - meetingStartAttemptRef.current < 3000) return;
+      meetingStartAttemptRef.current = now;
+      meetingVoiceActiveRef.current = true;
+      void startCall(selectedVoiceId, activePersonality, activePersonality, { transcriptionOnly: true });
+    }
+  }, [activePersonality, callState, endCall, operationMode, selectedVoiceId, startCall]);
   // Spacebar push-to-talk: track whether this call was started by spacebar
   const isSpacebarRecording = useRef(false);
   const callStateRef = useRef(callState);
@@ -1582,6 +1669,149 @@ export function DesktopUI({
   useEffect(() => {
     if (callError) toast.error(callError);
   }, [callError]);
+
+  const formatMeetingTime = useCallback((value: number) => {
+    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }, []);
+
+  const buildMeetingMarkdown = useCallback(() => {
+    const started = meetingStartedAt ? new Date(meetingStartedAt) : new Date();
+    const lines = [
+      `# Lumi Meeting Notes`,
+      '',
+      `Started: ${started.toLocaleString()}`,
+      '',
+      ...(meetingReport ? ['## Lumi Report', '', meetingReport, ''] : []),
+      '## Transcript',
+      '',
+      ...meetingNotes.map(note => `- [${formatMeetingTime(note.time)}] ${note.text}`),
+      '',
+    ];
+    return lines.join('\n');
+  }, [formatMeetingTime, meetingNotes, meetingReport, meetingStartedAt]);
+
+  const buildFallbackMeetingReport = useCallback(() => {
+    const started = meetingStartedAt ? new Date(meetingStartedAt).toLocaleString() : new Date().toLocaleString();
+    const actionHints = meetingNotes
+      .filter(note => /(todo|action|next|follow|owner|deadline|需要|安排|确认|推进|负责|下周|明天|今天|完成|决定|风险|问题)/i.test(note.text))
+      .slice(-8)
+      .map(note => `- [${formatMeetingTime(note.time)}] ${note.text}`);
+    return [
+      lang === 'zh' ? '# Lumi 会议报告' : '# Lumi Meeting Report',
+      '',
+      `${lang === 'zh' ? '开始时间' : 'Started'}: ${started}`,
+      `${lang === 'zh' ? '记录条数' : 'Transcript items'}: ${meetingNotes.length}`,
+      '',
+      `## ${lang === 'zh' ? '会议摘要' : 'Summary'}`,
+      meetingNotes.length > 0
+        ? (lang === 'zh' ? `本次会议共收录 ${meetingNotes.length} 条转写。LLM 分析暂不可用，下面是基于转写的基础整理。` : `Captured ${meetingNotes.length} transcript items. LLM analysis was unavailable, so this is a basic local report.`)
+        : (lang === 'zh' ? '本次会议没有可整理的转写内容。' : 'No transcript was captured for this meeting.'),
+      '',
+      `## ${lang === 'zh' ? '待办/决策线索' : 'Action / Decision Signals'}`,
+      ...(actionHints.length > 0 ? actionHints : [`- ${lang === 'zh' ? '未检测到明确待办或决策线索。' : 'No clear action or decision signals detected.'}`]),
+      '',
+      `## ${lang === 'zh' ? '建议' : 'Suggestion'}`,
+      `- ${lang === 'zh' ? '建议人工复核转写，补充负责人、截止时间和最终决策。' : 'Review the transcript manually and add owners, deadlines, and final decisions.'}`,
+    ].join('\n');
+  }, [formatMeetingTime, lang, meetingNotes, meetingStartedAt]);
+
+  const analyzeMeetingNotes = useCallback(async () => {
+    if (meetingNotes.length === 0) {
+      const fallback = buildFallbackMeetingReport();
+      setMeetingReport(fallback);
+      localStorage.setItem('lumi_meeting_report', fallback);
+      toast.info(lang === 'zh' ? '会议没有收录到转写，已生成空会议报告' : 'No transcript captured; generated an empty meeting report');
+      return fallback;
+    }
+
+    setMeetingReportGenerating(true);
+    try {
+      const res = await fetch('/api/meeting/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          provider: aiConfig?.provider || 'gemini',
+          model: aiConfig?.model,
+          notes: meetingNotes,
+          startedAt: meetingStartedAt,
+          endedAt: Date.now(),
+          language: lang,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to analyze meeting');
+      const report = String(data.report || '').trim() || buildFallbackMeetingReport();
+      setMeetingReport(report);
+      localStorage.setItem('lumi_meeting_report', report);
+      toast.success(lang === 'zh' ? 'Lumi 已整理会议报告' : 'Lumi generated the meeting report');
+      return report;
+    } catch (err: any) {
+      const fallback = buildFallbackMeetingReport();
+      setMeetingReport(fallback);
+      localStorage.setItem('lumi_meeting_report', fallback);
+      toast.error(err?.message || (lang === 'zh' ? '会议分析失败，已生成基础报告' : 'Meeting analysis failed; generated a basic report'));
+      return fallback;
+    } finally {
+      setMeetingReportGenerating(false);
+    }
+  }, [aiConfig?.model, aiConfig?.provider, buildFallbackMeetingReport, lang, meetingNotes, meetingStartedAt]);
+
+  const endMeetingAndReport = useCallback(async () => {
+    stopMeetingAudio();
+    setMeetingNotesOpen(true);
+    await analyzeMeetingNotes();
+  }, [analyzeMeetingNotes, stopMeetingAudio]);
+
+  const endVoiceCallFromUI = useCallback(() => {
+    if (operationMode === 'meeting') {
+      void endMeetingAndReport();
+      return;
+    }
+    endCall();
+  }, [endCall, endMeetingAndReport, operationMode]);
+
+  const copyMeetingNotes = useCallback(async () => {
+    if (meetingNotes.length === 0) {
+      toast.info(lang === 'zh' ? '暂无会议笔记' : 'No meeting notes yet');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(buildMeetingMarkdown());
+      toast.success(lang === 'zh' ? '会议笔记已复制' : 'Meeting notes copied');
+    } catch (err: any) {
+      toast.error(err?.message || (lang === 'zh' ? '复制失败' : 'Failed to copy notes'));
+    }
+  }, [buildMeetingMarkdown, lang, meetingNotes.length]);
+
+  const downloadMeetingNotes = useCallback(() => {
+    if (meetingNotes.length === 0) {
+      toast.info(lang === 'zh' ? '暂无会议笔记' : 'No meeting notes yet');
+      return;
+    }
+    const blob = new Blob([buildMeetingMarkdown()], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const stamp = new Date(meetingStartedAt || Date.now()).toISOString().replace(/[:.]/g, '-');
+    anchor.href = url;
+    anchor.download = `lumi-meeting-${stamp}.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success(lang === 'zh' ? '会议笔记已导出' : 'Meeting notes exported');
+  }, [buildMeetingMarkdown, lang, meetingNotes.length, meetingStartedAt]);
+
+  const clearMeetingNotes = useCallback(() => {
+    const now = Date.now();
+    setMeetingNotes([]);
+    setMeetingReport('');
+    setMeetingStartedAt(now);
+    localStorage.setItem('lumi_meeting_notes', '[]');
+    localStorage.removeItem('lumi_meeting_report');
+    localStorage.setItem('lumi_meeting_started_at', String(now));
+    toast.success(lang === 'zh' ? '会议笔记已清空' : 'Meeting notes cleared');
+  }, [lang]);
 
   // Listen for org navigation events
   useEffect(() => {
@@ -1988,6 +2218,7 @@ export function DesktopUI({
       if (e.key === ' ' && !e.repeat) {
         if (isInputFocused()) return;
         if (canvasOpenRef.current || isSearchOpen || isControlCenterOpen) return;
+        if (meetingModeRef.current) return;
         e.preventDefault();
         const cs = callStateRef.current;
         if (cs === 'speaking') {
@@ -2233,6 +2464,14 @@ export function DesktopUI({
       icon: <MessageSquare size={16} />,
     },
     {
+      id: 'meeting' as const,
+      label: t.modeMeeting || (lang === 'zh' ? '会议' : 'Meeting'),
+      title: t.modeMeetingTitle || (lang === 'zh' ? '会议模式' : 'Meeting mode'),
+      description: t.modeMeetingDesc || (lang === 'zh' ? '自动开启语音转文字，只收录会议笔记，不回复、不调用工具。' : 'Automatically starts speech-to-text and records meeting notes without replying or calling tools.'),
+      hint: t.modeMeetingHint || (lang === 'zh' ? 'Live notes' : 'Live notes'),
+      icon: <FileText size={16} />,
+    },
+    {
       id: 'assistant' as const,
       label: t.modeAssistant || '助手',
       title: t.modeAssistantTitle || '助手模式',
@@ -2252,7 +2491,7 @@ export function DesktopUI({
   const currentOperationMode = operationModeOptions.find(m => m.id === operationMode) || operationModeOptions[0];
   const renderOperationModeSelector = (compact = false) => (
     <div className={`flex flex-col items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
-      <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
+      <div className={`flex flex-wrap items-center justify-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
         {operationModeOptions.map(m => (
           <button
             key={m.id}
@@ -2752,7 +2991,7 @@ export function DesktopUI({
                 </button>
                 {/* Voice call button below pet */}
                 <button
-                  onClick={callState === 'idle' ? () => startCall(selectedVoiceId, activePersonality, activePersonality) : endCall}
+                  onClick={callState === 'idle' ? startStandardVoiceCall : endVoiceCallFromUI}
                   className={`w-12 h-12 rounded-full border transition-all flex items-center justify-center ${
                     callState !== 'idle'
                       ? 'bg-red-500/20 border-red-500/40 text-red-400'
@@ -2795,8 +3034,8 @@ export function DesktopUI({
                 highPerformance={isTauri}
                 isWallpaperMode={isWallpaperMode}
                 reaction={petReaction?.animation || null}
-                onStartCall={() => startCall(selectedVoiceId, activePersonality, activePersonality)}
-                onEndCall={endCall}
+                onStartCall={startStandardVoiceCall}
+                onEndCall={endVoiceCallFromUI}
                 onInterrupt={interrupt}
                 onToggleMute={toggleMute}
                 onMessage={() => {}}
@@ -3024,6 +3263,121 @@ export function DesktopUI({
                     {act.error && <div className="text-red-400/60 truncate">{act.error.slice(0, 80)}</div>}
                   </div>
                 ))}
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {(meetingNotesOpen || operationMode === 'meeting') && (
+          <motion.div
+            initial={{ opacity: 0, x: 24, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 24, scale: 0.96 }}
+            className="fixed top-16 right-6 z-[62] w-[360px] pointer-events-auto"
+          >
+            <GlassCard className="rounded-2xl border-cyan-400/20 bg-black/75 p-4 backdrop-blur-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${operationMode === 'meeting' && callState !== 'idle' ? 'bg-cyan-400 animate-pulse' : 'bg-white/25'}`} />
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white/80">
+                      {t.meetingMode || (lang === 'zh' ? '会议模式' : 'Meeting Mode')}
+                    </h3>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+                    {operationMode === 'meeting'
+                      ? (lang === 'zh' ? '正在自动语音转文字并收录笔记' : 'Recording speech-to-text notes automatically')
+                      : (lang === 'zh' ? '会议笔记已暂停' : 'Meeting notes paused')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={copyMeetingNotes}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                    title={lang === 'zh' ? '复制笔记' : 'Copy notes'}
+                  >
+                    <Copy size={14} />
+                  </button>
+                  <button
+                    onClick={downloadMeetingNotes}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                    title={lang === 'zh' ? '导出 Markdown' : 'Export Markdown'}
+                  >
+                    <Download size={14} />
+                  </button>
+                  <button
+                    onClick={() => setMeetingNotesOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                    title={lang === 'zh' ? '收起' : 'Hide'}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-white/30">{lang === 'zh' ? '状态' : 'State'}</div>
+                  <div className="mt-1 text-xs font-bold text-cyan-300">{callState === 'idle' ? 'Idle' : callState}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-white/30">{lang === 'zh' ? '条目' : 'Items'}</div>
+                  <div className="mt-1 text-xs font-bold text-white/75">{meetingNotes.length}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-white/30">{lang === 'zh' ? '时长' : 'Time'}</div>
+                  <div className="mt-1 text-xs font-bold text-white/75">
+                    {meetingStartedAt ? `${Math.max(0, Math.floor((time.getTime() - meetingStartedAt) / 60000))}m` : '0m'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                {meetingReportGenerating && (
+                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-xs font-bold text-cyan-200">
+                    {lang === 'zh' ? 'Lumi 正在整理会议报告...' : 'Lumi is preparing the meeting report...'}
+                  </div>
+                )}
+                {meetingReport && !meetingReportGenerating && (
+                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-cyan-300/80">
+                      {lang === 'zh' ? 'Lumi 会议报告' : 'Lumi Report'}
+                    </div>
+                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-white/75 font-sans">{meetingReport}</pre>
+                  </div>
+                )}
+                {meetingNotes.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-xs leading-relaxed text-white/35">
+                    {lang === 'zh' ? '进入会议模式后，说话内容会自动出现在这里。' : 'Speech captured in meeting mode will appear here automatically.'}
+                  </div>
+                ) : (
+                  meetingNotes.slice(-12).reverse().map(note => (
+                    <div key={note.id} className="border-l border-cyan-400/25 pl-3">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-cyan-300/70">{formatMeetingTime(note.time)}</div>
+                      <p className="mt-1 text-sm leading-relaxed text-white/70">{note.text}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center gap-2">
+                <button
+                  onClick={() => void endMeetingAndReport()}
+                  disabled={meetingReportGenerating}
+                  className="flex-1 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs font-black uppercase tracking-widest text-cyan-200 transition-colors hover:bg-cyan-400/15"
+                >
+                  {meetingReportGenerating
+                    ? (lang === 'zh' ? '整理中' : 'Preparing')
+                    : (lang === 'zh' ? '结束会议并整理' : 'End & Report')}
+                </button>
+                <button
+                  onClick={clearMeetingNotes}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-black uppercase tracking-widest text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  {lang === 'zh' ? '清空' : 'Clear'}
+                </button>
               </div>
             </GlassCard>
           </motion.div>

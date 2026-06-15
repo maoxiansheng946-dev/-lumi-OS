@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { checkLLMAccess, recordUsage, estimateTokens } from "../subscription/proxy";
 import { runWithTools } from "../llm/adapter";
+import { makeLLMCall } from "../llm/providers";
 import { toolRegistry } from "../tools/registry";
 import { recordLatency } from "../monitor/latency_store";
 import { optionalAuth } from "../middleware/auth";
@@ -121,4 +122,60 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
 
   router.post("/ai/chat", optionalAuth, handleChat);
   router.post("/chat", optionalAuth, handleChat);
+
+  router.post("/meeting/analyze", optionalAuth, asyncHandler(async (req, res) => {
+    const { provider = "gemini", model, notes, startedAt, endedAt, language = "zh" } = req.body || {};
+    const userId = req.user?.uid || 'anonymous';
+    const noteItems = Array.isArray(notes) ? notes : [];
+    const transcript = noteItems
+      .map((note: any) => {
+        const time = note?.time ? new Date(note.time).toLocaleTimeString() : '';
+        const text = String(note?.text || '').trim();
+        return text ? `[${time}] ${text}` : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    if (!transcript.trim()) {
+      return res.status(400).json({ error: 'No meeting transcript to analyze' });
+    }
+
+    const access = checkLLMAccess({ userId, provider, model: model || '' });
+    if (!access.allowed) {
+      return res.status(402).json({ error: access.reason, code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED' });
+    }
+
+    const started = startedAt ? new Date(startedAt).toLocaleString() : 'unknown';
+    const ended = endedAt ? new Date(endedAt).toLocaleString() : new Date().toLocaleString();
+    const outputLanguage = language === 'zh' ? 'Chinese' : 'English';
+    const prompt = [
+      `You are Lumi acting as a meeting analyst. Output in ${outputLanguage}.`,
+      'Do not call tools. Analyze only the transcript below.',
+      'Create a practical meeting report with these sections:',
+      '1. Meeting summary',
+      '2. Key decisions',
+      '3. Action items with owner if mentioned, otherwise mark owner as unassigned',
+      '4. Risks / open questions',
+      '5. Follow-up suggestions',
+      '6. Raw transcript highlights',
+      '',
+      `Started: ${started}`,
+      `Ended: ${ended}`,
+      '',
+      'Transcript:',
+      transcript,
+    ].join('\n');
+
+    const result = await makeLLMCall(
+      [{ role: 'user', content: prompt }],
+      [],
+      { provider, model: model || (provider === 'deepseek' ? 'deepseek-chat' : provider === 'qwen' ? 'qwen-plus' : 'gemini-2.0-flash'), maxTokens: 1800, userId },
+      llm.getDeepSeek, llm.getGemini, llm.getOpenAI, llm.getAnthropic, llm.getQwen,
+    );
+
+    const report = result.text || '';
+    const tokens = estimateTokens(prompt + ' ' + report);
+    const usage = recordUsage(userId, tokens);
+    res.json({ report, usage });
+  }));
 }

@@ -46,10 +46,10 @@ interface ToolOverride {
   securityLevel?: string;
 }
 
-export type OperationMode = 'chat' | 'assistant' | 'autonomous';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
 
 function normalizeOperationMode(mode: unknown): OperationMode {
-  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous') return mode;
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting') return mode;
   if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
   return 'assistant';
 }

@@ -5,7 +5,7 @@
  */
 import { ToolPolicy } from '../personality/types';
 
-export type OperationMode = 'chat' | 'assistant' | 'autonomous';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
 
 export interface OperationModeConfig {
   id: OperationMode;
@@ -96,10 +96,24 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
       maxIterations: 50,
     },
   },
+
+  meeting: {
+    id: 'meeting',
+    label: 'Meeting',
+    labelCN: 'Meeting',
+    description: 'Transcription-only meeting notes. Lumi listens and records, but does not answer or execute tools for each utterance.',
+    promptOverlay: 'Meeting mode is transcription-only. Record speech as meeting notes. Do not call tools, operate the desktop, speak responses, or treat every utterance as a command.',
+    toolPolicy: {
+      allowedTools: [],
+      requireConfirmation: [],
+      forbiddenTools: ['*'],
+      maxIterations: 0,
+    },
+  },
 };
 
 export function normalizeOperationMode(mode?: string): OperationMode {
-  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous') return mode;
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting') return mode;
   if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
   return 'assistant';
 }
