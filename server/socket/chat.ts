@@ -467,7 +467,7 @@ export function registerChatHandler(
               addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'tool', content: `[Tool: ${quickResult.toolCall.name}] Called`, domain: resolvedDomain, orgId: resolvedOrgId });
             }
             addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: quickResult.responseText, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
-            socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId });
+            socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: source === 'canvas' ? 'canvas' : 'chat' });
           }
           socket.emit("agent:status", { status: "idle" });
           // Track topics for quick commands too
@@ -913,7 +913,7 @@ export function registerChatHandler(
       socket.emit("agent:response", { text: responseText, agentName: personality.name, source: "chat" });
       // Re-emit conversation_updated AFTER response so the client syncs from API with complete data
       if (conversationId) {
-        socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId });
+        socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: source === 'canvas' ? 'canvas' : 'chat' });
       }
       socket.emit("agent:status", { status: "idle" });
 

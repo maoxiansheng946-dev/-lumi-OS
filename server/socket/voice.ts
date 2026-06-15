@@ -447,7 +447,7 @@ async function processVoiceInput(
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
-      socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId });
+      socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
       socket.emit("audio:status", { status: "listening" });
       socket.emit("agent:status", { status: "idle" });
       socket.emit("agent:response", { text: responseText, agentName: "Lumi", source: "quick_command" });
@@ -495,7 +495,7 @@ async function processVoiceInput(
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
-      socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId });
+      socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
       socket.emit("audio:status", { status: "listening" });
       socket.emit("agent:status", { status: "idle" });
       return;
@@ -526,7 +526,7 @@ async function processVoiceInput(
           session.isProcessing = false;
           session.isSpeaking = false;
           session.pipelineAbortController = null;
-          socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId });
+          socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
           socket.emit("audio:status", { status: "listening" });
           socket.emit("agent:status", { status: "idle" });
           return;
@@ -713,7 +713,7 @@ async function processVoiceInput(
         try { const hm = loadHIMState(session.userId); const { him: nh } = himTick(updated, hm); saveHIMState(session.userId, nh); } catch {}
       } catch { /* best-effort */ }
     }
-    socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId });
+    socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
 
   } catch (err: any) {
     if (err?.name === 'AbortError') {

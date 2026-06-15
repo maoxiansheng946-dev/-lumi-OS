@@ -43,6 +43,58 @@ export function mountConversationRoutes(router: Router, _jwtSecret: string) {
     res.json({ activeConversation });
   });
 
+  router.get("/conversations/search", requireAuth, (req, res) => {
+    const query = String(req.query.q || '').trim().toLowerCase();
+    const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+    const scope = getConversationScope(req);
+    if (!query || (scope.domain === 'work' && !scope.orgId)) {
+      return res.json({ results: [], query, limit });
+    }
+
+    const agentId = (req.query.agentId as string | undefined) || undefined;
+    const db = readDB();
+    const conversationIds = new Set(
+      (db.conversations || [])
+        .filter((conv: any) => {
+          if (conv.userId !== req.user!.uid) return false;
+          if (agentId && conv.agentId !== agentId) return false;
+          return conversationMatchesScope(conv, scope);
+        })
+        .map((conv: any) => conv.id)
+    );
+
+    const results = (db.interactions || [])
+      .filter((item: any) => {
+        if (item.userId !== req.user!.uid) return false;
+        if (!conversationIds.has(item.conversationId)) return false;
+        if (item.role === 'tool') return false;
+        return true;
+      })
+      .map((item: any) => {
+        const role = item.role === 'assistant' ? 'assistant' : 'user';
+        const text = String(
+          item.message ||
+          (item.response && item.role === 'assistant' ? item.response : '') ||
+          (!item.response ? item.content || '' : '')
+        ).trim();
+        return {
+          id: item.id,
+          userId: item.userId,
+          agentId: item.agentId || '',
+          conversationId: item.conversationId,
+          role,
+          message: text,
+          mode: item.mode || '',
+          timestamp: item.timestamp,
+        };
+      })
+      .filter((item: any) => item.message && item.message.toLowerCase().includes(query))
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit);
+
+    res.json({ results, query, limit });
+  });
+
   router.get("/conversations/:id/messages", requireAuth, (req, res) => {
     const db = readDB();
     const conv = (db.conversations || []).find((c: any) => c.id === req.params.id);

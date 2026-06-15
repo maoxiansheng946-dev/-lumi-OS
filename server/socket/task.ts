@@ -416,7 +416,7 @@ export function registerTaskHandler(
           const topics = extractTopics(data.text + ' ' + result.text);
           for (const topic of topics) trackTopic(convForHistory.id, topic);
         } catch {}
-        socket.emit('chat:conversation_updated', { conversationId: convForHistory.id, agentId: '' });
+        socket.emit('chat:conversation_updated', { conversationId: convForHistory.id, agentId: '', source: 'task' });
       }
 
     } catch (err: any) {

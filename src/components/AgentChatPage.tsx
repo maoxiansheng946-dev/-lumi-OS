@@ -33,6 +33,9 @@ function shouldUseCanvasForTask(text: string): boolean {
     || (normalized.length > 120 && taskPatterns.some(pattern => pattern.test(normalized)));
 }
 
+const CHAT_HISTORY_LIMIT = 2000;
+const CHAT_SEARCH_LIMIT = 200;
+
 export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed, onOpenCanvas }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void; onOpenCanvas?: (task?: string) => void }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [agentMetadata, setAgentMetadata] = useState<Partial<AgentResponse>>({});
@@ -116,6 +119,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const [optimizationProgress, setOptimizationProgress] = useState(0);
   const [uploadResults, setUploadResults] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearchingHistory, setIsSearchingHistory] = useState(false);
+  const [searchError, setSearchError] = useState('');
   const { speak, stop, pause, resume, isSpeaking, isPaused } = useTTS();
   const recognition = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -180,6 +186,26 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       setTimeout(() => setCopiedId(null), 1500);
     } catch {}
   }, []);
+
+  const buildSearchDisplayMessages = useCallback(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return messages;
+
+    const localMatches = messages.filter(m =>
+      m.text && String(m.text).toLowerCase().includes(query)
+    );
+    const seen = new Set<string>();
+    const merged = [...localMatches, ...searchResults].filter((m) => {
+      const key = `${m.id || ''}|${m.timestamp || ''}|${m.type || ''}|${m.text || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return merged;
+  }, [messages, searchQuery, searchResults]);
+
+  const searchDisplayMessages = buildSearchDisplayMessages();
 
   const normalizePersistedMessages = useCallback((rawMessages: any[]) => {
     const normalized: any[] = [];
@@ -251,7 +277,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         .then(async (data) => {
           const conv = data.activeConversation;
           if (conv) {
-            const msgRes = await fetch(scopedConversationUrl(`/api/conversations/${conv.id}/messages?limit=500`));
+            const msgRes = await fetch(scopedConversationUrl(`/api/conversations/${conv.id}/messages?limit=${CHAT_HISTORY_LIMIT}`));
             const msgData = await msgRes.json();
             if (msgData.messages && Array.isArray(msgData.messages)) {
               setMessages(normalizePersistedMessages(msgData.messages));
@@ -260,6 +286,45 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         })
         .catch(() => {});
   }, [agentId, isFounder, normalizePersistedMessages, scopedConversationUrl]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query || !agentId || isFounder) {
+      setSearchResults([]);
+      setIsSearchingHistory(false);
+      setSearchError('');
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingHistory(true);
+    setSearchError('');
+
+    const timer = setTimeout(() => {
+      fetch(scopedConversationUrl(`/api/conversations/search?q=${encodeURIComponent(query)}&limit=${CHAT_SEARCH_LIMIT}`))
+        .then(async r => {
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || 'Search failed');
+          if (!cancelled) {
+            setSearchResults(normalizePersistedMessages(data.results || []));
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearchError(err?.message || 'Search failed');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsSearchingHistory(false);
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [agentId, isFounder, normalizePersistedMessages, scopedConversationUrl, searchQuery]);
 
   const streamingMsgId = useRef<string | null>(null);
   const textChatActiveRef = useRef(false);
@@ -393,12 +458,11 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     // conversation_updated: only reload for non-text-chat channels (voice, etc.)
     // Text chat state is managed live via agent:chunk/agent:response — API reload here
     // would replace messages with different ids, causing React to remount & re-animate them.
-    const onConversationUpdated = (data: { conversationId: string; agentId: string }) => {
+    const onConversationUpdated = (data: { conversationId: string; agentId: string; source?: string }) => {
       if (data.agentId !== agentId) return;
-      if (textChatActiveRef.current) return;
-      if (!streamingMsgId.current) return;
-      streamingMsgId.current = null;
-      fetch(scopedConversationUrl(`/api/conversations/${data.conversationId}/messages?limit=500`))
+      if (data.source === 'chat' || textChatActiveRef.current) return;
+      if (streamingMsgId.current) streamingMsgId.current = null;
+      fetch(scopedConversationUrl(`/api/conversations/${data.conversationId}/messages?limit=${CHAT_HISTORY_LIMIT}`))
         .then(r => r.json())
         .then(result => {
           if (result.messages && Array.isArray(result.messages)) {
@@ -822,12 +886,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search..."
+                  placeholder="Search saved history..."
                   className="h-7 w-40 px-3 py-0 text-xs bg-white/5 border border-white/10 rounded-full text-white/60 placeholder:text-white/20 outline-none focus:border-white/20 focus:bg-white/[0.07] transition-colors"
                 />
                 {searchQuery && (
                   <button
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => { setSearchQuery(''); setSearchResults([]); setSearchError(''); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
                   >
                     <XCircle size={12} />
@@ -841,7 +905,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
             ref={scrollRef}
             className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 custom-scrollbar"
           >
-            {messages.length === 0 && (
+            {messages.length === 0 && !searchQuery.trim() && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-8 px-4">
                 <div className="space-y-3 opacity-20">
                   <Sparkles size={64} className="text-celestial-saturn mx-auto" />
@@ -869,15 +933,24 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                 )}
               </div>
             )}
-            {searchQuery.trim() && messages.length > 0 && (
-              <div className="text-[10px] text-white/30 font-mono uppercase tracking-wider text-center">
-                {messages.filter(m => m.text?.toLowerCase().includes(searchQuery.toLowerCase())).length} / {messages.length} messages
+            {searchQuery.trim() && (
+              <div className={`text-[10px] font-mono uppercase tracking-wider text-center ${searchError ? 'text-red-300/70' : 'text-white/30'}`}>
+                {isSearchingHistory
+                  ? 'Searching saved history...'
+                  : searchError
+                    ? searchError
+                    : `${searchDisplayMessages.length} matches`}
+              </div>
+            )}
+            {searchQuery.trim() && !isSearchingHistory && !searchError && searchDisplayMessages.length === 0 && (
+              <div className="h-full flex items-center justify-center text-center text-xs text-white/30">
+                No saved conversation records match.
               </div>
             )}
             <AnimatePresence initial={false}>
               {(() => {
                 const displayMsgs = searchQuery.trim()
-                  ? messages.filter(m => m.text?.toLowerCase().includes(searchQuery.toLowerCase()))
+                  ? searchDisplayMessages
                   : messages;
                 return displayMsgs.map((msg) => (
                 msg.type === 'file_context' ? null /* invisible context */ : msg.type === 'tool' ? (
