@@ -160,6 +160,7 @@ export async function consolidateEpisodic(
         perspective: 'lumi_growth',
         importance: Math.min(1, Math.max(0.3, Number(parsed.importance) || 0.5)),
         parentId: null,
+        source: 'consolidation',
       },
     );
 
@@ -243,6 +244,7 @@ export async function selfReflect(
         perspective: parsed.perspective === 'lumi_self' ? 'lumi_self' : 'lumi_growth',
         importance: Math.min(1, Math.max(0.5, Number(parsed.importance) || 0.7)),
         parentId: null,
+        source: 'consolidation',
       },
     );
 
@@ -337,6 +339,7 @@ export async function consolidateNarrative(
         perspective: 'shared_memory',
         importance: Math.min(0.9, Math.max(0.4, Number(parsed.importance) || 0.6)),
         parentId: null,
+        source: 'consolidation',
       },
     );
 

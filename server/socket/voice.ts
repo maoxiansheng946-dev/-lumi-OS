@@ -1190,7 +1190,7 @@ export function registerVoiceHandlers(
         confidence: 1.0,
         sourceInteractionId: `greeting_${Date.now()}`,
         agentId: undefined,
-      } as any, { tier: 'episodic', perspective: 'shared_memory', importance: 0.2 });
+      } as any, { tier: 'episodic', perspective: 'shared_memory', importance: 0.2, source: 'voice' });
       logger.info(`[Greeting] LLM-generated for ${userId}: "${greeting}"`);
     } catch (err: any) {
       logger.warn(`[Greeting] LLM generation failed, using fallback: ${err.message}`);

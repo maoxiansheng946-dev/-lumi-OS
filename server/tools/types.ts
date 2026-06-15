@@ -30,6 +30,10 @@ export interface ToolContext {
     getOllama?: () => any;
     getLmStudio?: () => any;
   };
+  /** True when the tool is being used by background autonomous work. */
+  autonomous?: boolean;
+  /** Surface that initiated the tool call, such as chat, voice, canvas, meeting, or mcp. */
+  source?: string;
 }
 
 export interface ToolDefinition {

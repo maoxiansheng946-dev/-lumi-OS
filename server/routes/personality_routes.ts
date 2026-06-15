@@ -31,8 +31,22 @@ export function mountPersonalityRoutes(router: Router, _jwtSecret: string, llm: 
       personalityId: req.params.id,
       currentVector: config.personalityVector || null,
       version: config.version,
+      growthState: config.growthState || null,
+      evolutionFrozenAt: config.evolutionFrozenAt || null,
       evolutionConfig,
       history,
+      audit: personalityRegistry.getEvolutionAudit(req.params.id),
+    });
+  });
+
+  router.get("/personality/:id/evolution/audit", (req, res) => {
+    const config = personalityRegistry.get(req.params.id);
+    if (!config) return res.status(404).json({ error: "Personality not found" });
+    res.json({
+      personalityId: req.params.id,
+      growthState: config.growthState || null,
+      frozenAt: config.evolutionFrozenAt || null,
+      audit: personalityRegistry.getEvolutionAudit(req.params.id),
     });
   });
 
@@ -87,6 +101,9 @@ export function mountPersonalityRoutes(router: Router, _jwtSecret: string, llm: 
     try {
       const config = personalityRegistry.get(req.params.id);
       if (!config) return res.status(404).json({ error: "Personality not found" });
+      if (personalityRegistry.isEvolutionFrozen(req.params.id)) {
+        return res.status(409).json({ error: "Personality evolution is frozen. Unfreeze it before evolving." });
+      }
 
       const uid = req.user?.uid || 'anonymous';
       const emotionalState = loadEmotionalState(uid);
@@ -108,4 +125,30 @@ export function mountPersonalityRoutes(router: Router, _jwtSecret: string, llm: 
       res.status(500).json({ error: err.message });
     }
   }));
+
+  router.post("/personality/:id/evolution/freeze", (req, res) => {
+    const frozen = req.body?.frozen !== false;
+    const updated = personalityRegistry.setEvolutionFrozen(req.params.id, frozen);
+    if (!updated) return res.status(404).json({ error: "Personality not found" });
+    res.json({
+      personalityId: req.params.id,
+      frozen: Boolean(updated.evolutionFrozenAt),
+      frozenAt: updated.evolutionFrozenAt || null,
+    });
+  });
+
+  router.post("/personality/:id/evolution/revert", (req, res) => {
+    const auditId = String(req.body?.auditId || '');
+    if (!auditId) return res.status(400).json({ error: "auditId is required" });
+    const updated = personalityRegistry.revertEvolution(req.params.id, auditId);
+    if (!updated) return res.status(404).json({ error: "Evolution audit entry not found or not reversible" });
+    res.json({
+      personalityId: req.params.id,
+      reverted: true,
+      auditId,
+      version: updated.version,
+      growthState: updated.growthState || null,
+      audit: personalityRegistry.getEvolutionAudit(req.params.id),
+    });
+  });
 }

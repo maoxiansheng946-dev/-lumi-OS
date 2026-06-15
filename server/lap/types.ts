@@ -1,23 +1,28 @@
 /**
- * LAP (Lumi Agent Protocol) — Agent-to-agent collaboration protocol.
+ * LAP (Lumi Agent Protocol) is Lumi's agent-to-agent collaboration protocol.
  *
- * Layers:
- *   Application: handshake · delegate · share · negotiate · notify · revoke
- *   Session:     encryption · heartbeat · session resume
- *   Transport:   WebSocket (real-time) / HTTP (async)
+ * It is the Inter-Lumi layer: local-first Lumi instances can handshake, share
+ * scoped context, delegate tasks, negotiate, notify, revoke sessions, and keep a
+ * heartbeat without exposing private user state by default.
  */
 
-// ── Agent Identity ──
+// Agent identity
 
 export interface LAPAgentIdentity {
   agentId: string;        // e.g. "agent_abc123"
   userId: string;         // e.g. "user_alice"
-  name: string;           // human-readable, e.g. "Alice 的 Lumi"
+  name: string;           // human-readable, e.g. "Alice's Lumi"
   capabilities: string[]; // e.g. ["chat", "code", "search", "memory"]
-  publicKey: string;      // ed25519 public key (hex)
+  publicKey: string;      // ed25519 public key (hex or provider-prefixed)
+  publicProfile?: {
+    displayName?: string;
+    description?: string;
+    homeNode?: string;
+    trustTags?: string[];
+  };
 }
 
-// ── Session ──
+// Session
 
 export type LAPTrustLevel = 'direct' | 'delegated' | 'public';
 export type LAPScope = 'share_context' | 'delegate_task' | 'negotiate' | 'notify';
@@ -32,7 +37,7 @@ export interface LAPSession {
   lastHeartbeat: string;
 }
 
-// ── Messages (JSON-RPC 2.0 envelope) ──
+// Messages (JSON-RPC-like envelope)
 
 export interface LAPMessage {
   lap: '2.0';
@@ -41,7 +46,7 @@ export interface LAPMessage {
   timestamp: string;       // ISO timestamp
 }
 
-// ── 1. Handshake ──
+// 1. Handshake
 
 export interface LAPHandshakeRequest extends LAPMessage {
   method: 'lap.handshake';
@@ -59,15 +64,33 @@ export interface LAPHandshakeResponse {
   scope: LAPScope[];
 }
 
-// ── 2. Context Share ──
+// 2. Context sharing
 
 export type LAPContextScope = 'one-time' | 'session' | 'permanent';
+export type LAPContextOrigin = 'local' | 'organization' | 'private_cloud' | 'community' | 'external_lumi';
+export type LAPPrivacyClass = 'public' | 'shared' | 'private' | 'secret';
 
 export interface LAPContextEntry {
   type: 'memory' | 'preference' | 'capability' | 'knowledge';
   scope: LAPContextScope;
   payload: string;
-  confidence: number;       // 0–1
+  confidence: number;       // 0..1
+  origin?: LAPContextOrigin;
+  privacyClass?: LAPPrivacyClass;
+  userApproved?: boolean;
+  citation?: string;
+  expiresAt?: string;
+  tags?: string[];
+}
+
+export type LAPMemoryIngestionMode = 'blocked' | 'external_context' | 'candidate_memory';
+
+export interface LAPContextFirewallDecision {
+  accepted: boolean;
+  reason?: string;
+  normalizedEntry?: LAPContextEntry;
+  memoryIngestion: LAPMemoryIngestionMode;
+  mayAffectPersonality: boolean;
 }
 
 export interface LAPContextShareRequest extends LAPMessage {
@@ -80,9 +103,10 @@ export interface LAPContextShareResponse {
   acceptedEntries: number;
   rejectedEntries: number;
   reason?: string;
+  rejectedReasons?: string[];
 }
 
-// ── 3. Task Delegation ──
+// 3. Task delegation
 
 export type LAPTaskStatus = 'pending' | 'accepted' | 'rejected' | 'running' | 'completed' | 'failed';
 export type LAPTaskPriority = 'low' | 'normal' | 'high' | 'critical';
@@ -93,7 +117,7 @@ export interface LAPTask {
   priority: LAPTaskPriority;
   deadline?: string;       // ISO timestamp
   payload: Record<string, any>;
-  callback?: string;        // method name for result delivery
+  callback?: string;       // method name for result delivery
 }
 
 export interface LAPTaskDelegateRequest extends LAPMessage {
@@ -105,7 +129,7 @@ export interface LAPTaskDelegateResponse {
   accepted: boolean;
   taskId: string;
   reason?: string;
-  estimatedCompletion?: string; // ISO timestamp
+  estimatedCompletion?: string; // ISO timestamp or human-readable ETA
 }
 
 export interface LAPTaskResultRequest extends LAPMessage {
@@ -120,7 +144,7 @@ export interface LAPTaskResultResponse {
   acknowledged: boolean;
 }
 
-// ── 4. Negotiate ──
+// 4. Negotiate
 
 export type LAPNegotiateMode = 'consensus' | 'vote' | 'advise';
 
@@ -139,7 +163,7 @@ export interface LAPNegotiateResponse {
   reasoning?: string;
 }
 
-// ── 5. Notify ──
+// 5. Notify
 
 export interface LAPNotifyRequest extends LAPMessage {
   method: 'lap.notify';
@@ -147,7 +171,7 @@ export interface LAPNotifyRequest extends LAPMessage {
   payload: Record<string, any>;
 }
 
-// ── 6. Revoke ──
+// 6. Revoke
 
 export interface LAPRevokeRequest extends LAPMessage {
   method: 'lap.revoke';
@@ -160,7 +184,7 @@ export interface LAPRevokeResponse {
   affectedTasks: string[];
 }
 
-// ── 7. Heartbeat ──
+// 7. Heartbeat
 
 export interface LAPHeartbeatRequest extends LAPMessage {
   method: 'lap.heartbeat';
@@ -171,7 +195,7 @@ export interface LAPHeartbeatResponse {
   serverTime: string;
 }
 
-// ── Union type for routing ──
+// Union type for routing
 
 export type LAPRequest =
   | LAPHandshakeRequest

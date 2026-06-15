@@ -12,6 +12,10 @@ export type MemoryPerspective = 'owner_trait'   // About the owner's traits
                               | 'shared_memory' // "Our" shared experiences
                               | 'lumi_growth';  // Lumi's growth milestones
 
+export type MemorySource = 'chat' | 'voice' | 'canvas' | 'meeting' | 'manual' | 'organization' | 'lap' | 'community' | 'external_app' | 'system' | 'import' | 'consolidation';
+export type MemoryPrivacyClass = 'private' | 'organization' | 'shared' | 'public' | 'secret';
+export type MemoryRetention = 'ephemeral' | 'session' | 'long_term' | 'permanent';
+
 /** Tree node type — branch nodes are topic containers, leaves are actual memories */
 export type MemoryNodeType = 'branch' | 'leaf';
 
@@ -55,6 +59,20 @@ export interface Memory {
   domain?: string;
   /** Organization ID (work domain only) */
   orgId?: string;
+  /** Source surface that created this memory. Used by the global Memory Firewall. */
+  source?: MemorySource;
+  /** Privacy class assigned by Memory Firewall. */
+  privacyClass?: MemoryPrivacyClass;
+  /** Retention policy assigned by Memory Firewall. */
+  retention?: MemoryRetention;
+  /** Whether the user explicitly approved this memory for protected/permanent storage. */
+  userApproved?: boolean;
+  /** Firewall decision that admitted the memory. */
+  firewall?: {
+    accepted: boolean;
+    reason: string;
+    appliedAt: string;
+  };
 }
 
 export interface MemoryTree {

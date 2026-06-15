@@ -18,6 +18,7 @@ import { setOfficeBroadcast } from '../tools/definitions/office_tools';
 import { synthesizeSpeech, getActiveProvider } from '../tts/adapter';
 import { classifyComplexity, decomposeTask, matchWorkers, executeWorkflow, aggregateWithLLM, getRoutingCacheStats } from '../agents/orchestrator';
 import { readDB } from '../../db_layer';
+import { formatLAPSelfPrompt } from '../lap/policy';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
@@ -82,7 +83,7 @@ export function createLumiMcpServer(llmGetters?: {
           : '';
 
         const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-          { role: 'system', content: systemPrompt + (memoryContext ? `\n\n## User context (memories):\n${memoryContext}` : '') },
+          { role: 'system', content: systemPrompt + '\n\n' + formatLAPSelfPrompt() + (memoryContext ? `\n\n## User context (memories):\n${memoryContext}` : '') },
           { role: 'user', content: message },
         ];
 

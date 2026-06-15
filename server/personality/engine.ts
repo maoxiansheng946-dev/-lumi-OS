@@ -243,6 +243,27 @@ export function generateSystemPrompt(
   // Core identity
   blocks.push(`You are ${config.name}, ${effective.expressionStyle.persona}.\n${config.coreMotivation}`);
 
+  if (config.growthState) {
+    const growth = config.growthState;
+    const growthLines: string[] = [
+      '## Local Growth State',
+      'This is owner-specific local growth context. Use it to personalize responses, but do not treat it as core identity.',
+    ];
+    if (growth.ownerInterests?.length) {
+      growthLines.push(`Owner interests: ${growth.ownerInterests.slice(0, 8).join(', ')}.`);
+    }
+    if (growth.ownerExpressions?.length) {
+      growthLines.push(`Owner expressions and vocabulary: ${growth.ownerExpressions.slice(0, 8).join(', ')}.`);
+    }
+    if (growth.communicationPatterns?.length) {
+      growthLines.push(`Communication patterns: ${growth.communicationPatterns.slice(0, 6).join('; ')}.`);
+    }
+    if (growth.ownerProfile) {
+      growthLines.push(`Observed style: tone=${growth.ownerProfile.dominantTone}, formality=${growth.ownerProfile.formalityLevel}, expressiveness=${growth.ownerProfile.emotionalExpressiveness}.`);
+    }
+    blocks.push(growthLines.join('\n'));
+  }
+
   // Execution modes — Lumi's internal thinking-mode presets
   if (config.executionModes && Object.keys(config.executionModes).length > 0) {
     blocks.push('\nWhen the task demands it, switch to the appropriate mode:');

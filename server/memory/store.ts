@@ -1,5 +1,6 @@
 import { readDB, writeDB } from '../../db_layer';
 import { Memory, MemoryQuery, MemoryType, MemoryTier, MemoryPerspective } from './types';
+import { applyMemoryFirewallMetadata, evaluateMemoryFirewall } from './firewall';
 
 function getMemoryStore(): Memory[] {
   const db = readDB();
@@ -545,9 +546,40 @@ export function fireReminder(id: string): void {
 
 export function addMemory(
   memory: Omit<Memory, 'id' | 'createdAt' | 'updatedAt' | 'lastRetrievedAt' | 'retrieveCount' | 'tier' | 'perspective' | 'importance' | 'parentId' | 'agentId' | 'nodeType'>,
-  overrides?: { tier?: Memory['tier']; perspective?: Memory['perspective']; importance?: number; parentId?: string | null; agentId?: string; nodeType?: Memory['nodeType']; location?: string; domain?: string; orgId?: string },
+  overrides?: {
+    tier?: Memory['tier'];
+    perspective?: Memory['perspective'];
+    importance?: number;
+    parentId?: string | null;
+    agentId?: string;
+    nodeType?: Memory['nodeType'];
+    location?: string;
+    domain?: string;
+    orgId?: string;
+    source?: Memory['source'];
+    privacyClass?: Memory['privacyClass'];
+    retention?: Memory['retention'];
+    userApproved?: boolean;
+  },
 ): Memory {
   const all = getMemoryStore();
+  const tier = overrides?.tier ?? 'episodic';
+  const domain = overrides?.domain ?? memory.domain ?? 'personal';
+  const orgId = overrides?.orgId ?? memory.orgId ?? '';
+  const firewall = evaluateMemoryFirewall({
+    userId: memory.userId,
+    content: memory.content,
+    tier,
+    source: overrides?.source ?? memory.source,
+    domain,
+    orgId,
+    privacyClass: overrides?.privacyClass ?? memory.privacyClass,
+    retention: overrides?.retention ?? memory.retention,
+    userApproved: overrides?.userApproved ?? memory.userApproved,
+  });
+  if (!firewall.accepted) {
+    throw new Error(`Memory blocked by firewall: ${firewall.reason}`);
+  }
 
   // Check for contradictions with existing memories of same user+type
   const candidates = all.filter(m => m.userId === memory.userId && m.type === memory.type);
@@ -578,8 +610,9 @@ export function addMemory(
     existing.confidence = Math.min(1, existing.confidence + 0.1);
     existing.importance = Math.max(existing.importance, overrides?.importance ?? 0.3);
     existing.updatedAt = now;
-    if (overrides?.domain) existing.domain = overrides.domain;
-    if (overrides?.orgId !== undefined) existing.orgId = overrides.orgId;
+    existing.domain = domain;
+    existing.orgId = orgId;
+    applyMemoryFirewallMetadata(existing, firewall);
     saveMemoryStore(all);
     return existing;
   }
@@ -591,16 +624,17 @@ export function addMemory(
     updatedAt: now,
     lastRetrievedAt: null,
     retrieveCount: 0,
-    tier: overrides?.tier ?? 'episodic',
+    tier,
     perspective: overrides?.perspective ?? 'owner_trait',
     importance: overrides?.importance ?? 0.3,
     parentId: overrides?.parentId ?? null,
     agentId: overrides?.agentId ?? '',
     nodeType: overrides?.nodeType ?? 'leaf',
     location: overrides?.location,
-    domain: overrides?.domain ?? memory.domain ?? 'personal',
-    orgId: overrides?.orgId ?? memory.orgId ?? '',
+    domain,
+    orgId,
   };
+  applyMemoryFirewallMetadata(newMemory, firewall);
 
   all.push(newMemory);
   saveMemoryStore(all);

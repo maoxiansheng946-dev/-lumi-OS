@@ -43,6 +43,21 @@ interface PersonalityConfig {
     maxMutationsPerStep: number;
   };
   lastEvolvedAt?: string | null;
+  growthState?: {
+    version: number;
+    lastUpdatedAt: string;
+    ownerInterests: string[];
+    ownerExpressions: string[];
+    communicationPatterns: string[];
+    adaptationNotes: string[];
+    ownerProfile?: {
+      memoryCount: number;
+      dominantTone: string;
+      formalityLevel: number;
+      emotionalExpressiveness: number;
+    };
+  };
+  evolutionFrozenAt?: string | null;
 }
 
 export function PersonalityEditor({ t }: { t?: any }) {
@@ -51,6 +66,7 @@ export function PersonalityEditor({ t }: { t?: any }) {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     identity: true,
+    growth: true,
     boundaries: false,
     expression: false,
     evolution: true,
@@ -141,6 +157,30 @@ export function PersonalityEditor({ t }: { t?: any }) {
             <label className="text-xs font-black uppercase text-white/55">{t?.coreMotivationLabel || 'Core Motivation'}</label>
             <p className="text-sm text-white/60 bg-white/5 rounded-xl p-3">{config.coreMotivation}</p>
           </div>
+          <ReadonlyField label="Evolution" value={config.evolutionFrozenAt ? `Frozen since ${new Date(config.evolutionFrozenAt).toLocaleString()}` : 'Active'} />
+        </Section>
+
+        {/* Growth State */}
+        <Section title="Local Growth State" section="growth" expanded={expandedSections} onToggle={toggleSection}>
+          {config.growthState ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <ReadonlyField label="Growth Version" value={String(config.growthState.version)} />
+                <ReadonlyField label="Last Updated" value={new Date(config.growthState.lastUpdatedAt).toLocaleString()} />
+              </div>
+              {config.growthState.ownerProfile && (
+                <div className="grid grid-cols-2 gap-4">
+                  <ReadonlyField label="Observed Tone" value={config.growthState.ownerProfile.dominantTone} />
+                  <ReadonlyField label="Profile Memories" value={String(config.growthState.ownerProfile.memoryCount)} />
+                </div>
+              )}
+              <ReadonlyField label="Owner Interests" value={(config.growthState.ownerInterests || []).join(', ') || 'none'} />
+              <ReadonlyField label="Owner Expressions" value={(config.growthState.ownerExpressions || []).join(', ') || 'none'} />
+              <ReadonlyField label="Communication Patterns" value={(config.growthState.communicationPatterns || []).join('; ') || 'none'} />
+            </div>
+          ) : (
+            <p className="text-white/45 text-xs">No local growth state yet. Lumi will build this from confirmed interaction patterns.</p>
+          )}
         </Section>
 
         {/* Evolution Vector */}

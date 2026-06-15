@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolPermission, SecurityLevel, ToolContext } from './types';
 import { ToolPolicy } from '../personality/types';
+import { evaluateActionConstitution } from './action_constitution';
 
 export type EffectiveSecurity = { level: SecurityLevel; reason: string };
 
@@ -131,14 +132,21 @@ export class ToolRegistry {
       throw new Error(`Tool "${name}" is forbidden: ${effective.reason}.`);
     }
 
-    if (effective.level === 'confirm') {
+    const constitutional = evaluateActionConstitution(name, args, effective.level, context);
+    if (constitutional.level === 'forbidden') {
+      throw new Error(`Tool "${name}" is forbidden: ${constitutional.reason}.`);
+    }
+
+    if (constitutional.level === 'confirm') {
       if (context?.requestConfirmation) {
         const allowed = await context.requestConfirmation(name, args);
         if (!allowed) {
           return `Tool "${name}" execution was declined by the user.`;
         }
+      } else if (effective.level === 'safe' && constitutional.requiresUserConfirmation) {
+        throw new Error(`Tool "${name}" requires user confirmation: ${constitutional.reason}.`);
       }
-      console.log(`[Tool] Executing confirmation-level tool: ${name}`);
+      console.log(`[Tool] Executing confirmation-level tool: ${name} (${constitutional.reason})`);
     }
 
     // Wrap with 30s timeout to prevent hanging (computer_use gets 180s — vision loop)

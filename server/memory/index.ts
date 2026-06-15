@@ -8,3 +8,5 @@ export type { BehavioralPattern } from './behavioral';
 export { initMemorySync, registerUserSocket, unregisterUserSocket, broadcastMemoryChange, broadcastDeviceChange, broadcastPreferenceChange } from './sync';
 export { buildNarrativeChain } from './narrative';
 export type { NarrativeChainResult } from './narrative';
+export { evaluateMemoryFirewall, getMemoryFirewallPolicy } from './firewall';
+export type { MemoryFirewallDecision, MemoryFirewallPolicy } from './firewall';

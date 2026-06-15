@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import { getLocalAgent, getAllSessions, getTasksForAgent, buildTaskListResponse, getActiveSharedContexts, removeSession } from './index';
+import { getLAPPolicySnapshot } from './policy';
 
 export const lapRoutes = Router();
 
 // Get local agent identity
 lapRoutes.get('/lap/identity', (_req, res) => {
   res.json(getLocalAgent());
+});
+
+// Get LAP collaboration policy and memory firewall rules.
+lapRoutes.get('/lap/policy', (_req, res) => {
+  res.json(getLAPPolicySnapshot());
 });
 
 // List all active LAP sessions

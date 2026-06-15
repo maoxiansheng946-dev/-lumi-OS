@@ -78,6 +78,37 @@ export interface MemoryPolicy {
   autoExtract: boolean;
 }
 
+export interface PersonalityGrowthState {
+  version: number;
+  lastUpdatedAt: string;
+  lastProfiledAt?: string;
+  ownerProfile?: {
+    memoryCount: number;
+    dominantTone: ExpressionStyle['tone'];
+    formalityLevel: number;
+    emotionalExpressiveness: number;
+  };
+  ownerInterests: string[];
+  ownerExpressions: string[];
+  communicationPatterns: string[];
+  adaptationNotes: string[];
+}
+
+export interface PersonalityEvolutionAudit {
+  id: string;
+  status: 'active' | 'reverted';
+  createdAt: string;
+  revertedAt?: string;
+  trigger: 'scheduled' | 'manual' | 'milestone' | 'conversation';
+  depth: 'lightweight' | 'full';
+  affectedLayer: 'core' | 'growth' | 'mixed';
+  reversible: boolean;
+  summary: string;
+  mutationFields: string[];
+  reasons: string[];
+  sourceMemoryCount?: number;
+}
+
 export interface PersonalityConfig {
   id: string;
   name: string;
@@ -133,6 +164,15 @@ export interface PersonalityConfig {
 
   /** Record of evolution steps applied to this personality */
   evolutionHistory?: any[];
+
+  /** User-specific growth state. This adapts Lumi to the owner without changing core identity. */
+  growthState?: PersonalityGrowthState;
+
+  /** If set, automatic and manual personality evolution are frozen until unfrozen. */
+  evolutionFrozenAt?: string | null;
+
+  /** Product-facing audit trail for evolution, rollback, and growth-state changes. */
+  evolutionAudit?: PersonalityEvolutionAudit[];
 }
 
 /** Active sensory channels from connected devices */

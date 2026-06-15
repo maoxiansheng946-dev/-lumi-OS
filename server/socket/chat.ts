@@ -934,7 +934,7 @@ export function registerChatHandler(
               userId: uid, type: mem.type, content: mem.content,
               keywords: mem.keywords, confidence: Math.min((mem.confidence || 0.5) + 0.2, 1.0),
               sourceInteractionId: interactionId, agentId: agentId || '',
-            } as any, { domain: resolvedDomain, orgId: resolvedOrgId });
+            } as any, { domain: resolvedDomain, orgId: resolvedOrgId, source: source === 'canvas' ? 'canvas' : 'chat' });
           }
           console.log(`[ChatHandler] Correction learned: ${corrected.memories.length} memories with boosted confidence`);
 
@@ -945,7 +945,7 @@ export function registerChatHandler(
               [
                 {
                   role: 'system',
-                  content: `Detect identity corrections. Lumi's coreMotivation:\n"${personalityConfig.coreMotivation}"\nLumi's belief about owner's interests: ${JSON.stringify((personalityConfig as any).ownerProfile?.interestClusters || [])}\n\nUser said: "${text}"\nLumi said: "${responseText.slice(0, 300)}"\n\nIs the user denying something Lumi believes about them (interest, trait, name, profession)? If YES, return JSON: {"correctsIdentity": true, "removeInterest": "exact text from coreMotivation to remove", "rewriteMotivation": "rewrite coreMotivation without the false claim, preserving everything else, or null"}. If NO, return {"correctsIdentity": false}.\nReturn ONLY JSON.`,
+                  content: `Detect identity corrections. Lumi's stable coreMotivation:\n"${personalityConfig.coreMotivation}"\nLumi's owner-specific growthState: ${JSON.stringify((personalityConfig as any).growthState || {})}\n\nUser said: "${text}"\nLumi said: "${responseText.slice(0, 300)}"\n\nIs the user denying something Lumi believes about them (interest, trait, name, profession)? If YES, return JSON: {"correctsIdentity": true, "removeInterest": "exact contradicted growth/core phrase to remove", "rewriteMotivation": "rewrite coreMotivation only if the false claim is inside coreMotivation, otherwise null"}. If NO, return {"correctsIdentity": false}.\nReturn ONLY JSON.`,
                 },
               ],
               [],
@@ -971,7 +971,7 @@ export function registerChatHandler(
 
       // Lightweight per-conversation evolution — micro-shifts after meaningful chats
       // Fires if enough owner_trait memories have accumulated, no 7-day wait needed
-      if (!isSanctuary && responseText && cognition.intent.category !== 'command') {
+      if (!isSanctuary && responseText && cognition.intent.category !== 'command' && !personalityRegistry.isEvolutionFrozen(personalityId)) {
         try {
           const evolutionConfig = personalityRegistry.getEvolutionConfig(personalityId);
           const step = await lightweightEvolve(
@@ -1013,7 +1013,7 @@ export function registerChatHandler(
             userId: uid, type: mem.type, content: mem.content,
             keywords: mem.keywords, confidence: mem.confidence, sourceInteractionId: interactionId,
             agentId: agentId || '',
-          } as any, { parentId, location: locationTag, domain: resolvedDomain, orgId: resolvedOrgId });
+          } as any, { parentId, location: locationTag, domain: resolvedDomain, orgId: resolvedOrgId, source: source === 'canvas' ? 'canvas' : 'chat' });
         }
         for (const rem of extracted.reminders) {
           addReminder({ userId: uid, content: rem.content, dueAt: rem.dueAt, sourceInteractionId: interactionId });

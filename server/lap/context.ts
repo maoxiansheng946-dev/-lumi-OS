@@ -1,10 +1,11 @@
 import type {
+  LAPContextEntry,
+  LAPContextFirewallDecision,
   LAPContextShareRequest,
   LAPContextShareResponse,
-  LAPContextEntry,
-  LAPContextScope,
   LAPSession,
 } from './types';
+import { evaluateLAPContextFirewall } from './firewall';
 
 interface SharedContextRecord {
   id: string;
@@ -12,46 +13,54 @@ interface SharedContextRecord {
   fromAgentId: string;
   toAgentId: string;
   entry: LAPContextEntry;
+  firewall: LAPContextFirewallDecision;
   sharedAt: string;
   expiresAt?: string;
 }
 
-const sharedContexts: Map<string, SharedContextRecord[]> = new Map(); // sessionId → records
+const sharedContexts: Map<string, SharedContextRecord[]> = new Map();
 
 export function shareContext(
   request: LAPContextShareRequest,
   session: LAPSession,
 ): LAPContextShareResponse {
   if (!session.scope.includes('share_context')) {
-    return { accepted: false, acceptedEntries: 0, rejectedEntries: request.contexts.length, reason: 'Session does not permit context sharing' };
+    return {
+      accepted: false,
+      acceptedEntries: 0,
+      rejectedEntries: request.contexts.length,
+      reason: 'Session does not permit context sharing',
+    };
   }
 
   let accepted = 0;
   let rejected = 0;
+  const rejectedReasons: string[] = [];
 
   for (const entry of request.contexts) {
-    if (!entry.payload || entry.confidence < 0) {
+    const firewall = evaluateLAPContextFirewall(entry, session);
+    if (!firewall.accepted || !firewall.normalizedEntry) {
       rejected++;
+      if (firewall.reason) rejectedReasons.push(firewall.reason);
       continue;
     }
 
+    const normalizedEntry = firewall.normalizedEntry;
     const record: SharedContextRecord = {
       id: `${session.sessionId}_ctx_${accepted}_${Date.now()}`,
       sessionId: session.sessionId,
       fromAgentId: session.peerA.agentId,
       toAgentId: session.peerB.agentId,
-      entry,
+      entry: normalizedEntry,
+      firewall,
       sharedAt: new Date().toISOString(),
     };
 
-    if (entry.scope === 'one-time') {
-      // Single-use — expires in 5 min
+    if (normalizedEntry.expiresAt) {
+      record.expiresAt = normalizedEntry.expiresAt;
+    } else if (normalizedEntry.scope === 'one-time') {
       record.expiresAt = new Date(Date.now() + 300_000).toISOString();
-    } else if (entry.scope === 'session') {
-      // Co-lives with session
-      record.expiresAt = undefined;
-    } else if (entry.scope === 'permanent') {
-      // Stays until explicitly revoked
+    } else {
       record.expiresAt = undefined;
     }
 
@@ -62,7 +71,13 @@ export function shareContext(
     accepted++;
   }
 
-  return { accepted: true, acceptedEntries: accepted, rejectedEntries: rejected };
+  return {
+    accepted: accepted > 0,
+    acceptedEntries: accepted,
+    rejectedEntries: rejected,
+    rejectedReasons: rejectedReasons.length ? rejectedReasons : undefined,
+    reason: accepted > 0 ? undefined : rejectedReasons[0],
+  };
 }
 
 export function getSharedContexts(sessionId: string): SharedContextRecord[] {
@@ -72,7 +87,7 @@ export function getSharedContexts(sessionId: string): SharedContextRecord[] {
 export function getActiveSharedContexts(sessionId: string): SharedContextRecord[] {
   const records = sharedContexts.get(sessionId) || [];
   const now = new Date().toISOString();
-  return records.filter(r => !r.expiresAt || r.expiresAt > now);
+  return records.filter(record => !record.expiresAt || record.expiresAt > now);
 }
 
 export function removeSharedContexts(sessionId: string): number {

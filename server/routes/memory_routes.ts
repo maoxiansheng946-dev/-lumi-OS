@@ -11,6 +11,7 @@ import { buildTree, moveNode, flattenTree, ensureBranch } from "../memory/tree";
 import { consolidateEpisodic, selfReflect, ConsolidationContext } from "../memory/consolidator";
 import { buildNarrativeChain } from "../memory/narrative";
 import { makeLLMCall } from "../llm/providers";
+import { getMemoryFirewallPolicy } from "../memory/firewall";
 
 function getAuthToken(req: any): string | undefined {
   let token = req.cookies?.token;
@@ -43,6 +44,10 @@ export function mountMemoryRoutes(
     getQwen?: () => any;
   },
 ) {
+  router.get("/memory/firewall/policy", (_req, res) => {
+    res.json(getMemoryFirewallPolicy());
+  });
+
   // Memory CRUD
   router.get("/memories", (req, res) => {
     const token = getAuthToken(req);
@@ -90,7 +95,7 @@ export function mountMemoryRoutes(
         keywords: keywords || [],
         confidence: confidence || 0.5,
         sourceInteractionId: 'manual',
-      }, { domain: scope.domain, orgId: scope.orgId });
+      }, { domain: scope.domain, orgId: scope.orgId, source: 'manual', userApproved: true });
       broadcastMemoryChange(decoded.uid, 'added', memory.id);
       res.json(memory);
     } catch (e: any) {
@@ -373,7 +378,7 @@ export function mountMemoryRoutes(
         confidence: tier === 'core_identity' ? 1.0 : mem.confidence,
         sourceInteractionId: mem.sourceInteractionId,
       },
-      { tier, perspective: mem.perspective, importance: tier === 'core_identity' ? Math.max(0.9, mem.importance) : mem.importance, parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId },
+      { tier, perspective: mem.perspective, importance: tier === 'core_identity' ? Math.max(0.9, mem.importance) : mem.importance, parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId, source: mem.source || 'manual', privacyClass: mem.privacyClass, retention: tier === 'core_identity' ? 'permanent' : mem.retention, userApproved: tier === 'core_identity' ? true : mem.userApproved },
     );
     broadcastMemoryChange(mem.userId, 'updated', updated.id);
     res.json({ success: true, memory: updated });
@@ -521,7 +526,7 @@ Rules:
       removeMemory(mem.id);
       const updated = addMemory(
         { userId: mem.userId, type: mem.type, content: mem.content, keywords: mem.keywords, confidence: mem.confidence, sourceInteractionId: mem.sourceInteractionId },
-        { tier: 'growth', perspective: mem.perspective, importance: Math.min(0.8, mem.importance), parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId },
+        { tier: 'growth', perspective: mem.perspective, importance: Math.min(0.8, mem.importance), parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId, source: mem.source || 'manual', privacyClass: mem.privacyClass, retention: mem.retention, userApproved: mem.userApproved },
       );
       broadcastMemoryChange(mem.userId, 'updated', updated.id);
       res.json({ success: true, protected: false, memory: updated });
@@ -529,7 +534,7 @@ Rules:
       removeMemory(mem.id);
       const updated = addMemory(
         { userId: mem.userId, type: mem.type, content: mem.content, keywords: mem.keywords, confidence: 1.0, sourceInteractionId: mem.sourceInteractionId },
-        { tier: 'core_identity', perspective: mem.perspective, importance: Math.max(0.9, mem.importance), parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId },
+        { tier: 'core_identity', perspective: mem.perspective, importance: Math.max(0.9, mem.importance), parentId: mem.parentId, agentId: mem.agentId, nodeType: mem.nodeType, domain: mem.domain || scope.domain, orgId: mem.orgId || scope.orgId, source: mem.source || 'manual', privacyClass: mem.privacyClass, retention: 'permanent', userApproved: true },
       );
       broadcastMemoryChange(mem.userId, 'updated', updated.id);
       res.json({ success: true, protected: true, memory: updated });

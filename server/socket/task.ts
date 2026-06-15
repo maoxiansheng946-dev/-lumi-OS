@@ -18,6 +18,7 @@ import { classifyComplexity, decomposeTask, matchWorkers, executeWorkflow, aggre
 import { getMessagesByTokenBudget, addMessage, extractTopics, trackTopic, getTopicContext } from "../conversation/manager";
 import { loadHIMState, saveHIMState, updateEmotionalStateWithHIM } from "../personality/state";
 import { shouldExposeAgentWork } from "../cognition/tool_intent";
+import { formatClientSelfPrompt } from "../client/self_model";
 
 export function registerTaskHandler(
   socket: Socket,
@@ -79,7 +80,7 @@ export function registerTaskHandler(
     let activeModel = (userLLMPrefs.models || {})[activeProvider] || DEFAULT_MODELS[activeProvider] || 'deepseek-chat';
 
     // ── Load persisted conversation history (survives page reload) ──
-    let effectiveSystemPrompt = systemInstruction;
+    let effectiveSystemPrompt = systemInstruction + '\n\n' + formatClientSelfPrompt(uid);
     const convForHistory = getOrCreateActiveConversation(uid);
     const voiceHistory: NormalizedMessage[] = [];
     if (convForHistory) {
@@ -363,7 +364,7 @@ export function registerTaskHandler(
             keywords: mem.keywords,
             confidence: mem.confidence,
             sourceInteractionId: db.interactions[db.interactions.length - 1]?.id || '',
-          } as any, { location: locationTag });
+          } as any, { location: locationTag, source: 'chat' });
         }
         for (const rem of extracted.reminders) {
           addReminder({

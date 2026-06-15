@@ -13,7 +13,7 @@
  *   EvolutionStep → [Apply to config] → personalities.json (version bump)
  */
 
-import { PersonalityConfig, ExpressionStyle } from './types';
+import { PersonalityConfig, ExpressionStyle, PersonalityGrowthState } from './types';
 import { Memory } from '../memory/types';
 import { queryMemories } from '../memory/store';
 import { NormalizedMessage, makeLLMCall } from '../llm/providers';
@@ -104,6 +104,64 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
   cooldownMs: 7 * 24 * 60 * 60 * 1000, // 7 days
   maxMutationsPerStep: 3,
 };
+
+function buildGrowthState(
+  previous: PersonalityGrowthState | undefined,
+  profile: OwnerProfile,
+  note: string,
+): PersonalityGrowthState {
+  const now = new Date().toISOString();
+  return {
+    version: (previous?.version || 0) + 1,
+    lastUpdatedAt: now,
+    lastProfiledAt: profile.synthesizedAt || now,
+    ownerProfile: {
+      memoryCount: profile.memoryCount,
+      dominantTone: profile.dominantTone,
+      formalityLevel: clamp01(profile.formalityLevel),
+      emotionalExpressiveness: clamp01(profile.emotionalExpressiveness),
+    },
+    ownerInterests: mergeStableList(previous?.ownerInterests || [], profile.interestClusters || [], 12),
+    ownerExpressions: mergeStableList(previous?.ownerExpressions || [], profile.frequentExpressions || [], 16),
+    communicationPatterns: mergeStableList(previous?.communicationPatterns || [], profile.communicationPatterns || [], 12),
+    adaptationNotes: mergeStableList(previous?.adaptationNotes || [], [note], 20),
+  };
+}
+
+function mergeStableList(current: string[], incoming: string[], limit: number): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of [...current, ...incoming]) {
+    const normalized = String(value || '').trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result.slice(-limit);
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0.5));
+}
+
+function addGrowthStateMutation(
+  config: PersonalityConfig,
+  profile: OwnerProfile,
+  mutations: EvolutionMutation[],
+  reason: string,
+): void {
+  const previous = config.growthState;
+  const next = buildGrowthState(previous, profile, reason);
+  if (JSON.stringify(previous || null) === JSON.stringify(next)) return;
+  mutations.push({
+    field: 'growthState',
+    from: previous || null,
+    to: next,
+    reason,
+  });
+}
 
 // ── Owner Profile Synthesis ──
 
@@ -292,43 +350,15 @@ export function computeMutations(
     }
 
     // 2. Vocabulary adoption (same logic, works with vector)
-    const currentHints = new Set((style.vocabularyHints || []).map(h => h.toLowerCase()));
-    const newExpressions = (profile.frequentExpressions || [])
-      .filter(expr => expr.length >= 2 && expr.length <= 8 && !currentHints.has(expr.toLowerCase()))
-      .slice(0, Math.ceil(3 * p));
-
-    if (newExpressions.length > 0) {
-      const merged = [...(style.vocabularyHints || []), ...newExpressions].slice(-15);
-      mutations.push({
-        field: 'expressionStyle.vocabularyHints',
-        from: style.vocabularyHints || [],
-        to: merged,
-        reason: `Adopting owner's expressions: ${newExpressions.join(', ')}`,
-      });
-    }
+    addGrowthStateMutation(
+      config,
+      profile,
+      mutations,
+      'Updated owner-specific growth state from vocabulary, interests, and communication patterns.',
+    );
 
     // 3. Interest absorption — append to coreMotivation if relevant.
     // Interest decay: skip clusters older than 60 days.
-    const freshInterests = (profile.interestClusterTimestamps && profile.interestClusters)
-      ? profile.interestClusters.filter((_, i) => {
-          const ts = profile.interestClusterTimestamps?.[i];
-          if (!ts) return true;
-          return Date.now() - new Date(ts).getTime() < 60 * 86400000;
-        })
-      : profile.interestClusters;
-    if (p >= 0.25 && freshInterests && freshInterests.length > 0) {
-      const topInterest = freshInterests[0];
-      if (topInterest && !config.coreMotivation.includes(topInterest)) {
-        const absorbed = ` I share my owner's interest in ${topInterest}.`;
-        mutations.push({
-          field: 'coreMotivation',
-          from: config.coreMotivation,
-          to: config.coreMotivation + absorbed,
-          reason: `Absorbing owner's interest: ${topInterest}`,
-        });
-      }
-    }
-
     return mutations;
   }
 
@@ -359,20 +389,12 @@ export function computeMutations(
   }
 
   // 2. Vocabulary adoption — add owner's expressions that aren't already in hints
-  const currentHintsLegacy = new Set((style.vocabularyHints || []).map(h => h.toLowerCase()));
-  const newExpressionsLegacy = (profile.frequentExpressions || [])
-    .filter(expr => expr.length >= 2 && expr.length <= 8 && !currentHintsLegacy.has(expr.toLowerCase()))
-    .slice(0, Math.ceil(3 * p));
-
-  if (newExpressionsLegacy.length > 0) {
-    const merged = [...(style.vocabularyHints || []), ...newExpressionsLegacy].slice(-15);
-    mutations.push({
-      field: 'expressionStyle.vocabularyHints',
-      from: style.vocabularyHints || [],
-      to: merged,
-      reason: `Adopting owner's frequently used expressions: ${newExpressionsLegacy.join(', ')}`,
-    });
-  }
+  addGrowthStateMutation(
+    config,
+    profile,
+    mutations,
+    'Updated owner-specific growth state from vocabulary, interests, and communication patterns.',
+  );
 
   // 3. Interest absorption — fold owner's interests into core motivation if relevant.
   // Decay: skip interests older than 60 days.
@@ -383,7 +405,7 @@ export function computeMutations(
         return Date.now() - new Date(ts).getTime() < 60 * 86400000;
       })
     : profile.interestClusters;
-  if (bestInterests && bestInterests.length > 0 && p >= 0.25) {
+  if (!mutations.some(m => m.field === 'growthState') && bestInterests && bestInterests.length > 0 && p >= 0.25) {
     const topInterests = bestInterests.slice(0, 3);
     const currentMotivation = config.coreMotivation;
     const interestMention = topInterests.join('、');
@@ -405,10 +427,10 @@ export function computeMutations(
         : newMotivation;
 
       mutations.push({
-        field: 'coreMotivation',
-        from: currentMotivation,
-        to: finalMotivation,
-        reason: `Absorbing owner's interests: ${interestMention}`,
+        field: 'growthState',
+        from: config.growthState || null,
+        to: buildGrowthState(config.growthState, profile, `Updated owner interest signals: ${interestMention}`),
+        reason: `Updated owner interest signals: ${interestMention}`,
       });
     }
   }
@@ -595,11 +617,10 @@ export async function lightweightEvolve(
   const effectivePlasticity = Math.min(effConfig.plasticity * 0.5, 0.15);
   const allMutations = computeMutations(config, profile, { ...effConfig, plasticity: effectivePlasticity });
 
-  // Filter: only vocabulary and coreMotivation mutations (no vector shifts)
+  // Filter: only owner-specific growth state mutations (no core/vector shifts)
   const mutations = allMutations.filter(m =>
-    m.field === 'expressionStyle.vocabularyHints' ||
-    m.field.startsWith('coreMotivation'),
-  ).slice(0, 2); // Max 2 per lightweight step
+    m.field === 'growthState',
+  ).slice(0, 1);
 
   if (mutations.length === 0) return null;
 

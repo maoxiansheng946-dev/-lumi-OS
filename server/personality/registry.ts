@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { PersonalityConfig, PersonalityContext } from './types';
+import { PersonalityConfig, PersonalityContext, PersonalityEvolutionAudit } from './types';
 import { generateSystemPrompt, initVectorFromStyle, vectorToTone, vectorToVerbosity, constrainVectorPairs } from './engine';
 import { Memory } from '../memory/types';
 import { EmotionalState } from './state';
@@ -121,9 +121,11 @@ class PersonalityRegistry {
    * Apply an evolution step to a personality, persisting the changes.
    * Returns the updated config.
    */
-  applyEvolution(personalityId: string, step: EvolutionStep): PersonalityConfig | null {
+  applyEvolution(personalityId: string, step: EvolutionStep, options?: { force?: boolean }): PersonalityConfig | null {
     const config = this.get(personalityId);
     if (!config) return null;
+    if (config.evolutionFrozenAt && !options?.force) return null;
+    const audit = this.buildEvolutionAudit(step);
 
     // Apply each mutation
     for (const m of step.mutations) {
@@ -145,7 +147,10 @@ class PersonalityRegistry {
     const extConfig = config as any;
     extConfig.lastEvolvedAt = step.timestamp;
     if (!extConfig.evolutionHistory) extConfig.evolutionHistory = [];
+    if (!extConfig.evolutionAudit) extConfig.evolutionAudit = [];
+    extConfig.evolutionAudit.push(audit);
     extConfig.evolutionHistory.push({
+      auditId: audit.id,
       version: step.version,
       timestamp: step.timestamp,
       trigger: step.trigger,
@@ -181,6 +186,16 @@ class PersonalityRegistry {
     if (parts[0] === 'personalityVector' && !config.personalityVector) {
       config.personalityVector = initVectorFromStyle(config.expressionStyle);
     }
+    if (parts[0] === 'growthState' && parts.length > 1 && !config.growthState) {
+      config.growthState = {
+        version: 0,
+        lastUpdatedAt: new Date().toISOString(),
+        ownerInterests: [],
+        ownerExpressions: [],
+        communicationPatterns: [],
+        adaptationNotes: [],
+      };
+    }
 
     let target: any = config;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -196,6 +211,40 @@ class PersonalityRegistry {
     }
   }
 
+  private buildEvolutionAudit(step: EvolutionStep): PersonalityEvolutionAudit {
+    const mutationFields = step.mutations.map(m => m.field);
+    const coreFields = mutationFields.filter(field =>
+      field === 'coreMotivation' ||
+      field.startsWith('behavioralBoundaries') ||
+      field.startsWith('toolPolicy') ||
+      field.startsWith('memoryPolicy'),
+    );
+    const growthFields = mutationFields.filter(field =>
+      field === 'growthState' ||
+      field.startsWith('growthState.') ||
+      field.startsWith('expressionStyle') ||
+      field.startsWith('personalityVector'),
+    );
+    const affectedLayer =
+      coreFields.length > 0 && growthFields.length > 0 ? 'mixed' :
+      coreFields.length > 0 ? 'core' :
+      'growth';
+
+    return {
+      id: `evo_${crypto.randomUUID()}`,
+      status: 'active',
+      createdAt: step.timestamp,
+      trigger: step.trigger,
+      depth: step.depth || 'full',
+      affectedLayer,
+      reversible: step.mutations.every(m => m.from !== undefined),
+      summary: step.narrative,
+      mutationFields,
+      reasons: step.mutations.map(m => m.reason),
+      sourceMemoryCount: step.ownerProfile?.memoryCount,
+    };
+  }
+
   /** Get the evolution config for a personality (with defaults) */
   getEvolutionConfig(personalityId: string): EvolutionConfig {
     const config = this.get(personalityId);
@@ -209,6 +258,64 @@ class PersonalityRegistry {
     const config = this.get(personalityId);
     if (!config) return [];
     return (config as any).evolutionHistory || [];
+  }
+
+  getEvolutionAudit(personalityId: string): PersonalityEvolutionAudit[] {
+    const config = this.get(personalityId);
+    if (!config) return [];
+    return ((config as any).evolutionAudit || []) as PersonalityEvolutionAudit[];
+  }
+
+  isEvolutionFrozen(personalityId: string): boolean {
+    const config = this.get(personalityId);
+    return Boolean(config?.evolutionFrozenAt);
+  }
+
+  setEvolutionFrozen(personalityId: string, frozen: boolean): PersonalityConfig | null {
+    const config = this.get(personalityId);
+    if (!config) return null;
+    config.evolutionFrozenAt = frozen ? new Date().toISOString() : null;
+    this.save();
+    this.broadcastFn?.('personality:evolution_freeze_changed', {
+      personalityId,
+      frozen,
+      frozenAt: config.evolutionFrozenAt,
+    });
+    return config;
+  }
+
+  revertEvolution(personalityId: string, auditId: string): PersonalityConfig | null {
+    const config = this.get(personalityId);
+    if (!config) return null;
+    const extConfig = config as any;
+    const audit = ((extConfig.evolutionAudit || []) as PersonalityEvolutionAudit[])
+      .find(entry => entry.id === auditId);
+    if (!audit || audit.status === 'reverted' || !audit.reversible) return null;
+    const history = (extConfig.evolutionHistory || []).find((entry: any) => entry.auditId === auditId);
+    if (!history?.mutations?.length) return null;
+
+    for (const mutation of [...history.mutations].reverse()) {
+      this.applyMutation(config, {
+        field: mutation.field,
+        from: mutation.to,
+        to: mutation.from,
+        reason: `Revert ${auditId}: ${mutation.reason}`,
+      });
+    }
+
+    audit.status = 'reverted';
+    audit.revertedAt = new Date().toISOString();
+    history.revertedAt = audit.revertedAt;
+    history.reverted = true;
+    const [major, minor] = (config.version || '2.3').split('.').map(Number);
+    config.version = `${major || 2}.${(minor || 0) + 1}`;
+    this.save();
+    this.broadcastFn?.('personality:evolution_reverted', {
+      personalityId,
+      auditId,
+      version: config.version,
+    });
+    return config;
   }
 
   /** Persist the current registry state to the user's state file (data/ — gitignored) */
@@ -276,6 +383,18 @@ class PersonalityRegistry {
         ownerProfile.interestClusters = ownerProfile.interestClusters.filter(
           (ic: string) => !ic.includes(changes.removeInterest!) && !changes.removeInterest!.includes(ic),
         );
+      }
+      if (config.growthState) {
+        const removeMatch = (value: string) =>
+          !value.includes(changes.removeInterest!) && !changes.removeInterest!.includes(value);
+        config.growthState.ownerInterests = (config.growthState.ownerInterests || []).filter(removeMatch);
+        config.growthState.ownerExpressions = (config.growthState.ownerExpressions || []).filter(removeMatch);
+        config.growthState.communicationPatterns = (config.growthState.communicationPatterns || []).filter(removeMatch);
+        config.growthState.adaptationNotes = [
+          ...(config.growthState.adaptationNotes || []),
+          `Removed contradicted owner signal: ${changes.removeInterest}`,
+        ].slice(-20);
+        config.growthState.lastUpdatedAt = new Date().toISOString();
       }
       // Also clean up any old evolution history references
       if (extConfig.evolutionHistory) {

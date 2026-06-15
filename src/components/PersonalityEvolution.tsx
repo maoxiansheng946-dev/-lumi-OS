@@ -24,12 +24,38 @@ interface EvolutionMutation {
 }
 
 interface EvolutionStep {
+  auditId?: string;
   version: string;
   timestamp: string;
   trigger: string;
   ownerProfile?: OwnerProfile;
   mutations: EvolutionMutation[];
   narrative: string;
+  reverted?: boolean;
+  revertedAt?: string;
+}
+
+interface EvolutionAuditEntry {
+  id: string;
+  status: 'active' | 'reverted';
+  createdAt: string;
+  revertedAt?: string;
+  trigger: string;
+  depth: string;
+  affectedLayer: 'core' | 'growth' | 'mixed';
+  reversible: boolean;
+  summary: string;
+  mutationFields: string[];
+  reasons: string[];
+  sourceMemoryCount?: number;
+}
+
+interface GrowthState {
+  version: number;
+  lastUpdatedAt: string;
+  ownerInterests: string[];
+  ownerExpressions: string[];
+  communicationPatterns: string[];
 }
 
 interface EvolutionData {
@@ -47,6 +73,9 @@ interface EvolutionData {
     maxMutationsPerStep: number;
   };
   history: EvolutionStep[];
+  audit?: EvolutionAuditEntry[];
+  growthState?: GrowthState | null;
+  evolutionFrozenAt?: string | null;
 }
 
 interface Props {
@@ -113,6 +142,8 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
   const [loading, setLoading] = useState(true);
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
   const [evolving, setEvolving] = useState(false);
+  const [freezing, setFreezing] = useState(false);
+  const [reverting, setReverting] = useState(false);
   const socket = useSocket();
 
   const fetchEvolutionData = useCallback(() => {
@@ -161,6 +192,44 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
     }
   };
 
+  const toggleFreeze = async () => {
+    if (!data) return;
+    setFreezing(true);
+    try {
+      const r = await fetch(`/api/personality/${personalityId}/evolution/freeze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frozen: !data.evolutionFrozenAt }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed to update freeze state');
+      fetchEvolutionData();
+      toast.success(data.evolutionFrozenAt ? 'Evolution unfrozen' : 'Evolution frozen');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setFreezing(false);
+    }
+  };
+
+  const revertSelected = async () => {
+    if (!selected?.auditId) return;
+    setReverting(true);
+    try {
+      const r = await fetch(`/api/personality/${personalityId}/evolution/revert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auditId: selected.auditId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed to revert evolution');
+      fetchEvolutionData();
+      toast.success('Evolution reverted');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setReverting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-zinc-950/60">
@@ -172,6 +241,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
   const hasHistory = data && data.history.length > 0;
   const evolutionSteps = data?.history || [];
   const selected = selectedStep !== null && selectedStep !== undefined ? evolutionSteps[selectedStep] : null;
+  const selectedAudit = selected?.auditId ? data?.audit?.find(a => a.id === selected.auditId) : null;
 
   const vectorToMap = (vec: Record<string, number>) => {
     const m: Record<string, number> = {};
@@ -196,14 +266,28 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
             )}
           </div>
         </div>
-        <button
-          onClick={triggerEvolution}
-          disabled={evolving}
-          className="flex items-center gap-2 px-4 py-2 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-xs font-black uppercase text-fuchsia-400 hover:bg-fuchsia-500/30 disabled:opacity-30 transition-all"
-        >
-          {evolving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-          {t.evolve || 'Evolve'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleFreeze}
+            disabled={freezing}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black uppercase transition-all border ${
+              data?.evolutionFrozenAt
+                ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                : 'bg-white/5 border-white/10 text-white/55 hover:bg-white/10'
+            }`}
+          >
+            {freezing ? <Loader2 size={12} className="animate-spin" /> : null}
+            {data?.evolutionFrozenAt ? 'Frozen' : 'Active'}
+          </button>
+          <button
+            onClick={triggerEvolution}
+            disabled={evolving || Boolean(data?.evolutionFrozenAt)}
+            className="flex items-center gap-2 px-4 py-2 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-xs font-black uppercase text-fuchsia-400 hover:bg-fuchsia-500/30 disabled:opacity-30 transition-all"
+          >
+            {evolving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {t.evolve || 'Evolve'}
+          </button>
+        </div>
       </div>
 
       {!hasHistory ? (
@@ -364,6 +448,37 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
                           ))}
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {selectedAudit && (
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-xs font-black text-white/55 uppercase tracking-wider">Evolution Audit</h3>
+                        <span className={`text-[11px] font-mono uppercase px-2 py-1 rounded-full ${
+                          selectedAudit.status === 'reverted'
+                            ? 'bg-zinc-500/20 text-zinc-300'
+                            : selectedAudit.affectedLayer === 'core'
+                            ? 'bg-red-500/20 text-red-300'
+                            : selectedAudit.affectedLayer === 'mixed'
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-emerald-500/20 text-emerald-300'
+                        }`}>
+                          {selectedAudit.status} / {selectedAudit.affectedLayer}
+                        </span>
+                      </div>
+                      <div className="text-[12px] text-white/50 space-y-1">
+                        <div>Audit ID: <span className="font-mono text-white/65">{selectedAudit.id}</span></div>
+                        <div>Reversible: {selectedAudit.reversible ? 'Yes' : 'No'}</div>
+                        <div>Fields: {selectedAudit.mutationFields.join(', ') || 'none'}</div>
+                      </div>
+                      <button
+                        onClick={revertSelected}
+                        disabled={!selectedAudit.reversible || selectedAudit.status === 'reverted' || reverting}
+                        className="px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-black uppercase disabled:opacity-30"
+                      >
+                        {reverting ? 'Reverting...' : 'Revert This Step'}
+                      </button>
                     </div>
                   )}
 

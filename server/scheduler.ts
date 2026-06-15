@@ -702,6 +702,7 @@ Rules:
         try {
           const config = personalityRegistry.get('lumi');
           if (!config) continue;
+          if (personalityRegistry.isEvolutionFrozen('lumi')) continue;
 
           // Gate: only evolve if enough new owner_trait memories since last evolution
           const db = readDB();

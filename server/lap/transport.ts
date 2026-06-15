@@ -29,8 +29,13 @@ let localAgent: LAPAgentIdentity = {
   agentId: `agent_${randomUUID().slice(0, 8)}`,
   userId: 'local_user',
   name: 'Lumi',
-  capabilities: ['chat', 'code', 'search', 'memory', 'file_ops', 'web_search', 'desktop'],
+  capabilities: ['chat', 'code', 'search', 'memory', 'file_ops', 'web_search', 'desktop', 'lap_collaboration', 'task_delegation'],
   publicKey: '',
+  publicProfile: {
+    displayName: 'Lumi',
+    description: 'Local-first desktop Lumi instance with scoped LAP collaboration.',
+    trustTags: ['local-first', 'user-owned', 'permissioned'],
+  },
 };
 
 export function setLocalAgent(identity: Partial<LAPAgentIdentity>): void {
