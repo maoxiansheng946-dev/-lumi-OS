@@ -557,7 +557,7 @@ export function registerChatHandler(
         // Path B: Orchestrator — decompose tasks into sub-tasks for worker agents
         // (Skipped for sanctuary agents — they stay in their territory)
         try {
-          socket.emit("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name });
+          socket.emit("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name, phase: exposeAgentWork ? 'orchestrator' : 'background' });
           const orchResult = await runOrchestratedTask(
             text,
             { userId: uid, personalityId, desktopRelay },
@@ -595,13 +595,13 @@ export function registerChatHandler(
         await autoInstallForTask(text, { emit: (event, data) => socket.emit(event, data) });
 
         try {
-          socket.emit("agent:status", { status: "thinking", agentName: "Lumi Office" });
+          socket.emit("agent:status", { status: "thinking", agentName: personality.name, phase: 'background' });
           const chainerResult = await runNLChainer(
             text,
             { userId: uid, provider: activeProvider, model: activeModel, desktopRelay, context: { isCancelled: () => abortController.signal.aborted, toolPolicy: personality.toolPolicy } },
             llmGetters,
             (step, total, desc) => {
-              socket.emit("agent:status", { status: "thinking", agentName: `Step ${step}/${total}: ${desc}` });
+              socket.emit("agent:status", { status: "thinking", agentName: personality.name, phase: 'background', detail: `Step ${step}/${total}: ${desc}` });
             },
           );
           if (chainerResult.finalResponse) {

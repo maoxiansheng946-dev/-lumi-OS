@@ -536,6 +536,7 @@ async function processVoiceInput(
     const complexity = classifyComplexity(userText, { userId: session.userId, personalityId: session.personalityId });
     if (allowToolUseForTurn && (complexity === 'complex' || complexity === 'moderate')) {
       try {
+        socket.emit("agent:status", { status: "thinking", agentName: "Lumi", phase: exposeAgentWork ? 'orchestrator' : 'background' });
         const voiceLeadIn = exposeAgentWork
           ? "\u6536\u5230\uff0c\u6b63\u5728\u8ba9\u56e2\u961f\u534f\u4f5c\u5904\u7406\u8fd9\u4e2a\u4efb\u52a1\u3002"
           : "\u6536\u5230\uff0c\u6211\u6765\u5904\u7406\u3002";

@@ -186,7 +186,7 @@ export function registerTaskHandler(
           const availableAgents = (db.agents || []).filter((a: any) => a.status !== 'offline');
           if (availableAgents.length >= 1) {
             try {
-              socket.emit("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name });
+              socket.emit("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name, phase: exposeAgentWork ? 'orchestrator' : 'background' });
               const subTasks = await decomposeTask(data.text, { provider: activeProvider, model: activeModel }, { userId: uid, personalityId: data.personalityId || 'lumi' }, llmGetters);
               if (exposeAgentWork) socket.emit("task:chunk", { text: `[Orchestrator] Decomposed into ${subTasks.length} sub-tasks\n`, agentName: "Lumi" });
 

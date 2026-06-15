@@ -1439,7 +1439,7 @@ export function DesktopUI({
     time: number;
   }>>([]);
   const [showMcpPanel, setShowMcpPanel] = useState(false);
-  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'executing' | 'done' | 'error'>('idle');
+  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error'>('idle');
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const seenWorkflowToolEvents = useRef<Set<string>>(new Set());
 
@@ -1599,13 +1599,17 @@ export function DesktopUI({
   useEffect(() => {
     if (!socket) return;
 
-    const onStatus = (data: { status: string; agentName?: string }) => {
+    const onStatus = (data: { status: string; agentName?: string; phase?: string; detail?: string }) => {
       if (data.status === 'thinking') {
-        setAgentStatus('thinking');
+        const isBackground = data.phase === 'background';
+        setAgentStatus(isBackground ? 'background' : 'thinking');
         setWorkflowSteps(prev => [...prev, {
           id: `thinking-${Date.now()}`,
-          type: 'thinking',
-          text: t.workflowAnalyzing || 'Analyzing your request...',
+          type: isBackground ? 'background' : 'thinking',
+          text: isBackground
+            ? (t.workflowBackgroundStep || 'Lumi is handling this in the background')
+            : (t.workflowAnalyzing || 'Analyzing your request...'),
+          detail: data.detail || (data.agentName && data.agentName !== 'Lumi' ? data.agentName : undefined),
           time: Date.now(),
         }]);
       } else if (data.status === 'idle') {
@@ -1672,6 +1676,20 @@ export function DesktopUI({
       }
     };
 
+    const onConfirmTool = (data: { correlationId: string; name: string; arguments?: any }) => {
+      setAgentStatus('waiting_confirmation');
+      const argsSummary = data.arguments
+        ? Object.entries(data.arguments).map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 30) : String(v).slice(0, 30)}`).join(', ')
+        : '';
+      setWorkflowSteps(prev => [...prev, {
+        id: `confirm-${data.correlationId || Date.now()}`,
+        type: 'confirmation',
+        text: `${t.workflowWaitingConfirm || 'Waiting for approval'}: ${data.name}`,
+        detail: argsSummary || (t.workflowConfirmHint || 'Review the permission dialog to continue.'),
+        time: Date.now(),
+      }]);
+    };
+
     const onResponse = (data: { text: string; agentName?: string }) => {
       setWorkflowSteps(prev => [...prev, {
         id: `resp-${Date.now()}`,
@@ -1724,6 +1742,7 @@ export function DesktopUI({
     socket.on('agent:status', onStatus);
     socket.on('agent:tool_call', onToolCall);
     socket.on('agent:tool', onToolCall);
+    socket.on('agent:confirm_tool', onConfirmTool);
     socket.on('agent:response', onResponse);
     socket.on('agent:error', onError);
     socket.on('agent:proactive', onProactive);
@@ -1799,6 +1818,7 @@ export function DesktopUI({
       socket.off('agent:status', onStatus);
       socket.off('agent:tool_call', onToolCall);
       socket.off('agent:tool', onToolCall);
+      socket.off('agent:confirm_tool', onConfirmTool);
       socket.off('agent:response', onResponse);
       socket.off('agent:error', onError);
       socket.off('agent:proactive', onProactive);

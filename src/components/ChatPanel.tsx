@@ -154,6 +154,20 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
       }
     };
 
+    const onError = (data: { message?: string }) => {
+      setIsTyping(false);
+      setIsStreaming(false);
+      setStreamingText('');
+      const message = data.message || (t?.requestFailed || 'Request failed');
+      setMessages(prev => [...prev, {
+        id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: 'lumi',
+        content: `${t?.requestFailed || 'Request failed'}\n\n${message}\n\n${toolFailureHint}`,
+        timestamp: new Date().toISOString(),
+      }]);
+      refreshConversations();
+    };
+
     const onToolCall = (data: {
       correlationId?: string;
       name: string;
@@ -203,6 +217,7 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
     socket.on('agent:response', onResponse);
     socket.on('agent:chunk', onChunk);
     socket.on('agent:status', onStatus);
+    socket.on('agent:error', onError);
     socket.on('agent:tool_call', onToolCall);
     socket.on('audio:transcript', onTranscript);
 
@@ -210,6 +225,7 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
       socket.off('agent:response', onResponse);
       socket.off('agent:chunk', onChunk);
       socket.off('agent:status', onStatus);
+      socket.off('agent:error', onError);
       socket.off('agent:tool_call', onToolCall);
       socket.off('audio:transcript', onTranscript);
     };
@@ -301,6 +317,8 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
     const val = typeof first[1] === 'string' ? first[1] : JSON.stringify(first[1]);
     return `${first[0]}: ${val.length > 50 ? val.slice(0, 50) + '...' : val}`;
   };
+
+  const toolFailureHint = t?.toolFailureHint || 'Check permission, adjust the request, or ask Lumi to retry.';
 
   const toolIcon = (name?: string) => {
     if (name?.startsWith('desktop_open')) return '🖥️';
@@ -526,7 +544,10 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
                         <p className="text-green-300/60 mt-0.5 ml-5 truncate">{msg.result.slice(0, 100)}</p>
                       )}
                       {msg.error && (
-                        <p className="text-red-300/60 mt-0.5 ml-5 truncate">{msg.error}</p>
+                        <>
+                          <p className="text-red-300/70 mt-0.5 ml-5 break-words">{msg.error}</p>
+                          <p className="text-red-200/45 mt-1 ml-5">{toolFailureHint}</p>
+                        </>
                       )}
                     </div>
                   </div>

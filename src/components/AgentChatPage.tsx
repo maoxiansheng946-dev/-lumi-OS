@@ -121,6 +121,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const agentName = agent?.name || (t.lumiEssence || 'Lumi Essence');
   const agentCategory = agent?.category || (t.friend || 'friend');
   const agentId = agent?.id || 'lumi';
+  const toolFailureHint = t.toolFailureHint || 'Check permission, adjust the request, or ask Lumi to retry.';
   const scopedConversationUrl = useCallback((path: string) => {
     const separator = path.includes('?') ? '&' : '?';
     return `${path}${separator}domain=${encodeURIComponent(workDomain)}&agentId=${encodeURIComponent(agentId)}`;
@@ -887,7 +888,10 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                         <div className="text-xs text-green-400/70 mt-1 truncate max-w-[250px]">{msg.toolResult.slice(0, 150)}</div>
                       )}
                       {msg.toolError && (
-                        <div className="text-xs text-red-400/70 mt-1">{msg.toolError}</div>
+                        <>
+                          <div className="text-xs text-red-400/80 mt-1 break-words">{msg.toolError}</div>
+                          <div className="text-xs text-red-300/50 mt-1">{toolFailureHint}</div>
+                        </>
                       )}
                     </div>
                   </motion.div>

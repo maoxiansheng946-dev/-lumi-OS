@@ -1,18 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BrainCircuit, Wrench, CheckCircle2, XCircle, MessageSquare, ChevronRight } from 'lucide-react';
+import { BrainCircuit, Wrench, CheckCircle2, XCircle, MessageSquare, ChevronRight, ShieldAlert } from 'lucide-react';
 
 export interface WorkflowStep {
   id: string;
-  type: 'thinking' | 'tool_start' | 'tool_result' | 'response' | 'error';
+  type: 'thinking' | 'background' | 'confirmation' | 'tool_start' | 'tool_result' | 'response' | 'error';
   text: string;
   time: number;
   detail?: string;
 }
 
+type WorkflowStatus = 'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error';
+
 interface WorkflowPanelProps {
   visible: boolean;
-  agentStatus: 'idle' | 'thinking' | 'executing' | 'done' | 'error';
+  agentStatus: WorkflowStatus;
   steps: WorkflowStep[];
   t?: any;
   placement?: 'center' | 'corner';
@@ -25,22 +27,26 @@ function StatusLights({ status }: { status: WorkflowPanelProps['agentStatus'] })
         className={`w-3 h-3 rounded-full transition-all duration-500 ${
           status === 'thinking'
             ? 'bg-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.6)] animate-pulse'
+            : status === 'background'
+              ? 'bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.55)] animate-pulse'
             : 'bg-white/10'
         }`}
-        style={status === 'thinking' ? { animationDuration: '1.5s' } : undefined}
+        style={status === 'thinking' || status === 'background' ? { animationDuration: '1.5s' } : undefined}
       />
       <div
         className={`w-3 h-3 rounded-full transition-all duration-500 ${
           status === 'executing'
             ? 'bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.6)] animate-pulse'
+            : status === 'waiting_confirmation'
+              ? 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.65)] animate-pulse'
             : 'bg-white/10'
         }`}
-        style={status === 'executing' ? { animationDuration: '0.8s' } : undefined}
+        style={status === 'executing' || status === 'waiting_confirmation' ? { animationDuration: '0.8s' } : undefined}
       />
       <div
         className={`w-3 h-3 rounded-full transition-all duration-500 ${
           status === 'done'
-            ? 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.5)]'
+            ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]'
             : status === 'error'
               ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.7)] animate-pulse'
               : 'bg-white/10'
@@ -54,14 +60,18 @@ function StatusLights({ status }: { status: WorkflowPanelProps['agentStatus'] })
 function StatusLabel({ status, t }: { status: WorkflowPanelProps['agentStatus']; t?: any }) {
   const label =
     status === 'thinking' ? (t?.thinking || 'Thinking...') :
+    status === 'background' ? (t?.workflowBackground || 'Working in background...') :
+    status === 'waiting_confirmation' ? (t?.workflowWaitingConfirm || 'Waiting for approval') :
     status === 'executing' ? (t?.workflowExecuting || 'Executing tools...') :
     status === 'done' ? (t?.workflowDone || 'Done') :
     status === 'error' ? (t?.workflowError || 'Error') :
     (t?.workflowIdle || 'Idle');
   const color =
     status === 'thinking' ? 'text-yellow-400' :
+    status === 'background' ? 'text-cyan-300' :
+    status === 'waiting_confirmation' ? 'text-amber-300' :
     status === 'executing' ? 'text-green-400' :
-    status === 'done' ? 'text-red-400' :
+    status === 'done' ? 'text-emerald-400' :
     status === 'error' ? 'text-red-500' :
     'text-white/55';
   return <span className={`text-xs font-black uppercase tracking-widest ${color}`}>{label}</span>;
@@ -71,6 +81,10 @@ function StepIcon({ type }: { type: WorkflowStep['type'] }) {
   switch (type) {
     case 'thinking':
       return <BrainCircuit size={12} className="text-yellow-400 shrink-0" />;
+    case 'background':
+      return <BrainCircuit size={12} className="text-cyan-300 shrink-0" />;
+    case 'confirmation':
+      return <ShieldAlert size={12} className="text-amber-300 shrink-0" />;
     case 'tool_start':
       return <Wrench size={12} className="text-blue-400 shrink-0" />;
     case 'tool_result':
@@ -84,6 +98,7 @@ function StepIcon({ type }: { type: WorkflowStep['type'] }) {
 
 export default function WorkflowPanel({ visible, agentStatus, steps, t, placement = 'center' }: WorkflowPanelProps) {
   const listRef = useRef<HTMLDivElement>(null);
+  const latestStep = steps[steps.length - 1];
   const isCorner = placement === 'corner';
   const verticalOffset = isCorner ? 20 : -20;
   const positionClass = isCorner
@@ -117,6 +132,15 @@ export default function WorkflowPanel({ visible, agentStatus, steps, t, placemen
                 {steps.length > 0 ? `${steps.length} ${t?.workflowSteps || 'steps'}` : ''}
               </span>
             </div>
+
+            {latestStep && (
+              <div className="border-l border-white/10 pl-3 py-0.5">
+                <div className="text-xs font-bold text-white/80 truncate">{latestStep.text}</div>
+                {latestStep.detail && (
+                  <div className="text-xs text-white/50 truncate mt-0.5">{latestStep.detail}</div>
+                )}
+              </div>
+            )}
 
             {/* Step log */}
             {steps.length > 0 && (
