@@ -5,7 +5,7 @@
  */
 import { ToolPolicy } from '../personality/types';
 
-export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting' | 'music';
 
 export interface OperationModeConfig {
   id: OperationMode;
@@ -110,10 +110,24 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
       maxIterations: 0,
     },
   },
+
+  music: {
+    id: 'music',
+    label: 'Music',
+    labelCN: 'Music',
+    description: 'Music listening and atmosphere mode. Lumi prioritizes playback, recommendations, lyrics, and mood layer control.',
+    promptOverlay: 'You are in music mode. Prioritize music playback, recommendations, lyrics, listening atmosphere, and mood layer control. Do not perform unrelated desktop, file, terminal, or automation work unless the user explicitly switches modes.',
+    toolPolicy: {
+      allowedTools: [],
+      requireConfirmation: [],
+      forbiddenTools: ['*'],
+      maxIterations: 0,
+    },
+  },
 };
 
 export function normalizeOperationMode(mode?: string): OperationMode {
-  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting') return mode;
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting' || mode === 'music') return mode;
   if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
   return 'assistant';
 }

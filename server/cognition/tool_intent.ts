@@ -20,7 +20,7 @@ export function hasExplicitToolIntent(text: string): boolean {
 export function shouldAllowToolUseForTurn(text: string, source?: string, operationMode?: string): boolean {
   if (source === 'canvas') return true;
   const mode = normalizeOperationMode(operationMode);
-  if (mode === 'chat' || mode === 'meeting') return false;
+  if (mode === 'chat' || mode === 'meeting' || mode === 'music') return false;
   if (mode === 'autonomous' && AUTONOMOUS_TASK_PATTERNS.some((pattern) => pattern.test(text.trim()))) return true;
   if (hasExplicitToolIntent(text)) return true;
   return false;

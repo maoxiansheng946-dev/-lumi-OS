@@ -265,7 +265,7 @@ async function processVoiceInput(
   const allowToolUseForTurn = shouldAllowToolUseForTurn(userText, undefined, operationMode);
   const exposeAgentWork = shouldExposeAgentWork(userText);
   logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode}`);
-  const opModeOverlay = opModeConfigV && allowToolUseForTurn ? '\n\n' + opModeConfigV.promptOverlay : '';
+  const opModeOverlay = opModeConfigV && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting') ? '\n\n' + opModeConfigV.promptOverlay : '';
   const interactionOverlay = allowToolUseForTurn
     ? toolVoiceOverlay
     : baseVoiceOverlay + '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, assemble a team, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';

@@ -317,7 +317,7 @@ export function registerChatHandler(
       const allowToolUseForTurn = shouldAllowToolUseForTurn(text, source, operationMode);
       const exposeAgentWork = shouldExposeAgentWork(text);
       console.log('[ChatHandler] tool gate:', allowToolUseForTurn ? 'enabled' : 'chat-only', 'operationMode:', operationMode);
-      if (opModeConfig && allowToolUseForTurn) {
+      if (opModeConfig && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting')) {
         effectiveSystemPrompt += '\n\n' + opModeConfig.promptOverlay;
       } else {
         effectiveSystemPrompt += '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';

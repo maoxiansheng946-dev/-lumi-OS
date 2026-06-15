@@ -2472,6 +2472,14 @@ export function DesktopUI({
       icon: <FileText size={16} />,
     },
     {
+      id: 'music' as const,
+      label: t.modeMusic || (lang === 'zh' ? '音乐' : 'Music'),
+      title: t.modeMusicTitle || (lang === 'zh' ? '音乐模式' : 'Music mode'),
+      description: t.modeMusicDesc || (lang === 'zh' ? '专注播放、推荐、歌词和氛围层；不自动打开窗口，不处理无关执行任务。' : 'Focuses on playback, recommendations, lyrics, and mood layer without opening windows or doing unrelated execution work.'),
+      hint: t.modeMusicHint || (lang === 'zh' ? 'Listening atmosphere' : 'Listening atmosphere'),
+      icon: <Music size={16} />,
+    },
+    {
       id: 'assistant' as const,
       label: t.modeAssistant || '助手',
       title: t.modeAssistantTitle || '助手模式',
