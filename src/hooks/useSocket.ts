@@ -6,6 +6,7 @@ import { socketService } from '@/services/socketService';
 const isTauri = isTauriRuntime();
 let registeredSocket: Socket | null = null;
 let deviceConnectHandler: (() => void) | null = null;
+let cursorGlowWatchdog: ReturnType<typeof setTimeout> | null = null;
 
 function registerSharedSocketHandlers(socket: Socket) {
   if (registeredSocket === socket) return;
@@ -218,11 +219,27 @@ async function handleDesktopExec(socket: Socket, data: {
         break;
       }
       case 'desktop_set_wallpaper_mode': {
-        output = `Wallpaper mode: ${args.enabled ? 'ON' : 'OFF'}`;
+        if (args.source !== 'computer_use') {
+          output = 'Wallpaper mode request ignored: only controlled computer_use sessions may toggle it.';
+          break;
+        }
+        window.dispatchEvent(new CustomEvent('lumi:set-wallpaper-mode', {
+          detail: {
+            enabled: Boolean(args.enabled),
+            source: args.source,
+            timeoutMs: Number(args.timeoutMs || 190000),
+          },
+        }));
+        output = `Wallpaper mode ${args.enabled ? 'enabled' : 'disabled'} for computer_use`;
         break;
       }
       case 'desktop_cursor_glow_show': {
         window.dispatchEvent(new CustomEvent('cursor-glow:show'));
+        if (cursorGlowWatchdog) clearTimeout(cursorGlowWatchdog);
+        cursorGlowWatchdog = setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('cursor-glow:hide'));
+          cursorGlowWatchdog = null;
+        }, Number(args.timeoutMs || 190000));
         output = 'Glow shown';
         break;
       }
@@ -232,6 +249,10 @@ async function handleDesktopExec(socket: Socket, data: {
         break;
       }
       case 'desktop_cursor_glow_hide': {
+        if (cursorGlowWatchdog) {
+          clearTimeout(cursorGlowWatchdog);
+          cursorGlowWatchdog = null;
+        }
         window.dispatchEvent(new CustomEvent('cursor-glow:hide'));
         output = 'Glow hidden';
         break;

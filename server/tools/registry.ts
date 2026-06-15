@@ -143,10 +143,20 @@ export class ToolRegistry {
 
     // Wrap with 30s timeout to prevent hanging (computer_use gets 180s — vision loop)
     const timeoutMs = name === 'computer_use' ? 180_000 : 30_000;
+    let timedOut = false;
+    const executionContext = context
+      ? {
+          ...context,
+          isCancelled: () => timedOut || context.isCancelled?.() === true,
+        }
+      : context;
     const result = await Promise.race([
-      tool.handler(args, context),
+      tool.handler(args, executionContext),
       new Promise<string>((_, reject) =>
-        setTimeout(() => reject(new Error(`Tool "${name}" timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+        setTimeout(() => {
+          timedOut = true;
+          reject(new Error(`Tool "${name}" timed out after ${timeoutMs / 1000}s`));
+        }, timeoutMs)
       ),
     ]);
 

@@ -62,15 +62,6 @@ export function DesktopApp() {
     }
   };
 
-  const handleExit = async () => {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('close_window');
-    } catch {
-      setActiveTab('home');
-    }
-  };
-
   return (
     <div className="h-screen w-full bg-transparent overflow-hidden">
       <ProactiveNotifications />
@@ -83,7 +74,7 @@ export function DesktopApp() {
         <>
           <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.5 }} className="h-full w-full">
             <DesktopUI t={shell.t} user={shell.user} lang={shell.lang} setLang={shell.setLang} activeTab={activeTab} setActiveTab={setActiveTab}
-              onLogin={shell.handleLogin} onExit={handleExit} renderTabContent={renderTabContent} />
+              onLogin={shell.handleLogin} renderTabContent={renderTabContent} />
           </motion.div>
           <LoginModal t={shell.t} isOpen={shell.isLoginModalOpen} onClose={() => shell.setIsLoginModalOpen(false)} onLoginSuccess={() => shell.refreshUser()} onGoogleLogin={shell.handleLogin} />
         </>

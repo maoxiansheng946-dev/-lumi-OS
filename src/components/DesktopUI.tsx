@@ -1231,7 +1231,6 @@ export function DesktopUI({
   activeTab, 
   setActiveTab, 
   onLogin, 
-  onExit,
   renderTabContent 
 }: { 
   t: any; 
@@ -1241,7 +1240,6 @@ export function DesktopUI({
   activeTab: string; 
   setActiveTab: (tab: string) => void; 
   onLogin: () => void;
-  onExit: () => void;
   renderTabContent: (tab: string) => React.ReactNode;
 }) {
   // Camera and Environment state
@@ -1341,19 +1339,51 @@ export function DesktopUI({
   const [volume, setVolume] = useState(60);
   const [time, setTime] = useState(new Date());
   const [isWallpaperMode, setIsWallpaperMode] = useState(false);
+  const isWallpaperModeRef = useRef(false);
+  const wallpaperAutomationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wallpaperWasEnabledBeforeAutomationRef = useRef(false);
   const [editMode, setEditMode] = useState(false);
   const [iconPositions, setIconPositions] = useState<Record<string, { x: number; y: number }>>(() => {
-    try { return JSON.parse(localStorage.getItem('lumi_icon_positions') || '{}'); } catch { return {}; }
+    try {
+      const layoutVersionKey = 'lumi_icon_layout_version';
+      const orgFirstVersion = 'org-first-v1';
+      const positions = JSON.parse(localStorage.getItem('lumi_icon_positions') || '{}') as Record<string, { x: number; y: number }>;
+      if (localStorage.getItem(layoutVersionKey) !== orgFirstVersion) {
+        const firstSlot = { x: 40, y: 0 };
+        const secondSlot = { x: 170, y: 0 };
+        const previousWorkbenchSlot = positions.workbench;
+        const firstSlotEntry = Object.entries(positions).find(([id, pos]) =>
+          id !== 'workbench' && Math.abs(pos.x - firstSlot.x) < 2 && Math.abs(pos.y - firstSlot.y) < 2
+        );
+        const nextPositions = { ...positions, workbench: firstSlot };
+        if (firstSlotEntry) {
+          const targetSlot = previousWorkbenchSlot && (
+            Math.abs(previousWorkbenchSlot.x - firstSlot.x) >= 2 || Math.abs(previousWorkbenchSlot.y - firstSlot.y) >= 2
+          )
+            ? previousWorkbenchSlot
+            : secondSlot;
+          nextPositions[firstSlotEntry[0]] = targetSlot;
+        }
+        localStorage.setItem('lumi_icon_positions', JSON.stringify(nextPositions));
+        localStorage.setItem(layoutVersionKey, orgFirstVersion);
+        return nextPositions;
+      }
+      return positions;
+    } catch { return {}; }
   });
   const [wallpaper, setWallpaper] = useState<string>(() => localStorage.getItem('lumi_wallpaper_type') || 'celestial');
   const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => localStorage.getItem('lumi_wallpaper_url') || '');
   const wallpaperInputRef = React.useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    isWallpaperModeRef.current = isWallpaperMode;
+  }, [isWallpaperMode]);
+
   // Desktop icon layout: absolute positioning, 4 columns, fixed spacing
   const isOrgAdmin = orgConnection?.connected && (orgConnection.orgRole === 'owner' || orgConnection.orgRole === 'admin');
   const desktopIcons = [
-    { id: 'files', labelKey: 'files', icon: <Folder size={24} />, colorClass: 'from-celestial-saturn to-amber-600', windowId: 'files' },
     { id: 'workbench', labelKey: 'orgWorkbench', icon: <Briefcase size={24} />, colorClass: 'from-blue-500 to-indigo-600', windowId: 'org' as const },
+    { id: 'files', labelKey: 'files', icon: <Folder size={24} />, colorClass: 'from-celestial-saturn to-amber-600', windowId: 'files' },
     { id: 'tools', labelKey: 'tools', icon: <Wrench size={24} />, colorClass: 'from-amber-500 to-orange-600', windowId: 'tools' },
     { id: 'skills', labelKey: 'skills', icon: <Sparkles size={24} />, colorClass: 'from-emerald-500 to-teal-600', windowId: 'skills' },
     { id: 'memory-avatar', labelKey: 'memoryAvatars', icon: <Castle size={24} />, colorClass: 'from-fuchsia-500 to-purple-600', windowId: 'memory-avatar' },
@@ -1589,14 +1619,70 @@ export function DesktopUI({
     systemService.getBrightness().then(b => setBrightness(b));
   }, []);
 
+  const applyWallpaperMode = useCallback((enabled: boolean, options: { silent?: boolean; timeoutMs?: number } = {}) => {
+    if (wallpaperAutomationTimerRef.current) {
+      clearTimeout(wallpaperAutomationTimerRef.current);
+      wallpaperAutomationTimerRef.current = null;
+    }
+
+    setIsWallpaperMode(enabled);
+    void systemService.setWallpaperMode(enabled);
+
+    if (enabled && options.timeoutMs) {
+      wallpaperAutomationTimerRef.current = setTimeout(() => {
+        if (!wallpaperWasEnabledBeforeAutomationRef.current) {
+          setIsWallpaperMode(false);
+          void systemService.setWallpaperMode(false);
+        }
+        wallpaperWasEnabledBeforeAutomationRef.current = false;
+        wallpaperAutomationTimerRef.current = null;
+        toast(t.wallpaperAutoRestored || 'Wallpaper mode restored after desktop control timeout', {
+          icon: <Box className="text-white/40" />,
+        });
+      }, Math.max(15_000, options.timeoutMs));
+    }
+
+    if (!options.silent) {
+      toast(enabled ? (t.wallpaperFusionActive || 'Wallpaper Fusion Active') : (t.standardFocusMode || 'Standard Focus Mode'), {
+        icon: enabled ? <Sparkles className="text-celestial-saturn" /> : <Box className="text-white/40" />
+      });
+    }
+  }, [t]);
+
   const toggleWallpaperMode = useCallback(() => {
-    const nextMode = !isWallpaperMode;
-    setIsWallpaperMode(nextMode);
-    systemService.setWallpaperMode(nextMode);
-    toast(nextMode ? (t.wallpaperFusionActive || 'Wallpaper Fusion Active') : (t.standardFocusMode || 'Standard Focus Mode'), {
-      icon: nextMode ? <Sparkles className="text-celestial-saturn" /> : <Box className="text-white/40" />
-    });
-  }, [isWallpaperMode, t]);
+    applyWallpaperMode(!isWallpaperMode);
+  }, [applyWallpaperMode, isWallpaperMode]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled?: boolean; timeoutMs?: number }>).detail || {};
+      const enabled = Boolean(detail.enabled);
+      if (enabled) {
+        wallpaperWasEnabledBeforeAutomationRef.current = isWallpaperModeRef.current;
+      } else if (wallpaperWasEnabledBeforeAutomationRef.current) {
+        if (wallpaperAutomationTimerRef.current) {
+          clearTimeout(wallpaperAutomationTimerRef.current);
+          wallpaperAutomationTimerRef.current = null;
+        }
+        wallpaperWasEnabledBeforeAutomationRef.current = false;
+        return;
+      }
+
+      applyWallpaperMode(enabled, {
+        silent: true,
+        timeoutMs: enabled ? detail.timeoutMs : undefined,
+      });
+      if (!enabled) wallpaperWasEnabledBeforeAutomationRef.current = false;
+    };
+    window.addEventListener('lumi:set-wallpaper-mode', handler);
+    return () => {
+      window.removeEventListener('lumi:set-wallpaper-mode', handler);
+      if (wallpaperAutomationTimerRef.current) {
+        clearTimeout(wallpaperAutomationTimerRef.current);
+        wallpaperAutomationTimerRef.current = null;
+      }
+    };
+  }, [applyWallpaperMode]);
 
 
   // MCP Live Activity socket listener
@@ -2196,6 +2282,10 @@ export function DesktopUI({
     </div>
   );
 
+  const tutorialLabel = t.showTutorial || (lang === 'zh' ? '教程' : 'Tutorial');
+  const editDesktopLabel = t.editDesktop || (lang === 'zh' ? '编辑桌面' : 'Edit Desktop');
+  const doneEditingLabel = t.doneEditing || (lang === 'zh' ? '完成编辑' : 'Done Editing');
+
   return (
     <div
       data-mode={isLightMode ? 'light' : 'dark'}
@@ -2407,21 +2497,27 @@ export function DesktopUI({
                <span className="text-xs font-black tracking-widest uppercase text-white/60">{t.lumiOS || 'Lumi OS'}</span>
             </button>
             <div className="h-4 w-px bg-white/10" />
-            <div className="flex gap-4">
-              <TopMenuButton label={t.file || 'File'}>
-                <button onClick={openNativeFilesWindow} className="w-full text-left px-4 py-2 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors">{t.openFiles || 'Open Files'}</button>
-                <button onClick={() => { toggleWindow('settings'); }} className="w-full text-left px-4 py-2 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors">{t.settings || 'Settings'}</button>
-                <button onClick={() => { setShowOnboarding(true); }} className="w-full text-left px-4 py-2 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors">{t.showTutorial || 'Show Tutorial'}</button>
-                <button onClick={onExit} className="w-full text-left px-4 py-2 text-xs text-red-400/70 hover:text-red-400 hover:bg-white/10 transition-colors">{t.exit || 'Exit'}</button>
-              </TopMenuButton>
-              <TopMenuButton label={t.edit || 'Edit'}>
-                <button onClick={() => {
-                  setEditMode(!editMode);
-                }} className="w-full text-left px-4 py-2 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors">
-                  {editMode ? (t.doneEditing || 'Done Editing') : (t.editDesktop || 'Edit Desktop')}
-                </button>
-                <button onClick={() => { toggleWindow('settings'); setSettingsSection('general'); }} className="w-full text-left px-4 py-2 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors">{t.theme || 'Theme'}</button>
-              </TopMenuButton>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowOnboarding(true)}
+                className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black uppercase tracking-widest text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+                title={tutorialLabel}
+              >
+                <Sparkles size={12} />
+                {tutorialLabel}
+              </button>
+              <button
+                onClick={() => setEditMode((current) => !current)}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black uppercase tracking-widest transition-colors ${
+                  editMode
+                    ? 'border border-celestial-saturn/30 bg-celestial-saturn/15 text-celestial-saturn'
+                    : 'text-white/50 hover:bg-white/10 hover:text-white'
+                }`}
+                title={editMode ? doneEditingLabel : editDesktopLabel}
+              >
+                <Brush size={12} />
+                {editMode ? doneEditingLabel : editDesktopLabel}
+              </button>
             </div>
           </div>
 
@@ -3386,39 +3482,6 @@ function BatteryIndicator() {
     <div className="flex items-center gap-1" title={`电池 ${level}%${charging ? ' (充电中)' : ''}`}>
       <Battery size={14} className={level <= 20 ? 'text-red-400' : level <= 50 ? 'text-yellow-400' : ''} />
       <span className="text-xs font-bold">{level}%</span>
-    </div>
-  );
-}
-
-function TopMenuButton({ label, onClick, children }: { label: string; onClick?: () => void; children?: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickAway(ref, () => setOpen(false));
-
-  if (!children) {
-    return (
-      <button onClick={onClick} className="text-xs font-bold text-white/55 hover:text-white uppercase tracking-widest transition-colors">
-        {label}
-      </button>
-    );
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        onMouseEnter={() => setOpen(true)}
-        className="text-xs font-bold text-white/55 hover:text-white uppercase tracking-widest transition-colors"
-      >{label}</button>
-      {open && (
-        <div
-          className="absolute top-5 left-0 z-[110] py-2 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl min-w-[120px]"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-        >
-          {children}
-        </div>
-      )}
     </div>
   );
 }

@@ -107,6 +107,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function isCancelled(options: Pick<ComputerUseOptions, 'isCancelled'>): boolean {
+  return options.isCancelled?.() === true;
+}
+
 // ── Vision model call ──
 
 async function callVisionModel(
@@ -242,11 +246,24 @@ export async function computerUseLoop(
   task: string,
   options: ComputerUseOptions,
 ): Promise<string> {
-  const maxIter = options.maxIterations || 15;
+  const maxIter = options.maxIterations || 12;
   const actionHistory: string[] = [];
   let consecutiveErrors = 0;
+  let wallpaperModeEnabled = false;
 
   // ── Enter desktop control: show cursor glow so user sees where Lumi is clicking ──
+  try {
+    await options.desktopRelay('desktop_set_wallpaper_mode', {
+      enabled: true,
+      source: 'computer_use',
+      timeoutMs: 190_000,
+    });
+    wallpaperModeEnabled = true;
+    options.onProgress?.('Wallpaper mode enabled for desktop control');
+  } catch (e: any) {
+    options.onProgress?.(`Wallpaper mode unavailable: ${e.message}`);
+  }
+
   try {
     await options.desktopRelay('desktop_cursor_glow_show', {});
     options.onProgress?.('光标光效已开启');
@@ -256,7 +273,7 @@ export async function computerUseLoop(
 
   try {
     for (let i = 0; i < maxIter; i++) {
-    if (options.isCancelled?.()) {
+    if (isCancelled(options)) {
       return `Task cancelled by user after ${i} step(s). Last actions: ${actionHistory.slice(-3).join('; ') || 'none'}`;
     }
 
@@ -277,6 +294,10 @@ export async function computerUseLoop(
     }
 
     // ── 2. Vision analysis ──
+    if (isCancelled(options)) {
+      return `Task cancelled after screenshot capture. Last actions: ${actionHistory.slice(-3).join('; ') || 'none'}`;
+    }
+
     let responseText: string;
     try {
       responseText = await callVisionModel(screenshotBase64, screenshotMime, task, actionHistory, options.llmGetters);
@@ -291,6 +312,10 @@ export async function computerUseLoop(
     }
 
     // ── 3. Parse action ──
+    if (isCancelled(options)) {
+      return `Task cancelled after vision analysis. Last actions: ${actionHistory.slice(-3).join('; ') || 'none'}`;
+    }
+
     let action = extractActionJSON(responseText);
     if (!action) {
       options.onProgress?.(`[${i + 1}/${maxIter}] Could not parse action from: ${responseText.slice(0, 80)}`);
@@ -321,6 +346,9 @@ export async function computerUseLoop(
     }
 
     try {
+      if (isCancelled(options)) {
+        return `Task cancelled before desktop action. Last actions: ${actionHistory.slice(-3).join('; ') || 'none'}`;
+      }
       await executeAction(action, options.desktopRelay);
       // Brief pause to let UI respond before next screenshot
       await sleep(400);
@@ -334,6 +362,12 @@ export async function computerUseLoop(
   return `Reached maximum of ${maxIter} iterations. Last actions: ${actionHistory.slice(-5).join('; ') || 'none'}`;
   } finally {
     options.desktopRelay('desktop_cursor_glow_hide', {}).catch(() => {});
+    if (wallpaperModeEnabled) {
+      options.desktopRelay('desktop_set_wallpaper_mode', {
+        enabled: false,
+        source: 'computer_use',
+      }).catch(() => {});
+    }
     options.onProgress?.('光标光效已关闭');
   }
 }
