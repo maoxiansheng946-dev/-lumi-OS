@@ -99,7 +99,8 @@ export function CanvasViewport({
 }: CanvasViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [edgeInstruction, setEdgeInstruction] = useState('');
-  const { scale, viewportStyle, resetView } = useCanvasPanZoom(containerRef);
+  const { scale, viewportStyle, resetView, focusOnRect, wasRecentlyManual } = useCanvasPanZoom(containerRef);
+  const lastAutoFocusedSignature = useRef<string | null>(null);
 
   const positioned = useMemo(() => {
     const viewportWidth = containerRef.current?.clientWidth || 1200;
@@ -117,10 +118,45 @@ export function CanvasViewport({
   );
   const selectedSource = selectedEdge ? positioned.find(card => card.id === selectedEdge.sourceId) : null;
   const selectedTarget = selectedEdge ? positioned.find(card => card.id === selectedEdge.targetId) : null;
+  const latestCard = useMemo(() => {
+    if (positioned.length === 0) return null;
+    const sorted = [...positioned].sort((a, b) => a.timestamp - b.timestamp);
+    return [...sorted].reverse().find(card => card.status === 'running') || sorted[sorted.length - 1];
+  }, [positioned]);
 
   useEffect(() => {
     setEdgeInstruction('');
   }, [selectedEdgeId]);
+
+  useEffect(() => {
+    if (!latestCard) {
+      lastAutoFocusedSignature.current = null;
+      return;
+    }
+
+    const signature = `${latestCard.id}:${latestCard.status || 'none'}:${cards.length}`;
+    if (lastAutoFocusedSignature.current === signature) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const focusLatest = () => {
+      if (wasRecentlyManual(1800) && lastAutoFocusedSignature.current !== null) {
+        timer = setTimeout(focusLatest, 450);
+        return;
+      }
+
+      focusOnRect(latestCard, {
+        anchorX: 0.42,
+        anchorY: 0.5,
+        scale,
+      });
+      lastAutoFocusedSignature.current = signature;
+    };
+
+    timer = setTimeout(focusLatest, 80);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [cards.length, focusOnRect, latestCard, scale, wasRecentlyManual]);
 
   const svgWidth = 8000;
   const svgHeight = 8000;

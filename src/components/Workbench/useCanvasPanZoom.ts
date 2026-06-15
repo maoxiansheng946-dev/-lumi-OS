@@ -10,13 +10,65 @@ export function useCanvasPanZoom(containerRef: React.RefObject<HTMLDivElement | 
     translateX: 0,
     translateY: 0,
   });
+  const [isAutoNavigating, setIsAutoNavigating] = useState(false);
 
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const spaceDown = useRef(false);
+  const lastManualInteractionAt = useRef(0);
+  const autoNavigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopAutoNavigation = useCallback(() => {
+    if (autoNavigationTimer.current) {
+      clearTimeout(autoNavigationTimer.current);
+      autoNavigationTimer.current = null;
+    }
+    setIsAutoNavigating(false);
+  }, []);
+
+  const recordManualInteraction = useCallback(() => {
+    lastManualInteractionAt.current = Date.now();
+    stopAutoNavigation();
+  }, [stopAutoNavigation]);
 
   const resetView = useCallback(() => {
+    recordManualInteraction();
     setViewport({ scale: 1, translateX: 0, translateY: 0 });
+  }, [recordManualInteraction]);
+
+  const wasRecentlyManual = useCallback((withinMs = 2500) => {
+    return isPanning.current || Date.now() - lastManualInteractionAt.current < withinMs;
+  }, []);
+
+  const focusOnRect = useCallback((
+    rect: { x: number; y: number; width: number; height: number },
+    options: { anchorX?: number; anchorY?: number; scale?: number } = {},
+  ) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, options.scale ?? viewport.scale));
+    const focusX = rect.x + rect.width / 2;
+    const focusY = rect.y + rect.height / 2;
+
+    setIsAutoNavigating(true);
+    if (autoNavigationTimer.current) clearTimeout(autoNavigationTimer.current);
+    autoNavigationTimer.current = setTimeout(() => {
+      setIsAutoNavigating(false);
+      autoNavigationTimer.current = null;
+    }, 320);
+
+    setViewport({
+      scale: nextScale,
+      translateX: container.clientWidth * (options.anchorX ?? 0.42) - focusX * nextScale,
+      translateY: container.clientHeight * (options.anchorY ?? 0.48) - focusY * nextScale,
+    });
+  }, [containerRef, viewport.scale]);
+
+  useEffect(() => {
+    return () => {
+      if (autoNavigationTimer.current) clearTimeout(autoNavigationTimer.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -38,6 +90,7 @@ export function useCanvasPanZoom(containerRef: React.RefObject<HTMLDivElement | 
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      recordManualInteraction();
       // Trackpad pinch → zoom; normal scroll → pan
       if (e.ctrlKey || e.metaKey) {
         setViewport(prev => {
@@ -67,6 +120,7 @@ export function useCanvasPanZoom(containerRef: React.RefObject<HTMLDivElement | 
       // Middle button always pans
       if (e.button === 1) {
         e.preventDefault();
+        recordManualInteraction();
         isPanning.current = true;
         panStart.current = { x: e.clientX, y: e.clientY, tx: viewport.translateX, ty: viewport.translateY };
         return;
@@ -79,6 +133,7 @@ export function useCanvasPanZoom(containerRef: React.RefObject<HTMLDivElement | 
         if (isCard || isControl) return; // let cards and controls handle their own clicks
         // Empty space click → pan
         e.preventDefault();
+        recordManualInteraction();
         isPanning.current = true;
         panStart.current = { x: e.clientX, y: e.clientY, tx: viewport.translateX, ty: viewport.translateY };
       }
@@ -119,12 +174,13 @@ export function useCanvasPanZoom(containerRef: React.RefObject<HTMLDivElement | 
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [containerRef, viewport]);
+  }, [containerRef, recordManualInteraction, viewport]);
 
   const viewportStyle: React.CSSProperties = {
-    transform: `scale(${viewport.scale}) translate(${viewport.translateX}px, ${viewport.translateY}px)`,
+    transform: `translate(${viewport.translateX}px, ${viewport.translateY}px) scale(${viewport.scale})`,
     transformOrigin: '0 0',
+    transition: isAutoNavigating ? 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined,
   };
 
-  return { ...viewport, viewportStyle, resetView };
+  return { ...viewport, viewportStyle, resetView, focusOnRect, wasRecentlyManual };
 }
