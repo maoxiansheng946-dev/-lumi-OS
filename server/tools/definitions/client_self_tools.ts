@@ -18,6 +18,7 @@ const ACTIONS = [
   'open_organization_workspace',
   'open_files',
   'open_settings',
+  'open_computer_adaptation',
   'open_skills',
   'open_tools',
   'open_team',
@@ -48,7 +49,7 @@ export function registerClientSelfTools(registry: ToolRegistry): void {
     name: 'client_action',
     description: [
       'Safely control Lumi client UI surfaces through the client action router.',
-      'Use explicit client-native actions like open_music_center, start_meeting_mode, open_canvas_task, show_knowledge_base, open_settings, or set_wallpaper_mode.',
+      'Use explicit client-native actions like open_music_center, start_meeting_mode, open_canvas_task, show_knowledge_base, open_computer_adaptation, open_settings, or set_wallpaper_mode.',
       'Legacy open_app/close_app/set_mode are still accepted for compatibility.',
       'This does not use mouse/keyboard control and should be preferred over computer_use for Lumi client UI navigation.',
     ].join(' '),

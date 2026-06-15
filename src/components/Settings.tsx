@@ -19,7 +19,8 @@ import {
   Loader2,
   LogOut,
   Cloud,
-  Volume2
+  Volume2,
+  Monitor
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ import { VoiceForge } from './VoiceForge';
 import { VoiceProviderSwitch } from './VoiceProviderSwitch';
 import { MCPSettings } from './MCPSettings';
 import { MessagingHub } from './MessagingHub';
+import { SystemExplorer } from './SystemExplorer';
 
 function buildSidebarGroups(t: any) {
   return [
@@ -51,6 +53,7 @@ function buildSidebarGroups(t: any) {
     {
       label: t.sidebarSystem || 'System',
       items: [
+        { id: 'computer', label: t.computerAdaptation || 'Computer', icon: <Monitor size={16} /> },
         { id: 'security', label: t.settings || 'Security', icon: <Shield size={16} /> },
         { id: 'hardware', label: t.settingsHardware || 'Hardware', icon: <Camera size={16} /> },
         { id: 'mcp', label: t.settingsMCP || 'MCP', icon: <Cpu size={16} /> },
@@ -182,6 +185,8 @@ export function Settings({
         return <LLMProvidersPage t={t} providerStatus={providerStatus} />;
       case 'voice-services':
         return <VoiceServicesPage t={t} />;
+      case 'computer':
+        return <SystemExplorer t={t} onSectionChange={handleSectionChange} />;
       case 'security':
         return (
           <div className="space-y-8">

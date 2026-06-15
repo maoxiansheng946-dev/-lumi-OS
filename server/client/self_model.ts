@@ -243,6 +243,14 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     stateKeys: ['permissions'],
   },
   {
+    id: 'system.computer_adaptation',
+    label: 'Computer adaptation center',
+    kind: 'system',
+    actions: ['open_computer_adaptation'],
+    notes: 'Shows Lumi how this computer is configured: system profile, common apps, permissions, MCP skills, runtime readiness, and setup recommendations.',
+    stateKeys: ['permissions', 'tools', 'windows'],
+  },
+  {
     id: 'system.wallpaper',
     label: 'Wallpaper mode',
     kind: 'system',

@@ -2591,6 +2591,12 @@ export function DesktopUI({
           respond({ ok: true, action, target: 'settings', section });
           return;
         }
+        if (action === 'open_computer_adaptation') {
+          setSettingsSection('computer');
+          openSurface('settings');
+          respond({ ok: true, action, target: 'settings', section: 'computer' });
+          return;
+        }
         if (action === 'open_skills' || action === 'open_tools' || action === 'open_team' || action === 'open_chat') {
           const mapped = action === 'open_skills'
             ? 'skills'
