@@ -398,7 +398,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       if (textChatActiveRef.current) return;
       if (!streamingMsgId.current) return;
       streamingMsgId.current = null;
-      fetch(scopedConversationUrl(`/api/conversations/${data.conversationId}/messages?limit=100`))
+      fetch(scopedConversationUrl(`/api/conversations/${data.conversationId}/messages?limit=500`))
         .then(r => r.json())
         .then(result => {
           if (result.messages && Array.isArray(result.messages)) {
@@ -835,27 +835,6 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                 )}
               </div>
             </div>
-            {messages.length > 0 && (
-              <button
-                onClick={async () => {
-                  setMessages([]);
-                  try {
-                    const r = await fetch(scopedConversationUrl('/api/conversations/active'));
-                    const d = await r.json();
-                    if (d.activeConversation) {
-                      await fetch(scopedConversationUrl(`/api/conversations/${d.activeConversation.id}/close`), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ summary: '', domain: workDomain }),
-                      });
-                    }
-                  } catch {}
-                }}
-                className="h-7 px-2 text-[10px] font-bold uppercase tracking-widest text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-full border border-transparent hover:border-red-500/20 transition-colors"
-              >
-                Clear
-              </button>
-            )}
           </div>
 
           <div

@@ -61,13 +61,16 @@ export function getOrCreateActiveConversation(userId: string, agentId?: string, 
   if (!db.conversations) db.conversations = [];
   const scope = resolveConversationScope(domain, orgId);
 
-  const active = db.conversations.find(
-    (c: Conversation) =>
+  const active = db.conversations
+    .filter((c: Conversation) =>
       c.userId === userId &&
       c.agentId === (agentId || '') &&
       c.status === 'active' &&
       conversationMatchesScope(c, scope.domain, scope.orgId)
-  );
+    )
+    .sort((a: Conversation, b: Conversation) =>
+      new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+    )[0];
   if (active) return active;
 
   const id = 'conv_' + crypto.randomUUID();
@@ -106,14 +109,16 @@ export function closeConversation(conversationId: string, summary?: string, user
 export function getActiveConversation(userId: string, agentId?: string, domainOrOrgId?: string, orgIdMaybe?: string): Conversation | null {
   const db = readDB();
   if (!db.conversations) return null;
-  return db.conversations.find(
-    (c: Conversation) => {
+  return db.conversations
+    .filter((c: Conversation) => {
       if (c.userId !== userId) return false;
       if (agentId && c.agentId !== agentId) return false;
       if (c.status !== 'active') return false;
       return conversationMatchesScope(c, domainOrOrgId, orgIdMaybe);
-    }
-  ) || null;
+    })
+    .sort((a: Conversation, b: Conversation) =>
+      new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+    )[0] || null;
 }
 
 export function setConversationMode(conversationId: string, mode: string): void {
