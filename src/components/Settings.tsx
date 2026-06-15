@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 
 import { usePlatform } from '@/hooks/usePlatform';
 import { BiometricsEnrollPanel } from './biometrics/BiometricsEnrollPanel';
-import { useApp } from '@/contexts/AppContext';
+import { useApp, type OperationMode } from '@/contexts/AppContext';
 import { VoiceForge } from './VoiceForge';
 import { VoiceProviderSwitch } from './VoiceProviderSwitch';
 import { MCPSettings } from './MCPSettings';
@@ -1084,7 +1084,7 @@ function RelayProviderRow({ t }: { t?: any }) {
   );
 }
 
-function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: any; operationMode: 'desktop_control' | 'terminal' | 'autonomous'; setOperationMode: (m: 'desktop_control' | 'terminal' | 'autonomous') => void }) {
+function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: any; operationMode: OperationMode; setOperationMode: (m: OperationMode) => void }) {
   const [gateConfig, setGateConfig] = useState({ allowedHours: [{ start: 8, end: 22 }], requireIdle: true, minIdleSeconds: 120, maxTokensPerHour: 3000 });
   const [taskList, setTaskList] = useState<any[]>([]);
   const [tasksExpanded, setTasksExpanded] = useState(false);
@@ -1125,11 +1125,11 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-widest text-white/60">Autonomous Mode</div>
-            <p className="text-xs text-white/40 mt-1">Enable background autonomous work — Lumi can self-initiate tasks when idle.</p>
+            <div className="text-xs font-black uppercase tracking-widest text-white/60">Auto Execute Mode</div>
+            <p className="text-xs text-white/40 mt-1">Allow Lumi to handle multi-step work with tools, canvas, desktop control, and team agents.</p>
           </div>
           <button
-            onClick={() => setOperationMode(isAutonomous ? 'desktop_control' : 'autonomous')}
+            onClick={() => setOperationMode(isAutonomous ? 'assistant' : 'autonomous')}
             className={`w-11 h-6 rounded-full transition-all ${isAutonomous ? 'bg-cyan-500' : 'bg-white/10'}`}
           >
             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${isAutonomous ? 'translate-x-[24px]' : 'translate-x-[2px]'}`} />
@@ -1138,7 +1138,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
         {isAutonomous && (
           <div className="flex items-center gap-2 text-xs text-cyan-400/70">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            Autonomous mode active — Lumi will generate tasks when you're idle
+            Auto execute active — Lumi can turn complex tasks into visible canvas work
           </div>
         )}
       </div>

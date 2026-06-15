@@ -18,11 +18,26 @@ import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useVoiceCloning } from '@/hooks/useVoiceCloning';
 import { listVoices } from '@/services/voiceService';
 
-export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed, onOpenCanvas }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void; onOpenCanvas?: () => void }) {
+function shouldUseCanvasForTask(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  const canvasPatterns = [
+    /\b(plan|roadmap|workflow|project|report|deck|presentation|codebase|refactor|design|implement|organize|research|multi-step|canvas)\b/i,
+    /(?:规划|路线图|工作流|项目|报告|方案|文档|代码|仓库|重构|设计|实现|整理|研究|多步|画布|团队|子\s*agent|智能体)/u,
+  ];
+  const taskPatterns = [
+    /\b(help me|please|create|make|build|prepare|write|review|analyze|organize|design|implement)\b/i,
+    /(?:帮我|请|需要|创建|制作|生成|写|审查|分析|整理|设计|实现)/u,
+  ];
+  return canvasPatterns.some(pattern => pattern.test(normalized))
+    || (normalized.length > 120 && taskPatterns.some(pattern => pattern.test(normalized)));
+}
+
+export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed, onOpenCanvas }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void; onOpenCanvas?: (task?: string) => void }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [agentMetadata, setAgentMetadata] = useState<Partial<AgentResponse>>({});
   const { platform, isElectron } = usePlatform();
-  const { aiConfig, orgConnection, workDomain } = useApp();
+  const { aiConfig, orgConnection, workDomain, operationMode } = useApp();
   const socket = socketService.connect();
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [voices, setVoices] = useState<any[]>([]);
@@ -440,8 +455,6 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const sendText = async (text: string) => {
     if (!text || !user) return;
 
-    textChatActiveRef.current = true;
-
     const userMsg = {
       id: Date.now().toString(),
       text,
@@ -449,6 +462,39 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       timestamp: new Date().toISOString(),
       type: 'user'
     };
+
+    const canvasCandidate = Boolean(onOpenCanvas && shouldUseCanvasForTask(text));
+    if (canvasCandidate && operationMode === 'autonomous') {
+      setMessages(prev => [...prev, userMsg, {
+        id: `canvas-auto-${Date.now()}`,
+        text: t.canvasAutoOpening || 'Opening this task in Canvas so Lumi can work through the path visibly.',
+        userName: agentNameRef.current || 'Lumi',
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        source: 'canvas_redirect',
+      }]);
+      setNewMessage('');
+      stop();
+      onOpenCanvas?.(text);
+      return;
+    }
+
+    if (canvasCandidate && operationMode === 'assistant') {
+      setMessages(prev => [...prev, userMsg, {
+        id: `canvas-suggestion-${Date.now()}`,
+        text: t.canvasSuggestion || 'This looks like a multi-step task. Canvas can show the work path, tool calls, and revisions clearly.',
+        userName: agentNameRef.current || 'Lumi',
+        timestamp: new Date().toISOString(),
+        type: 'agent',
+        source: 'canvas_suggestion',
+        canvasTask: text,
+      }]);
+      setNewMessage('');
+      stop();
+      return;
+    }
+
+    textChatActiveRef.current = true;
 
     setMessages(prev => [...prev, userMsg]);
     setNewMessage('');
@@ -948,6 +994,15 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                       : 'bg-white/5 text-white/80 border border-white/10 rounded-tr-none'
                   }`}>
                     <span className="whitespace-pre-wrap">{msg.text}</span>
+                    {msg.source === 'canvas_suggestion' && msg.canvasTask && onOpenCanvas && (
+                      <button
+                        onClick={() => onOpenCanvas(msg.canvasTask)}
+                        className="mt-4 flex items-center gap-2 rounded-xl border border-teal-300/25 bg-teal-300/10 px-3 py-2 text-xs font-black uppercase tracking-widest text-teal-200 transition-colors hover:bg-teal-300/18"
+                      >
+                        <Layers size={14} />
+                        {t.openInCanvas || 'Open in Canvas'}
+                      </button>
+                    )}
                     {msg.text && (
                       <button
                         onClick={() => handleCopyMessage(msg.text, msg.id)}

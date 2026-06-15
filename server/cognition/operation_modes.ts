@@ -1,13 +1,11 @@
 /**
- * Operation Modes — how Lumi interacts with the user's system.
- *
- * Each mode defines a toolPolicy (security preset) and a prompt overlay that
- * instructs the LLM HOW to operate. Unlike conversation modes (casual/teaching/...),
- * operation modes govern tool usage, execution style, and user visibility.
+ * Operation modes describe how much autonomy Lumi has.
+ * Desktop control, terminal commands, tools, skills, teams, and sub-agents are
+ * execution capabilities selected inside assistant/auto mode, not top-level modes.
  */
 import { ToolPolicy } from '../personality/types';
 
-export type OperationMode = 'desktop_control' | 'terminal' | 'autonomous';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous';
 
 export interface OperationModeConfig {
   id: OperationMode;
@@ -19,13 +17,32 @@ export interface OperationModeConfig {
 }
 
 export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> = {
-  desktop_control: {
-    id: 'desktop_control',
-    label: 'Desktop',
-    labelCN: '键鼠模式',
-    description: 'Screenshot-driven mouse/keyboard control with confirmation for dangerous operations',
-    promptOverlay: 'You see the screen through screenshots and interact through mouse/keyboard. Use GUI tools naturally — click what you see, type where needed. The user is watching and expects direct desktop interaction.',
+  chat: {
+    id: 'chat',
+    label: 'Chat',
+    labelCN: 'Chat',
+    description: 'Conversation only. Lumi answers naturally and does not call tools or open workspaces.',
+    promptOverlay: 'This turn is chat-only. Do not call tools, operate the desktop, open the canvas, assemble agents, or claim that you are taking actions. Answer naturally and keep the interaction conversational.',
+    toolPolicy: {
+      allowedTools: [],
+      requireConfirmation: [],
+      forbiddenTools: ['*'],
+      maxIterations: 0,
+    },
+  },
 
+  assistant: {
+    id: 'assistant',
+    label: 'Assistant',
+    labelCN: 'Assistant',
+    description: 'Guided assistance. Lumi can use desktop, terminal, tools, skills, and teams when the request asks for action.',
+    promptOverlay: [
+      'You are in assistant mode.',
+      'Choose the least disruptive execution capability for the user request: normal reply, tool, skill, file action, terminal command, mouse/keyboard desktop control, team/sub-agent, or canvas.',
+      'Do not open the canvas unless the user asks for it or the UI has already moved the task into the canvas.',
+      'For visible desktop work, explain what you are about to do and use mouse/keyboard tools naturally.',
+      'For command/file/network actions, keep the user informed and respect confirmations.',
+    ].join('\n'),
     toolPolicy: {
       allowedTools: ['*'],
       requireConfirmation: [
@@ -41,37 +58,7 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
       ],
       forbiddenTools: [],
       securityOverrides: {
-        'computer_use': 'safe',
-      },
-      maxIterations: 25,
-    },
-  },
-
-  terminal: {
-    id: 'terminal',
-    label: 'Terminal',
-    labelCN: '命令行模式',
-    description: 'Shell-first operation — no mouse/keyboard tools, commands auto-execute',
-    promptOverlay: 'You work through the command line. Mouse/keyboard tools are unavailable — use shell commands, pipes, and scripts to get things done. Report output clearly.',
-
-    toolPolicy: {
-      allowedTools: ['*'],
-      requireConfirmation: [
-        'web_search',
-        'url_fetch',
-      ],
-      forbiddenTools: [
-        'computer_use',
-        'mouse_move',
-        'mouse_click',
-        'mouse_drag',
-        'keyboard_type',
-        'keyboard_press',
-      ],
-      securityOverrides: {
-        'desktop_run_command': 'safe',
-        'run_command': 'safe',
-        'write_file': 'safe',
+        computer_use: 'safe',
       },
       maxIterations: 25,
     },
@@ -79,27 +66,56 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
 
   autonomous: {
     id: 'autonomous',
-    label: 'Auto',
-    labelCN: '自由模式',
-    description: 'Full autonomy — execute silently in background, report only results',
-    promptOverlay: 'Work independently in the background. Plan, execute, handle follow-ups, and report when done. Make reasonable assumptions rather than pausing to ask. The user wants results, not a conversation.',
-
+    label: 'Auto Execute',
+    labelCN: 'Auto Execute',
+    description: 'Multi-step execution. Lumi can plan, use tools, operate the desktop, open canvas, and coordinate agents with visible progress.',
+    promptOverlay: [
+      'You are in auto execution mode.',
+      'Work through the task end-to-end when the user gives an actionable request.',
+      'Use the appropriate capabilities: desktop mouse/keyboard, terminal, files, skills, tools, MCP, canvas, team agents, and sub-agents.',
+      'Keep progress visible, summarize major steps, and do not hide failures.',
+      'Dangerous or destructive actions still require confirmation.',
+    ].join('\n'),
     toolPolicy: {
       allowedTools: ['*'],
-      requireConfirmation: [],
+      requireConfirmation: [
+        'file_delete',
+        'delete_file',
+        'rm',
+        'unlink',
+        'format',
+        'rmdir',
+        'uninstall',
+        'desktop_run_command',
+      ],
       forbiddenTools: [],
       securityOverrides: {
-        'desktop_run_command': 'safe',
-        'run_command': 'safe',
-        'write_file': 'safe',
-        'computer_use': 'safe',
+        desktop_run_command: 'safe',
+        run_command: 'safe',
+        write_file: 'safe',
+        computer_use: 'safe',
       },
       maxIterations: 50,
     },
   },
 };
 
-export function getOperationModeConfig(mode?: string): OperationModeConfig | null {
-  if (!mode) return null;
-  return OPERATION_MODE_CONFIGS[mode as OperationMode] || null;
+export function normalizeOperationMode(mode?: string): OperationMode {
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous') return mode;
+  if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
+  return 'assistant';
+}
+
+export function parseStoredOperationMode(value: unknown): OperationMode {
+  if (typeof value !== 'string') return normalizeOperationMode((value as any)?.mode);
+  try {
+    const parsed = JSON.parse(value);
+    return normalizeOperationMode(parsed?.mode ?? parsed);
+  } catch {
+    return normalizeOperationMode(value);
+  }
+}
+
+export function getOperationModeConfig(mode?: string): OperationModeConfig {
+  return OPERATION_MODE_CONFIGS[normalizeOperationMode(mode)];
 }

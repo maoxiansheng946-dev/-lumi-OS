@@ -21,6 +21,7 @@ import { cleanupEphemeralAgents } from './agents/orchestrator';
 import { getRecentActivity } from './context/activity_stream';
 import { runDailyScan, isFirstBootComplete } from './autonomy/system_explorer';
 import { getTodayPlanSummary } from './autonomy/planner';
+import { parseStoredOperationMode } from './cognition/operation_modes';
 
 interface ScheduledTask {
   id: string;
@@ -1620,7 +1621,8 @@ Output ONLY the prediction message — no preamble, no labels.`;
           const modeSetting = (db.settings || []).find((s: any) =>
             s.key === `op_mode_${userId}`
           );
-          if (!modeSetting || modeSetting.value !== 'autonomous') continue;
+          const mode = modeSetting ? parseStoredOperationMode(modeSetting.value) : 'assistant';
+          if (mode !== 'autonomous') continue;
 
           // Generate tasks
           const { generateAutonomousTasks } = await import('./autonomy/task_generator');

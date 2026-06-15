@@ -19,7 +19,7 @@ import { runOrchestratedTask, classifyComplexity } from "../agents/orchestrator"
 import { queryMemories, addMemory } from "../memory/store";
 import { matchQuickCommand } from "../cognition/quick_commands";
 import { recordTokenUsage } from "../llm/token_tracker";
-import { getOperationModeConfig } from "../cognition/operation_modes";
+import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
 import { shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { updatePresence } from "../biometrics/presence";
 
@@ -253,9 +253,9 @@ async function processVoiceInput(
     try {
       const db = readDB();
       const setting = (db.settings || []).find((s: any) => s.key === `op_mode_${session.userId}`);
-      if (setting) return JSON.parse(setting.value).mode;
+      if (setting) return parseStoredOperationMode(setting.value);
     } catch {}
-    return 'desktop_control';
+    return 'assistant';
   })();
 
   const opModeConfigV = getOperationModeConfig(operationMode);
@@ -340,7 +340,7 @@ async function processVoiceInput(
   const toolContext = {
     desktopRelay,
     llmGetters,
-    ...(operationMode === 'desktop_control' ? { requestConfirmation } : {}),
+    ...(operationMode === 'assistant' || operationMode === 'autonomous' ? { requestConfirmation } : {}),
     isCancelled: () => pipelineAbort?.signal.aborted ?? false,
     ...(allowToolUseForTurn && opModeConfigV
       ? { toolPolicy: opModeConfigV.toolPolicy }

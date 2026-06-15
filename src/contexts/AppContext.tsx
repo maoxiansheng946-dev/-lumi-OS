@@ -46,6 +46,14 @@ interface ToolOverride {
   securityLevel?: string;
 }
 
+export type OperationMode = 'chat' | 'assistant' | 'autonomous';
+
+function normalizeOperationMode(mode: unknown): OperationMode {
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous') return mode;
+  if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
+  return 'assistant';
+}
+
 export interface OrgConnection {
   orgId: string;
   orgRole: string;
@@ -84,8 +92,8 @@ interface AppContextType {
   workDomain: 'personal' | 'work';
   switchDomain: (domain: 'personal' | 'work') => Promise<DomainSwitchResult>;
   // Operation mode
-  operationMode: 'desktop_control' | 'terminal' | 'autonomous';
-  setOperationMode: (mode: 'desktop_control' | 'terminal' | 'autonomous') => void;
+  operationMode: OperationMode;
+  setOperationMode: (mode: OperationMode) => void;
   // Core
   login: () => Promise<void>;
   logout: () => Promise<void>;
@@ -201,18 +209,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const [operationMode, setOperationModeState] = useState<'desktop_control' | 'terminal' | 'autonomous'>(() => {
-    try { return (localStorage.getItem('lumi_operation_mode') as any) || 'desktop_control'; } catch { return 'desktop_control'; }
+  const [operationMode, setOperationModeState] = useState<OperationMode>(() => {
+    try { return normalizeOperationMode(localStorage.getItem('lumi_operation_mode')); } catch { return 'assistant'; }
   });
 
-  const setOperationMode = async (mode: 'desktop_control' | 'terminal' | 'autonomous') => {
-    setOperationModeState(mode);
-    localStorage.setItem('lumi_operation_mode', mode);
+  const setOperationMode = async (mode: OperationMode) => {
+    const normalizedMode = normalizeOperationMode(mode);
+    setOperationModeState(normalizedMode);
+    localStorage.setItem('lumi_operation_mode', normalizedMode);
     try {
       await fetch('/api/preferences/operation_mode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode: normalizedMode }),
         credentials: 'include',
       });
     } catch {}

@@ -9,7 +9,7 @@ import { NormalizedMessage, makeLLMCall, makeLLMCallStreaming, StreamCallback } 
 import { LLMUsage } from "../tools/types";
 import { toolRegistry } from "../tools/registry";
 import { runWithTools } from "../llm/adapter";
-import { getOperationModeConfig } from "../cognition/operation_modes";
+import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
 import { shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { queryMemories, queryMemoriesVector, addMemory, addReminder, extractMemories } from "../memory";
 import { loadEmotionalState, saveEmotionalState, updateEmotionalState, updateEmotionalStateWithHIM, loadHIMState, saveHIMState, generateContextualGreeting, vectorMemoryBias } from "../personality/state";
@@ -307,9 +307,9 @@ export function registerChatHandler(
         try {
           const db = readDB();
           const setting = (db.settings || []).find((s: any) => s.key === `op_mode_${uid}`);
-          if (setting) return JSON.parse(setting.value).mode;
+          if (setting) return parseStoredOperationMode(setting.value);
         } catch {}
-        return 'desktop_control';
+        return 'assistant';
       })();
 
       // Inject operation mode prompt overlay
@@ -740,7 +740,7 @@ export function registerChatHandler(
                   ? { toolPolicy: { allowedTools: ['*'], requireConfirmation: ['file_delete', 'delete_file', 'rm', 'unlink', 'format', 'rmdir', 'uninstall'], forbiddenTools: [], maxIterations: 25 } }
                   : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
               ),
-              ...(operationMode === 'desktop_control' ? {
+              ...(operationMode === 'assistant' || operationMode === 'autonomous' ? {
                 requestConfirmation: async (toolName: string, args: Record<string, any>): Promise<boolean> => {
                   return new Promise((resolve) => {
                     const cid = crypto.randomUUID();

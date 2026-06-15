@@ -46,7 +46,6 @@ import {
   Mic,
   Briefcase,
   Terminal as TerminalIcon,
-  MousePointer2,
   Music,
   Layers,
   Bot,
@@ -1269,6 +1268,7 @@ export function DesktopUI({
   const [chatOpen, setChatOpen] = useState(false);
   const [chatPrefill, setChatPrefill] = useState('');
   const [canvasOpen, setCanvasOpen] = useState(false);
+  const [canvasInitialTask, setCanvasInitialTask] = useState('');
   const [sanctuaryOpen, setSanctuaryOpen] = useState(false);
   const [sanctuaryAgent, setSanctuaryAgent] = useState<any>(null);
   const [petReaction, setPetReaction] = useState<{ animation: string; until: number } | null>(null);
@@ -2139,27 +2139,27 @@ export function DesktopUI({
   ];
   const operationModeOptions = [
     {
-      id: 'desktop_control' as const,
-      label: t.modeMouse || '键鼠',
-      title: t.modeMouseTitle || '键鼠模式',
-      description: t.modeMouseDesc || '适合打开软件、点击界面、读屏并操作当前桌面。',
-      hint: t.modeMouseHint || 'Visible UI control',
-      icon: <MousePointer2 size={16} />,
+      id: 'chat' as const,
+      label: t.modeChat || '聊天',
+      title: t.modeChatTitle || '聊天模式',
+      description: t.modeChatDesc || '只回答和交流，不主动调用工具、键鼠、命令、团队或画布。',
+      hint: t.modeChatHint || 'Conversation only',
+      icon: <MessageSquare size={16} />,
     },
     {
-      id: 'terminal' as const,
-      label: t.modeTerminal || '命令',
-      title: t.modeTerminalTitle || '命令模式',
-      description: t.modeTerminalDesc || '优先用终端命令处理文件、系统、开发和批量任务。',
-      hint: t.modeTerminalHint || 'Files, code, and shell tasks',
-      icon: <TerminalIcon size={16} />,
+      id: 'assistant' as const,
+      label: t.modeAssistant || '助手',
+      title: t.modeAssistantTitle || '助手模式',
+      description: t.modeAssistantDesc || '按任务选择键鼠、命令、工具、技能或团队；复杂画布任务先提示再执行。',
+      hint: t.modeAssistantHint || 'Guided execution',
+      icon: <Sparkles size={16} />,
     },
     {
       id: 'autonomous' as const,
-      label: t.modeAutonomous || '自由',
-      title: t.modeAutonomousTitle || '自由模式',
-      description: t.modeAutonomousDesc || '适合多步后台任务；高风险操作仍会请求确认。',
-      hint: t.modeAutonomousHint || 'Multi-step background work',
+      label: t.modeAutoExecute || '自动执行',
+      title: t.modeAutoExecuteTitle || '自动执行模式',
+      description: t.modeAutoExecuteDesc || '适合多步任务；可自动使用画布、键鼠、命令、工具和团队，并展示进度。',
+      hint: t.modeAutoExecuteHint || 'Multi-step visible work',
       icon: <Zap size={16} />,
     },
   ];
@@ -3107,7 +3107,11 @@ export function DesktopUI({
         onClose={() => { setChatOpen(false); setChatPrefill(''); }}
         prefillMessage={chatPrefill}
         onPrefillConsumed={() => setChatPrefill('')}
-        onOpenCanvas={() => { setChatOpen(false); setCanvasOpen(true); }}
+        onOpenCanvas={(task?: string) => {
+          setChatOpen(false);
+          setCanvasInitialTask(task || '');
+          setCanvasOpen(true);
+        }}
       />
 
       {/* Canvas Workbench fullscreen overlay */}
@@ -3117,6 +3121,8 @@ export function DesktopUI({
         t={t}
         user={user}
         domain={workDomain}
+        initialTask={canvasInitialTask}
+        onInitialTaskConsumed={() => setCanvasInitialTask('')}
       />
 
       {/* Org Workbench fullscreen overlay — available to all logged-in users */}

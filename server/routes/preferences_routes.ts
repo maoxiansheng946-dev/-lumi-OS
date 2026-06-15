@@ -2,6 +2,7 @@ import { Router } from "express";
 import { readDB, writeDB } from "../../db_layer";
 import { requireAuth } from "../middleware/auth";
 import { broadcastPreferenceChange } from "../memory";
+import { normalizeOperationMode, parseStoredOperationMode } from "../cognition/operation_modes";
 
 export function mountPreferencesRoutes(router: Router, _jwtSecret: string) {
   router.get("/preferences/pet", requireAuth, (req, res) => {
@@ -47,9 +48,9 @@ export function mountPreferencesRoutes(router: Router, _jwtSecret: string) {
       const db = readDB();
       const setting = (db.settings || []).find((s: any) => s.key === `op_mode_${uid}`);
       if (setting) {
-        res.json(JSON.parse(setting.value));
+        res.json({ mode: parseStoredOperationMode(setting.value) });
       } else {
-        res.json({ mode: 'desktop_control' });
+        res.json({ mode: 'assistant' });
       }
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -61,10 +62,11 @@ export function mountPreferencesRoutes(router: Router, _jwtSecret: string) {
       const uid = req.user!.uid;
       const { mode } = req.body || {};
       if (!mode) return res.status(400).json({ error: 'mode is required' });
+      const normalizedMode = normalizeOperationMode(mode);
       const db = readDB();
       if (!db.settings) db.settings = [];
       const key = `op_mode_${uid}`;
-      const value = JSON.stringify({ mode });
+      const value = JSON.stringify({ mode: normalizedMode });
       const existing = db.settings.findIndex((s: any) => s.key === key);
       if (existing >= 0) {
         db.settings[existing].value = value;
@@ -72,7 +74,7 @@ export function mountPreferencesRoutes(router: Router, _jwtSecret: string) {
         db.settings.push({ key, value });
       }
       writeDB(db);
-      broadcastPreferenceChange(uid, 'operation_mode', { mode });
+      broadcastPreferenceChange(uid, 'operation_mode', { mode: normalizedMode });
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

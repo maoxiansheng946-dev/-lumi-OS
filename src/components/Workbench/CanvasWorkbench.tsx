@@ -15,9 +15,11 @@ interface CanvasWorkbenchProps {
   t: any;
   user: any;
   domain?: 'personal' | 'work';
+  initialTask?: string;
+  onInitialTaskConsumed?: () => void;
 }
 
-export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal' }: CanvasWorkbenchProps) {
+export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal', initialTask, onInitialTaskConsumed }: CanvasWorkbenchProps) {
   const socket = socketService.connect();
   const [sessions, setSessions] = useState<CanvasSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal' 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardsRef = useRef<CanvasCard[]>([]);
   const edgesRef = useRef<CanvasEdge[]>([]);
+  const consumedInitialTaskRef = useRef('');
 
   useEffect(() => { cardsRef.current = cards; }, [cards]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
@@ -199,6 +202,18 @@ export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal' 
 
     submitTask(text);
   }, [currentSessionId, submitTask, scopedCanvasUrl]);
+
+  useEffect(() => {
+    const task = initialTask?.trim();
+    if (!isOpen || !task || consumedInitialTaskRef.current === task) return;
+    consumedInitialTaskRef.current = task;
+    void handleTaskSubmit(task);
+    onInitialTaskConsumed?.();
+  }, [handleTaskSubmit, initialTask, isOpen, onInitialTaskConsumed]);
+
+  useEffect(() => {
+    if (!initialTask) consumedInitialTaskRef.current = '';
+  }, [initialTask]);
 
   const handleEdgeSelect = useCallback((edge: CanvasEdge | null) => {
     setSelectedEdgeId(edge?.id || null);
