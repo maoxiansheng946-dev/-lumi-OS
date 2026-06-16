@@ -28,10 +28,11 @@ import { recordTokenUsage } from "../llm/token_tracker";
 import { runOrchestratedTask, shouldDistillSkill, buildSkillDescription } from "../agents/orchestrator";
 import { runNLChainer, shouldChainTask } from "../agents/nl_chainer";
 import { autoInstallForTask } from "../agents/auto_installer";
-import { getMusicFailureMessage, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
+import { adjustMusicPlayback, getMusicFailureMessage, isMusicAdjustmentRequest, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
 import { searchKnowledgeBase } from "../org/kb";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 import { buildProfessionOverlay } from "../autonomy/professions";
+import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
@@ -504,6 +505,28 @@ export function registerChatHandler(
         console.warn('[ChatHandler] Quick command check failed, falling through:', qcErr.message);
       }
 
+      if (isMusicProfileAnalysisRequest(text)) {
+        emitAgent("agent:status", { status: "thinking", agentName: personality.name, detail: "Analyzing music profile" });
+        let profileResponse = '';
+        try {
+          const profile = await analyzeLikedMusicProfile(uid, { maxSongs: 3000 });
+          profileResponse = formatMusicProfileReport(profile);
+        } catch (profileErr: any) {
+          profileResponse = `我现在还没能完成网易云喜欢歌单分析。\n\n${profileErr?.message || '请确认网易云已经登录，再试一次。'}`;
+          socket.emit('music:error', { message: profileResponse });
+        }
+
+        emitAgent("agent:response", { text: profileResponse, agentName: personality.name });
+        if (conversationId) {
+          addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: text, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+          addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: profileResponse, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+          socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: source === 'canvas' ? 'canvas' : 'chat' });
+        }
+        emitAgent("agent:status", { status: "idle" });
+        chatSessionMap.delete(sessionKey);
+        return;
+      }
+
       // ── Lumi Cognitive Engine: classify intent BEFORE calling any LLM ──
       const cognitiveCtx: CognitiveContext = {
         userId: uid,
@@ -563,12 +586,15 @@ export function registerChatHandler(
 
       // Path A2: music intent. Handle before the generic tool loop so Lumi
       // does not wander into unrelated tools or report raw provider errors.
-      if (!responseText && isMusicPlaybackRequest(text)) {
+      const isMusicAdjustment = isMusicAdjustmentRequest(text) && (operationMode === 'music' || source === 'music-center');
+      if (!responseText && (isMusicPlaybackRequest(text) || isMusicAdjustment)) {
         try {
           void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
             console.warn('[Music Intent] Failed to sync music client mode:', err.message);
           });
-          const result = await searchAndPlay(uid, socket, text);
+          const result = isMusicAdjustment
+            ? await adjustMusicPlayback(uid, socket, text)
+            : await searchAndPlay(uid, socket, text);
           if (result.success && result.text) {
             responseText = result.text;
             llmWasCalled = true;

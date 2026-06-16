@@ -1,8 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize2, Pause, Play, Search, SkipBack, SkipForward, Volume2, X } from 'lucide-react';
+import { BarChart3, Heart, Maximize2, Pause, Play, RefreshCw, Search, SkipBack, SkipForward, Sparkles, Volume2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 import { useSocket } from '../hooks/useSocket';
+
+interface MusicProfileCount {
+  name: string;
+  count: number;
+  ratio: number;
+}
+
+interface MusicProfile {
+  playlistName: string;
+  totalTracks: number;
+  analyzedTracks: number;
+  updatedAt: string;
+  topArtists: MusicProfileCount[];
+  languageMix: MusicProfileCount[];
+  moodMix: MusicProfileCount[];
+  styleMix: MusicProfileCount[];
+  insights: string[];
+  summaryCn: string;
+}
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
@@ -23,22 +42,59 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
   const [cfgBusy, setCfgBusy] = useState(false);
   const [cfgMsg, setCfgMsg] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
+  const [profile, setProfile] = useState<MusicProfile | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => isZh ? zh : en;
+  const defaultMusicPrompt = profile?.topArtists?.[0]?.name
+    ? `播放我喜欢的歌，优先从 ${profile.topArtists[0].name} 或我的网易云喜欢歌单里挑一首`
+    : '播放我喜欢的歌或每日推荐';
+
+  const loadMusicProfile = async () => {
+    try {
+      const res = await fetch('/api/music/profile');
+      const data = await res.json();
+      if (res.ok) setProfile(data.profile || null);
+    } catch {}
+  };
 
   useEffect(() => {
     fetch('/api/ncm/configure/status').then(r => r.json()).then(s => {
       setConfigured(s.configured);
     }).catch(() => setConfigured(false));
     fetch('/api/ncm/login/status').then(r => r.json()).then(s => {
-      if (s.done) setLoginDone(true);
-      if (s.qrUrl) setQrImgSrc(`https://quickchart.io/qr?text=${encodeURIComponent(s.qrUrl)}&size=220`);
+      setLoginDone(Boolean(s.done));
+      setQrImgSrc(s.qrUrl ? `https://quickchart.io/qr?text=${encodeURIComponent(s.qrUrl)}&size=220` : null);
     }).catch(() => {});
+    loadMusicProfile();
     socket?.emit('music:get_state');
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [socket]);
+
+  const analyzeMusicProfile = async () => {
+    setProfileBusy(true);
+    setProfileError('');
+    try {
+      const res = await fetch('/api/music/profile/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxSongs: 3000 }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.profile) throw new Error(data.error || ui('音乐画像生成失败', 'Failed to analyze music profile'));
+      setProfile(data.profile);
+      toast.success(ui('音乐画像已更新', 'Music profile updated'));
+    } catch (e: any) {
+      const message = e?.message || ui('音乐画像生成失败', 'Failed to analyze music profile');
+      setProfileError(message);
+      toast.error(message);
+    } finally {
+      setProfileBusy(false);
+    }
+  };
 
   const saveCreds = async () => {
     if (!appId.trim() || !privateKey.trim()) return;
@@ -70,6 +126,12 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
     try {
       const res = await fetch('/api/ncm/login', { method: 'POST' });
       const data = await res.json();
+      if (res.ok && data.done) {
+        setLoginDone(true);
+        setQrImgSrc(null);
+        toast.success(t?.musicConnected || ui('网易云音乐已连接', 'NetEase Cloud connected'));
+        return;
+      }
       if (!res.ok || !data.qrUrl) throw new Error(data.error || ui('没有 QR 登录地址', 'No QR URL'));
 
       setQrImgSrc(`https://quickchart.io/qr?text=${encodeURIComponent(data.qrUrl)}&size=220`);
@@ -78,9 +140,9 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
         try {
           const sr = await fetch('/api/ncm/login/status');
           const ss = await sr.json();
+          setLoginDone(Boolean(ss.done));
+          setQrImgSrc(ss.qrUrl ? `https://quickchart.io/qr?text=${encodeURIComponent(ss.qrUrl)}&size=220` : null);
           if (ss.done) {
-            setLoginDone(true);
-            setQrImgSrc(null);
             clearInterval(interval);
             toast.success(t?.musicConnected || ui('网易云音乐已连接', 'NetEase Cloud connected'));
           }
@@ -94,21 +156,38 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
     }
   };
 
-  const askLumiToPlay = () => {
-    const text = musicPrompt.trim();
-    if (!text) return;
+  const requestMusicPlayback = (text: string, options?: { clearPrompt?: boolean }) => {
+    const prompt = text.trim();
+    if (!prompt) return false;
     if (!socket?.connected) {
       toast.error(t?.serverNotConnected || ui('服务器未连接', 'Server is not connected'));
-      return;
+      return false;
     }
     socket.emit('agent:chat', {
-      text,
+      text: prompt,
       history: [],
       personalityId: 'lumi',
       source: 'music-center',
     });
     toast.info(t?.musicRequestSent || ui('音乐请求已发送给 Lumi', 'Music request sent to Lumi'));
-    setMusicPrompt('');
+    if (options?.clearPrompt) setMusicPrompt('');
+    return true;
+  };
+
+  const askLumiToPlay = () => {
+    requestMusicPlayback(musicPrompt, { clearPrompt: true });
+  };
+
+  const togglePlayback = () => {
+    if (player.isPlaying) {
+      player.pause();
+      return;
+    }
+    if (player.track) {
+      player.play();
+      return;
+    }
+    requestMusicPlayback(defaultMusicPrompt);
   };
 
   const toggleMoodLayer = () => {
@@ -123,6 +202,8 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
   if (!isOpen) return null;
 
   const progressMax = Math.max(1, Math.floor(player.duration || 0));
+  const profileUpdatedAt = profile?.updatedAt ? new Date(profile.updatedAt).toLocaleString() : '';
+  const pct = (item: MusicProfileCount) => `${Math.round((item.ratio || 0) * 100)}%`;
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-1">
@@ -178,7 +259,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
                 <SkipBack size={16} />
               </button>
               <button
-                onClick={player.isPlaying ? player.pause : player.play}
+                onClick={togglePlayback}
                 className="w-11 h-11 rounded-2xl bg-red-500/20 border border-red-400/25 text-red-300 hover:bg-red-500/30 flex items-center justify-center transition-colors"
               >
                 {player.isPlaying ? <Pause size={18} /> : <Play size={18} />}
@@ -236,6 +317,93 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
               {t?.play || ui('播放', 'Play')}
             </button>
           </div>
+        </section>
+
+        <section className="rounded-2xl bg-white/[0.025] border border-white/5 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <BarChart3 size={16} className="text-red-300" />
+                <h3 className="text-sm font-black text-white/85 uppercase tracking-wider">
+                  {ui('音乐画像', 'Music Profile')}
+                </h3>
+              </div>
+              <p className="mt-1 text-xs text-white/40">
+                {profile
+                  ? ui(`已分析 ${profile.analyzedTracks} / ${profile.totalTracks || profile.analyzedTracks} 首喜欢的歌`, `${profile.analyzedTracks} / ${profile.totalTracks || profile.analyzedTracks} liked songs analyzed`)
+                  : ui('基于网易云喜欢歌单生成', 'Based on NetEase liked songs')}
+              </p>
+            </div>
+            <button
+              onClick={analyzeMusicProfile}
+              disabled={profileBusy}
+              className="h-9 px-3 rounded-xl bg-red-500/15 border border-red-400/25 text-xs font-bold text-red-300 hover:bg-red-500/25 disabled:opacity-40 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw size={14} className={profileBusy ? 'animate-spin' : ''} />
+              {profile ? ui('重新分析', 'Refresh') : ui('开始分析', 'Analyze')}
+            </button>
+          </div>
+
+          {profileError && (
+            <div className="rounded-xl bg-red-500/10 border border-red-400/20 px-3 py-2 text-xs text-red-200">
+              {profileError}
+            </div>
+          )}
+
+          {profile ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-black/25 border border-white/5 p-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles size={16} className="text-red-200 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-white/80 leading-relaxed">{profile.summaryCn}</p>
+                    {profileUpdatedAt && <p className="mt-2 text-[10px] text-white/30 font-mono">{profileUpdatedAt}</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3">
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                    <Heart size={12} /> {ui('高频歌手', 'Top Artists')}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {profile.topArtists.slice(0, 6).map(item => (
+                      <span key={item.name} className="px-2 py-1 rounded-lg bg-white/[0.05] text-[10px] text-white/60 border border-white/5">
+                        {item.name} · {item.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">{ui('情绪底色', 'Mood')}</div>
+                  <div className="mt-3 space-y-2">
+                    {profile.moodMix.slice(0, 4).map(item => (
+                      <div key={item.name} className="flex items-center justify-between gap-3 text-[10px]">
+                        <span className="text-white/55 truncate">{item.name}</span>
+                        <span className="text-white/30 font-mono">{pct(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">{ui('风格/语种', 'Style')}</div>
+                  <div className="mt-3 space-y-2">
+                    {[...profile.styleMix.slice(0, 2), ...profile.languageMix.slice(0, 2)].map(item => (
+                      <div key={`${item.name}-${item.count}`} className="flex items-center justify-between gap-3 text-[10px]">
+                        <span className="text-white/55 truncate">{item.name}</span>
+                        <span className="text-white/30 font-mono">{pct(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-black/20 border border-white/5 p-4 text-xs text-white/40">
+              {ui('还没有生成音乐画像。', 'No music profile yet.')}
+            </div>
+          )}
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

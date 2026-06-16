@@ -24,7 +24,8 @@ import { hasClientActionIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork
 import { updatePresence } from "../biometrics/presence";
 import { getVoiceprints } from "../biometrics/store";
 import { formatClientSelfPrompt } from "../client/self_model";
-import { getMusicFailureMessage, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
+import { adjustMusicPlayback, getMusicFailureMessage, isMusicAdjustmentRequest, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
+import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
 
 interface AudioSession {
   sttSession: ReturnType<typeof createStreamingSession> | null;
@@ -490,6 +491,30 @@ async function processVoiceInput(
     logger.warn(`[Audio] Quick command check failed, falling through to LLM: ${qcErr.message}`);
   }
 
+  if (isMusicProfileAnalysisRequest(userText)) {
+    try {
+      const profile = await analyzeLikedMusicProfile(session.userId, { maxSongs: 3000 });
+      responseText = formatMusicProfileReport(profile);
+      flushSentence(profile.summaryCn);
+    } catch (profileErr: any) {
+      responseText = `我现在还没能完成网易云喜欢歌单分析。${profileErr?.message || '请确认网易云已经登录，再试一次。'}`;
+      socket.emit('music:error', { message: responseText });
+      flushSentence(responseText);
+    }
+    await Promise.allSettled(ttsPromises);
+    const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+    session.isProcessing = false;
+    session.isSpeaking = false;
+    session.pipelineAbortController = null;
+    socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
+    socket.emit("audio:status", { status: "listening" });
+    socket.emit("agent:status", { status: "idle" });
+    socket.emit("agent:response", { text: responseText, agentName: "Lumi", source: "music_profile" });
+    return;
+  }
+
   try {
     // ── Lumi Cognitive Engine: classify intent BEFORE calling any LLM ──
     // Same cognitive layer as text chat — one Lumi, one framework.
@@ -544,13 +569,16 @@ async function processVoiceInput(
     logger.info(`[Audio] Cognition: ${cognition.intent.category} (confidence: ${cognition.intent.confidence}), model: ${effectiveModel}`);
 
     // ── Music intent shortcut — intercept before LLM tool-call loop ──
-    if (isMusicPlaybackRequest(userText)) {
+    const isMusicAdjustment = isMusicAdjustmentRequest(userText) && operationMode === 'music';
+    if (isMusicPlaybackRequest(userText) || isMusicAdjustment) {
       logger.info('[Audio] Music intent matched, attempting shortcut...');
       try {
         void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
           logger.warn('[Audio] Failed to sync music client mode:', err.message);
         });
-        const result = await searchAndPlay(session.userId, socket, userText);
+        const result = isMusicAdjustment
+          ? await adjustMusicPlayback(session.userId, socket, userText)
+          : await searchAndPlay(session.userId, socket, userText);
         responseText = result.success && result.text ? result.text : getMusicFailureMessage(result.reason);
         if (!result.success) socket.emit('music:error', { message: responseText });
         flushSentence(responseText);

@@ -85,6 +85,24 @@ function normalizeNcmPrivateKey(value: unknown): string | null {
   return privateKey.replace(/\r\n/g, '\n').replace(/\n/g, '\\n');
 }
 
+async function checkNcmLoginStatus(timeout = 8000): Promise<boolean> {
+  try {
+    const check = await runNcmCli(['login', '--check', '--output', 'json'], timeout);
+    const data = JSON.parse(check.stdout || '{}');
+    ncmLoginDone = Boolean(data.success || data.done || data.loggedIn);
+    if (ncmLoginDone) {
+      ncmLoginQrUrl = null;
+      if (ncmLoginPolling) {
+        clearInterval(ncmLoginPolling);
+        ncmLoginPolling = null;
+      }
+    }
+  } catch {
+    // Keep the last known in-memory state if ncm-cli cannot answer right now.
+  }
+  return ncmLoginDone;
+}
+
 // Configure ncm-cli credentials (appId + privateKey from developer.music.163.com)
 apiRouter.post('/ncm/configure', async (req, res) => {
   try {
@@ -96,6 +114,8 @@ apiRouter.post('/ncm/configure', async (req, res) => {
     }
     await runNcmCli(['config', 'set', 'appId', safeAppId], 10000);
     await runNcmCli(['config', 'set', 'privateKey', safePrivateKey], 10000);
+    const { saveKeys } = await import('./server/config/keys');
+    saveKeys({ NETEASE_APP_ID: safeAppId, NETEASE_PRIVATE_KEY: safePrivateKey });
     console.log('[NCM] Credentials configured.');
     res.json({ success: true });
   } catch (e: any) {
@@ -117,6 +137,9 @@ apiRouter.get('/ncm/configure/status', async (_req, res) => {
 
 apiRouter.post('/ncm/login', async (_req, res) => {
   try {
+    if (await checkNcmLoginStatus(8000)) {
+      return res.json({ success: true, done: true, qrUrl: null });
+    }
     const result = await runNcmCli(['login', '--background', '--output', 'json'], 15000);
     const data = JSON.parse(result.stdout);
     ncmLoginQrUrl = data.qrCodeUrl || data.clickableUrl || null;
@@ -126,13 +149,7 @@ apiRouter.post('/ncm/login', async (_req, res) => {
     if (ncmLoginPolling) clearInterval(ncmLoginPolling);
     ncmLoginPolling = setInterval(async () => {
       try {
-        const check = await runNcmCli(['login', '--check', '--output', 'json'], 8000);
-        const cd = JSON.parse(check.stdout);
-        if (cd.success) {
-          ncmLoginDone = true;
-          ncmLoginQrUrl = null;
-          if (ncmLoginPolling) { clearInterval(ncmLoginPolling); ncmLoginPolling = null; }
-        }
+        await checkNcmLoginStatus(8000);
       } catch {}
     }, 3000);
 
@@ -159,12 +176,9 @@ apiRouter.post('/ncm/login', async (_req, res) => {
     if (appId && privateKey) {
       await runNcmCli(['config', 'set', 'appId', appId], 10000).catch(() => {});
       await runNcmCli(['config', 'set', 'privateKey', privateKey], 10000).catch(() => {});
-      const check = await runNcmCli(['login', '--check', '--output', 'json'], 10000);
-      const data = JSON.parse(check.stdout);
-      if (data.success) {
-        ncmLoginDone = true;
-        console.log('[NCM] Already logged in from previous session.');
-      }
+    }
+    if (await checkNcmLoginStatus(10000)) {
+      console.log('[NCM] Already logged in from previous session.');
     }
   } catch {}
 })();
@@ -208,8 +222,9 @@ apiRouter.post('/ncm/login', async (_req, res) => {
   }
 })();
 
-apiRouter.get('/ncm/login/status', (_req, res) => {
-  res.json({ done: ncmLoginDone, qrUrl: ncmLoginQrUrl });
+apiRouter.get('/ncm/login/status', async (_req, res) => {
+  const done = await checkNcmLoginStatus(8000);
+  res.json({ done, qrUrl: ncmLoginQrUrl });
 });
 
 // ── Org routes ──

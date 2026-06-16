@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { useMusicPlayer, MusicLyricLine, MusicScene } from '../hooks/useMusicPlayer';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 // ── LRC parsing ──
 
@@ -80,7 +81,7 @@ const DEFAULT_SCENE: MusicScene = {
 // ── Main ──
 
 export function MusicMoodLayer() {
-  const { visible, isPlaying, track, progress, duration, lyrics, scene, play, pause, hide } = useMusicPlayer();
+  const { visible, isPlaying, track, progress, duration, lyrics, scene, lumiReason, play, pause, hide } = useMusicPlayer();
   const activeScene = scene || DEFAULT_SCENE;
 
   const [parsedLyrics, setParsedLyrics] = useState<MusicLyricLine[]>([]);
@@ -97,6 +98,10 @@ export function MusicMoodLayer() {
   const palette = useMemo(() => paletteFromScene(activeScene), [activeScene]);
   const intensity = activeScene.intensity ?? 0.5;
   const currentLyricIdx = useMemo(() => getCurrentLyricIndex(parsedLyrics, progress), [parsedLyrics, progress]);
+  const emotionalNote = useMemo(() => {
+    const note = (lumiReason || activeScene.reason || '').trim();
+    return note && note !== DEFAULT_SCENE.reason ? note : '';
+  }, [activeScene.reason, lumiReason]);
 
   // ── Keyboard ──
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -307,7 +312,7 @@ export function MusicMoodLayer() {
 
   if (!visible) return null;
 
-  return (
+  const layer = (
     <motion.div
       key="music-mood"
       initial={{ opacity: 0 }}
@@ -317,6 +322,22 @@ export function MusicMoodLayer() {
       className="fixed inset-0 z-[100000] select-none"
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+
+      {emotionalNote && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, duration: 0.9 }}
+          className="pointer-events-none absolute bottom-14 left-8 max-w-[min(360px,calc(100vw-4rem))] text-left"
+        >
+          <p className="text-[10px] uppercase tracking-wide font-serif" style={{ color: 'rgba(42,36,24,0.32)' }}>
+            Lumi
+          </p>
+          <p className="mt-1 text-[13px] leading-6 font-serif" style={{ color: 'rgba(42,36,24,0.58)' }}>
+            {emotionalNote}
+          </p>
+        </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0 }}
@@ -333,4 +354,6 @@ export function MusicMoodLayer() {
       </motion.div>
     </motion.div>
   );
+
+  return typeof document === 'undefined' ? layer : createPortal(layer, document.body);
 }

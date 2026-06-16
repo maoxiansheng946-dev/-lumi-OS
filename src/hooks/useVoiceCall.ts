@@ -45,6 +45,7 @@ export function useVoiceCall({ socket, onTranscript, onResponse, canInterruptFro
   const canSendMicAudioRef = useRef(canSendMicAudio);
   const ttsPreRollChunks = useRef<Uint8Array[]>([]);
   const flushTtsPreRollOnNextAudio = useRef(false);
+  const musicDuckingRef = useRef<{ active: boolean; level: number | null }>({ active: false, level: null });
 
   useEffect(() => { canInterruptFromVoiceRef.current = canInterruptFromVoice; }, [canInterruptFromVoice]);
   useEffect(() => { canSendMicAudioRef.current = canSendMicAudio; }, [canSendMicAudio]);
@@ -414,6 +415,40 @@ export function useVoiceCall({ socket, onTranscript, onResponse, canInterruptFro
       socket.emit('perception:audio_emotion', entry);
     }
   }, [callState, socket]);
+
+  // Music coexistence: duck only while a voice turn is active so music can
+  // recover between utterances without covering speech.
+  useEffect(() => {
+    const prev = musicDuckingRef.current;
+    const userSpeaking =
+      callState === 'listening' &&
+      (prev.active && prev.level === 0.32 ? audioLevel > 0.018 : audioLevel > 0.035);
+    const level =
+      callState === 'speaking' ? 0.18 :
+      callState === 'thinking' ? 0.22 :
+      callState === 'queued' ? 0.28 :
+      callState === 'connecting' ? 0.35 :
+      userSpeaking ? 0.32 :
+      null;
+    const active = typeof level === 'number';
+    if (prev.active === active && prev.level === level) return;
+    musicDuckingRef.current = { active, level };
+    window.dispatchEvent(new CustomEvent('lumi:music-ducking', {
+      detail: {
+        reason: 'voice-call',
+        active,
+        level: level ?? undefined,
+      },
+    }));
+  }, [callState, audioLevel]);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('lumi:music-ducking', {
+        detail: { reason: 'voice-call', active: false },
+      }));
+    };
+  }, []);
 
   const startCall = useCallback(async (voiceId?: string, personalityId: string = 'lumi', agentId?: string, options: StartCallOptions = {}) => {
     try {

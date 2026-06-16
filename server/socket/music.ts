@@ -1,6 +1,7 @@
 /**
  * Music Socket Handler — real-time music playback events.
- * All playback, navigation, queue, like, and recommendations go through ncm-cli.
+ * Legacy ncm-cli controls remain available, while desktop playback events can
+ * hand public audio URLs and queues to the shared frontend audio engine.
  */
 import { exec } from 'child_process';
 import { Socket } from 'socket.io';
@@ -11,6 +12,8 @@ interface MusicAtmosphere {
   weather?: string;
   lumiReason?: string;
   audioUrl?: string;
+  queue?: Array<{ track: { name: string; artists: string[]; album?: string; coverUrl?: string; duration?: number }; audioUrl?: string }>;
+  queueIndex?: number;
   lyrics?: Array<{ time: number; text: string }>;
   scene?: import('../music/scene_generator').MusicScene;
 }

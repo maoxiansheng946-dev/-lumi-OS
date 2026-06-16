@@ -1,9 +1,9 @@
 /**
  * Shared music search + play logic.
- * Search uses ncm-cli when available; playback is attempted through ncm-cli/mpv
- * and also exposed to the client as a public audio URL fallback.
+ * Search uses ncm-cli when available; desktop playback is owned by the
+ * frontend audio engine so MusicCenter and the mood layer share one state.
  */
-import { execFile, execFileSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { loadEmotionalState } from '../personality/state';
 import { emitMusicAtmosphere } from '../socket/music';
 import { getFallbackScene, MusicScene } from './scene_generator';
@@ -41,6 +41,21 @@ const MUSIC_PLAYBACK_PATTERNS = [
   /(?:\u653e|\u64ad\u653e|\u542c|\u6765\u4e00\u9996|\u6765\u70b9|\u70b9\u4e00\u9996|\u64ad\u4e00\u9996).*(?:\u97f3\u4e50|\u6b4c|\u6b4c\u66f2|\u6b4c\u5355|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350|\u4e13\u8f91|\u7eaf\u97f3\u4e50)/u,
   /(?:\u97f3\u4e50|\u6b4c|\u6b4c\u66f2|\u6b4c\u5355|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350).*(?:\u653e|\u64ad\u653e|\u542c|\u6765|\u5f00)/u,
 ];
+
+const MUSIC_ADJUSTMENT_PATTERNS = [
+  /(?:\u5b89\u9759\u4e00\u70b9|\u66f4\u5b89\u9759|\u8f7b\u4e00\u70b9|\u5c0f\u58f0\u4e00\u70b9|\u522b\u592a\u5435|\u4e0d\u8981\u592a\u5435|\u592a\u5435|\u67d4\u548c\u4e00\u70b9|\u8212\u7f13\u4e00\u70b9|\u653e\u677e\u4e00\u70b9)/u,
+  /(?:\u66f4\u71c3|\u71c3\u4e00\u70b9|\u55e8\u4e00\u70b9|\u5e26\u52b2\u4e00\u70b9|\u63d0\u795e|\u4e0a\u5934\u4e00\u70b9|\u70ed\u8840\u4e00\u70b9)/u,
+  /(?:\u6362\u4e00\u9996|\u4e0b\u4e00\u9996|\u5207\u6b4c|\u8df3\u8fc7|\u4e0d\u559c\u6b22\u8fd9\u9996|\u8fd9\u9996\u4e0d\u884c)/u,
+  /\b(quieter|calmer|softer|too\s+loud|more\s+energetic|more\s+hype|next\s+song|skip\s+this)\b/i,
+];
+
+type MusicAdjustmentPlan = {
+  mood: string;
+  keyword?: string;
+  preferLiked?: boolean;
+  reply: string;
+  source: string;
+};
 
 function quoteCmdArg(value: string): string {
   const raw = String(value);
@@ -87,23 +102,15 @@ export function isMusicPlaybackRequest(text?: string): boolean {
   return MUSIC_PLAYBACK_PATTERNS.some(pattern => pattern.test(normalized));
 }
 
+export function isMusicAdjustmentRequest(text?: string): boolean {
+  const normalized = (text || '').trim();
+  if (!normalized) return false;
+  return MUSIC_ADJUSTMENT_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
 export function getMusicFailureMessage(reason?: string): string {
   const suffix = reason ? `\n\n${reason}` : '';
   return `我刚刚收到你的音乐请求了，但没有成功启动播放。请打开音乐中心检查网易云音乐登录、ncm-cli/mpv 播放环境，或者换一个更明确的歌名再试。${suffix}`;
-}
-
-function ncmFirePlay(encryptedId: string, originalId: string): void {
-  const args = ['play', '--song', '--encrypted-id', encryptedId, '--original-id', originalId, '--output', 'json'];
-  if (process.platform === 'win32') {
-    const cmdline = ['npx.cmd', '@music163/ncm-cli', ...args].map(quoteCmdArg).join(' ');
-    execFile('cmd.exe', ['/d', '/c', cmdline], { timeout: 30000, windowsHide: true }, (err) => {
-      if (err && !(err as any).killed) console.warn('[Music] ncm-cli play error:', err.message);
-    });
-    return;
-  }
-  execFile('npx', ['@music163/ncm-cli', ...args], { timeout: 30000 }, (err) => {
-    if (err && !(err as any).killed) console.warn('[Music] ncm-cli play error:', err.message);
-  });
 }
 
 function getSongIds(song: any): { encryptedId: string; originalId: string } {
@@ -126,20 +133,40 @@ function normalizeArtists(song: any): string[] {
     .filter(Boolean);
 }
 
-async function getLikedPlaylistEncId(): Promise<string | null> {
+function normalizeTrack(song: any) {
+  return {
+    name: song.name || song.title || 'Unknown track',
+    artists: normalizeArtists(song),
+    album: song.album?.name || song.al?.name,
+    duration: Number(song.duration || song.dt || 0),
+    coverUrl: song.coverImgUrl || song.album?.picUrl || song.al?.picUrl,
+  };
+}
+
+async function getLikedPlaylistInfo(): Promise<{ id: string; trackCount: number } | null> {
   const raw = ncmExec(['playlist', 'created']);
   const data = tryParse(raw);
   const records = data?.data?.records || data?.data || [];
   const liked = records.find((r: any) => r.specialType === 5);
-  return liked?.id || null;
+  if (!liked?.id) return null;
+  return {
+    id: liked.id,
+    trackCount: Number(liked.trackCount || liked.songCount || liked.musicSize || liked.size || 0),
+  };
 }
 
-async function getPlaylistSongs(encId: string, limit = 50): Promise<any[]> {
-  const offset = Math.floor(Math.random() * 200);
+async function getPlaylistSongs(encId: string, limit = 50, totalTracks = 0): Promise<any[]> {
+  const maxOffset = Math.max(0, totalTracks - limit);
+  const offset = maxOffset > 0 ? Math.floor(Math.random() * (maxOffset + 1)) : 0;
   const raw = ncmExec(['playlist', 'tracks', '--playlistId', encId, '--limit', String(limit), '--offset', String(offset)]);
   const data = tryParse(raw);
   const tracks = data?.data?.records || data?.data || data?.songs || [];
-  return tracks.filter((s: any) => s.playFlag !== false);
+  const playable = tracks.filter((s: any) => s.playFlag !== false);
+  if (playable.length > 0 || offset === 0) return playable;
+  const fallbackRaw = ncmExec(['playlist', 'tracks', '--playlistId', encId, '--limit', String(limit), '--offset', '0']);
+  const fallbackData = tryParse(fallbackRaw);
+  const fallbackTracks = fallbackData?.data?.records || fallbackData?.data || fallbackData?.songs || [];
+  return fallbackTracks.filter((s: any) => s.playFlag !== false);
 }
 
 function isLikedSongsRequest(text: string): boolean {
@@ -150,11 +177,50 @@ function isRecommendRequest(text: string): boolean {
   return /(?:\u63a8\u8350|\u6bcf\u65e5|\u65e5\u63a8|\u4eca\u65e5\u63a8\u8350|\u4eca\u5929.*(?:\u542c|\u653e)|\u968f\u4fbf|\u6765\u70b9)/u.test(text);
 }
 
+function getMusicAdjustmentPlan(text: string, fallbackMood: string): MusicAdjustmentPlan {
+  if (/(?:\u5b89\u9759\u4e00\u70b9|\u66f4\u5b89\u9759|\u8f7b\u4e00\u70b9|\u5c0f\u58f0\u4e00\u70b9|\u522b\u592a\u5435|\u4e0d\u8981\u592a\u5435|\u592a\u5435|\u67d4\u548c\u4e00\u70b9|\u8212\u7f13\u4e00\u70b9|\u653e\u677e\u4e00\u70b9|quieter|calmer|softer|too\s+loud)/iu.test(text)) {
+    return {
+      mood: 'peaceful',
+      keyword: '\u5b89\u9759 \u6cbb\u6108 \u8f7b\u97f3\u4e50',
+      reply: '\u597d\uff0c\u6211\u628a\u97f3\u4e50\u8c03\u5f97\u66f4\u5b89\u9759\u4e00\u70b9\u3002',
+      source: 'adjust-quiet',
+    };
+  }
+  if (/(?:\u66f4\u71c3|\u71c3\u4e00\u70b9|\u55e8\u4e00\u70b9|\u5e26\u52b2\u4e00\u70b9|\u63d0\u795e|\u4e0a\u5934\u4e00\u70b9|\u70ed\u8840\u4e00\u70b9|more\s+energetic|more\s+hype)/iu.test(text)) {
+    return {
+      mood: 'excited',
+      keyword: '\u70ed\u6b4c \u71c3 \u6447\u6eda \u6d41\u884c',
+      reply: '\u597d\uff0c\u4e0b\u4e00\u9996\u7ed9\u4f60\u6362\u5f97\u66f4\u71c3\u4e00\u70b9\u3002',
+      source: 'adjust-hype',
+    };
+  }
+  if (/(?:\u6362\u4e00\u9996|\u4e0b\u4e00\u9996|\u5207\u6b4c|\u8df3\u8fc7|\u4e0d\u559c\u6b22\u8fd9\u9996|\u8fd9\u9996\u4e0d\u884c|next\s+song|skip\s+this)/iu.test(text)) {
+    return {
+      mood: fallbackMood || 'peaceful',
+      preferLiked: true,
+      reply: '\u597d\uff0c\u6211\u7ed9\u4f60\u6362\u4e00\u9996\u3002',
+      source: 'adjust-next',
+    };
+  }
+  return {
+    mood: fallbackMood || 'peaceful',
+    preferLiked: true,
+    reply: '\u597d\uff0c\u6211\u6309\u4f60\u73b0\u5728\u7684\u611f\u89c9\u6362\u4e00\u9996\u3002',
+    source: 'adjust-mood',
+  };
+}
+
 async function getDailySongs(limit = 30): Promise<any[]> {
   const raw = ncmExec(['recommend', 'daily', '--limit', String(limit)]);
   const data = tryParse(raw);
   const tracks = data?.data?.records || data?.data || data?.songs || [];
   return tracks.filter((s: any) => s.playFlag !== false);
+}
+
+async function searchSongsByKeyword(keyword: string, limit = 20): Promise<any[]> {
+  const searchRaw = ncmExec(['search', 'song', '--keyword', keyword, '--limit', String(limit)]);
+  const searchData = tryParse(searchRaw);
+  return getSongs(searchData);
 }
 
 function extractTarget(userText: string): string | null {
@@ -189,15 +255,24 @@ async function pickAndPlay(
 
   const pick = playable[Math.floor(Math.random() * playable.length)];
   const { encryptedId, originalId } = getSongIds(pick);
-  const trackInfo = {
-    name: pick.name || pick.title || 'Unknown track',
-    artists: normalizeArtists(pick),
-    album: pick.album?.name || pick.al?.name,
-    duration: Number(pick.duration || pick.dt || 0),
-    coverUrl: pick.coverImgUrl || pick.album?.picUrl || pick.al?.picUrl,
-  };
+  const trackInfo = normalizeTrack(pick);
+  const seenQueueItems = new Set<string>();
+  const queue = [pick, ...playable.filter(song => song !== pick)].reduce((items, song) => {
+    if (items.length >= 20) return items;
+    const ids = getSongIds(song);
+    const track = normalizeTrack(song);
+    const key = ids.originalId || ids.encryptedId || `${track.name}:${track.artists.join(',')}`;
+    const audioUrl = getPublicAudioUrl(song);
+    if (!audioUrl || seenQueueItems.has(key)) return items;
+    seenQueueItems.add(key);
+    items.push({ track, audioUrl });
+    return items;
+  }, [] as Array<{ track: ReturnType<typeof normalizeTrack>; audioUrl: string }>);
+  const queueIndex = 0;
 
-  if (encryptedId && originalId) ncmFirePlay(encryptedId, originalId);
+  // The desktop client owns playback so MusicCenter and the mood layer control
+  // the same audio engine. Starting ncm-cli/mpv here as well causes duplicate
+  // playback when the frontend audio fallback is available.
   console.log(`[Music] Selected: "${trackInfo.name}"`);
 
   const emotionalState = loadEmotionalState(userId);
@@ -231,12 +306,54 @@ async function pickAndPlay(
     track: trackInfo,
     mood,
     audioUrl,
+    queue,
+    queueIndex,
     lyrics: lyricsData,
     lumiReason,
     scene,
   });
 
   return { success: true, text: lumiReason };
+}
+
+export async function adjustMusicPlayback(
+  userId: string,
+  socket: any,
+  userText: string,
+): Promise<MusicPlayResult> {
+  const emotionalState = loadEmotionalState(userId);
+  const fallbackMood = emotionalState.dominantMood || 'peaceful';
+  const plan = getMusicAdjustmentPlan(userText, fallbackMood);
+  let songs: any[] = [];
+
+  if (plan.preferLiked) {
+    const liked = await getLikedPlaylistInfo();
+    if (liked) songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
+  }
+
+  if (songs.length === 0 && plan.keyword) {
+    songs = await searchSongsByKeyword(plan.keyword, 20);
+  }
+
+  if (songs.length === 0 && !plan.preferLiked) {
+    const liked = await getLikedPlaylistInfo();
+    if (liked) songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
+  }
+
+  if (songs.length === 0) {
+    songs = await getDailySongs(30);
+  }
+
+  if (songs.length === 0) {
+    return { success: false, reason: '\u6ca1\u6709\u627e\u5230\u53ef\u7528\u7684\u4e0b\u4e00\u9996\u5019\u9009\u6b4c\u66f2\u3002' };
+  }
+
+  const result = await pickAndPlay(socket, userId, plan.mood, songs, plan.source);
+  if (!result.success) return result;
+  return {
+    ...result,
+    text: [plan.reply, result.text].filter(Boolean).join('\n'),
+  };
 }
 
 export async function searchAndPlay(
@@ -248,9 +365,9 @@ export async function searchAndPlay(
   const mood = emotionalState.dominantMood || 'peaceful';
 
   if (userText && isLikedSongsRequest(userText)) {
-    const encId = await getLikedPlaylistEncId();
-    if (encId) {
-      const songs = await getPlaylistSongs(encId);
+    const liked = await getLikedPlaylistInfo();
+    if (liked) {
+      const songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
       if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
     }
     return { success: false, reason: '没有读取到喜欢/收藏歌单，可能还没有登录网易云音乐。' };
@@ -274,9 +391,9 @@ export async function searchAndPlay(
     }
   }
 
-  const encId = await getLikedPlaylistEncId();
-  if (encId) {
-    const songs = await getPlaylistSongs(encId, 30);
+  const liked = await getLikedPlaylistInfo();
+  if (liked) {
+    const songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
     if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
   }
 

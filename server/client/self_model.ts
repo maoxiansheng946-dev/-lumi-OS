@@ -2,6 +2,7 @@ import { getGateConfig } from '../autonomy/safety_gate';
 import { listAutonomousWorkflows } from '../autonomy/workflows';
 import { formatLAPSelfPrompt } from '../lap/policy';
 import { getMemoryFirewallPolicy } from '../memory/firewall';
+import { formatMusicProfileForPrompt, getCachedMusicProfile } from '../music/library_profile';
 import { getActionConstitutionPolicy } from '../tools/action_constitution';
 
 export type ClientMode = 'chat' | 'assistant' | 'autonomous' | 'meeting' | 'music';
@@ -384,6 +385,7 @@ export function formatClientSelfPrompt(userId: string): string {
   const enabledWorkflows = workflows.filter(workflow => workflow.enabled);
   const memoryFirewall = getMemoryFirewallPolicy();
   const actionConstitution = getActionConstitutionPolicy();
+  const musicProfile = getCachedMusicProfile(userId);
   const capabilityLines = CLIENT_CAPABILITIES.map(cap => (
     `- ${cap.label} [${cap.kind}]: ${cap.notes} Actions: ${cap.actions.join(', ')}${cap.requiresConfirmation ? ' (confirmation-sensitive)' : ''}`
   ));
@@ -399,6 +401,7 @@ export function formatClientSelfPrompt(userId: string): string {
     `- Surfaces: knowledge=${Boolean(state.surfaces?.knowledgeOpen)}, chat=${Boolean(state.surfaces?.chatOpen)}, canvas=${Boolean(state.surfaces?.canvasOpen)}, meeting=${Boolean(state.surfaces?.meetingOpen)}, musicLayer=${Boolean(state.surfaces?.musicLayerVisible)}, wallpaper=${Boolean(state.surfaces?.wallpaperMode)}`,
     `- Voice: ${state.voice?.state || 'idle'}${state.voice?.muted ? ' (muted)' : ''}`,
     `- Music: ${state.music?.isPlaying ? 'playing' : 'idle'}${state.music?.trackName ? `, track="${state.music.trackName}"` : ''}${state.music?.volume != null ? `, volume=${state.music.volume}` : ''}, layer=${Boolean(state.music?.layerVisible ?? state.surfaces?.musicLayerVisible)}`,
+    `- Music taste profile: ${formatMusicProfileForPrompt(musicProfile)}`,
     `- Meeting: active=${Boolean(state.meeting?.active)}, notes=${state.meeting?.noteCount || 0}, report=${Boolean(state.meeting?.hasReport)}, reportGenerating=${Boolean(state.meeting?.reportGenerating)}`,
     `- Canvas: open=${Boolean(state.canvas?.open)}, session=${state.canvas?.sessionId || 'none'}, cards=${state.canvas?.cardCount || 0}, running=${state.canvas?.runningCount || 0}, errors=${state.canvas?.errorCount || 0}, save=${state.canvas?.saveState || 'unknown'}`,
     `- Files: path=${state.files?.currentPath || 'unknown'}, items=${state.files?.itemCount ?? 0}, loading=${Boolean(state.files?.loading)}${state.files?.error ? `, error=${state.files.error}` : ''}`,
@@ -409,7 +412,10 @@ export function formatClientSelfPrompt(userId: string): string {
     `- Confirmed autonomous workflows: enabled=${enabledWorkflows.length}, total=${workflows.length}${enabledWorkflows.length ? `, titles=${enabledWorkflows.map(workflow => workflow.title).slice(0, 5).join(', ')}` : ''}`,
     `- Recent errors: ${state.errors?.length ? state.errors.map(e => `${e.source}: ${e.message}`).slice(-3).join(' | ') : 'none'}`,
     `- State age: ${stateAge}s`,
-  ] : ['- No live desktop client state has been reported yet.'];
+  ] : [
+    '- No live desktop client state has been reported yet.',
+    `- Music taste profile: ${formatMusicProfileForPrompt(musicProfile)}`,
+  ];
 
   return [
     '## Lumi Client Self Model',
