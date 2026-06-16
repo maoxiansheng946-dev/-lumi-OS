@@ -16,6 +16,7 @@ import {
   Box,
   HardDrive
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { usePlatform } from '@/hooks/usePlatform';
 import { useSocket } from '@/hooks/useSocket';
 import { GlassCard } from './SharedUI';
@@ -54,6 +55,7 @@ export function DeviceSyncCenter({ t }: { t: any }) {
   const [isSearching, setIsSearching] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
   const [pairedDevices, setPairedDevices] = useState<string[]>([]);
+  const [pairBusyIds, setPairBusyIds] = useState<string[]>([]);
   const sensorCleanupRef = useRef<(() => void) | null>(null);
   const [fileAccessInfo, setFileAccessInfo] = useState<any>(null);
   const [fileAccessError, setFileAccessError] = useState<string | null>(null);
@@ -63,17 +65,19 @@ export function DeviceSyncCenter({ t }: { t: any }) {
   const fetchDevices = useCallback(async () => {
     setIsSearching(true);
     try {
-      const res = await fetch('/api/devices');
+      const res = await fetch('/api/devices', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch devices');
       const data = await res.json();
       setDiscoveredDevices(data.devices || []);
+      setPairedDevices(data.pairedDeviceIds || (data.devices || []).filter((d: any) => d.paired).map((d: any) => d.id));
       setSensoryCtx(data.sensoryContext || null);
     } catch (err: any) {
       console.error('[DeviceSync] Fetch error:', err.message);
+      toast.error(err?.message || (t.deviceFetchFailed || 'Failed to fetch devices'));
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [t]);
 
   // Load devices on mount
   useEffect(() => {
@@ -121,24 +125,23 @@ export function DeviceSyncCenter({ t }: { t: any }) {
   }, [socket]);
 
   const pairDevice = async (id: string) => {
-    if (pairedDevices.includes(id)) {
-      setPairedDevices(prev => prev.filter(d => d !== id));
-      return;
-    }
+    const isPaired = pairedDevices.includes(id);
+    setPairBusyIds(prev => prev.includes(id) ? prev : [...prev, id]);
     try {
-      const res = await fetch('/api/devices/pair', {
-        method: 'POST',
+      const res = await fetch(isPaired ? `/api/devices/pair/${encodeURIComponent(id)}` : '/api/devices/pair', {
+        method: isPaired ? 'DELETE' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId: id }),
+        credentials: 'include',
+        body: isPaired ? undefined : JSON.stringify({ deviceId: id }),
       });
-      if (res.ok) {
-        setPairedDevices(prev => [...prev, id]);
-      } else {
-        // Still allow pairing locally if API fails (offline tolerance)
-        setPairedDevices(prev => [...prev, id]);
-      }
-    } catch {
-      setPairedDevices(prev => [...prev, id]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || (isPaired ? 'Failed to unpair device' : 'Failed to pair device'));
+      setPairedDevices(data.pairedDeviceIds || (isPaired ? pairedDevices.filter(d => d !== id) : [...new Set([...pairedDevices, id])]));
+      toast.success(isPaired ? (t.deviceUnpaired || 'Device unpaired') : (t.devicePaired || 'Device paired'));
+    } catch (err: any) {
+      toast.error(err?.message || (isPaired ? (t.deviceUnpairFailed || 'Failed to unpair device') : (t.devicePairFailed || 'Failed to pair device')));
+    } finally {
+      setPairBusyIds(prev => prev.filter(deviceId => deviceId !== id));
     }
   };
 
@@ -230,17 +233,23 @@ export function DeviceSyncCenter({ t }: { t: any }) {
                 </div>
                 <div className="mt-4">
                   {pairedDevices.includes(device.id) ? (
-                    <div className="flex items-center gap-2 text-green-500 text-xs font-bold">
-                      <CheckCircle2 size={12} />
-                      {t.pairedDevice || 'PAIRED'}
-                    </div>
+                    <button
+                      onClick={() => pairDevice(device.id)}
+                      disabled={pairBusyIds.includes(device.id)}
+                      className="w-full py-2 bg-green-500/10 border border-green-400/20 rounded-lg text-xs font-bold text-green-400 hover:bg-green-500/15 transition-all disabled:opacity-30"
+                    >
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <CheckCircle2 size={12} />
+                        {pairBusyIds.includes(device.id) ? (t.saving || 'Saving...') : (t.pairedDevice || 'PAIRED')}
+                      </span>
+                    </button>
                   ) : (
                     <button
                       onClick={() => pairDevice(device.id)}
-                      disabled={device.status !== 'online'}
+                      disabled={device.status !== 'online' || pairBusyIds.includes(device.id)}
                       className="w-full py-2 bg-white/10 rounded-lg text-xs font-bold hover:bg-celestial-saturn hover:text-black transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {t.pairDevice || 'PAIR'}
+                      {pairBusyIds.includes(device.id) ? (t.saving || 'Saving...') : (t.pairDevice || 'PAIR')}
                     </button>
                   )}
                 </div>

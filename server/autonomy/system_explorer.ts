@@ -29,10 +29,21 @@ export interface HardwareProfile {
 export interface SoftwareProfile {
   osVersion: string;
   installedApps: string[];
+  appDiscovery?: AppDiscoveryStats;
   startupPrograms: string[];
   nodeVersion?: string;
   pythonVersion?: string;
   runningServices: string[];
+}
+
+export interface AppDiscoveryStats {
+  registryEntries: number;
+  startMenuShortcuts: number;
+  desktopShortcuts: number;
+  commonFolderEntries: number;
+  pathExecutables: number;
+  scannedRoots: string[];
+  limitReached: boolean;
 }
 
 export interface FilesystemOverview {
@@ -55,9 +66,195 @@ function exec(cmd: string): string {
   catch { return ""; }
 }
 
-function getInstalledApps(): string[] {
+const APP_SCAN_LIMIT = 1500;
+const SHORTCUT_EXTENSIONS = new Set([".lnk", ".url", ".appref-ms"]);
+const EXECUTABLE_EXTENSIONS = new Set([".exe", ".cmd", ".bat"]);
+const NOISE_APP_NAME = /^(uninstall|uninstaller|update|updater|help|readme|license|licence|setup|install|repair|crash|logs?)$/i;
+const NOISE_APP_SEGMENT = /\b(uninstall|uninstaller|updater|readme|license|licence|crash handler|diagnostic|telemetry)\b/i;
+
+function uniqueExistingDirs(paths: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const dirs: string[] = [];
+  for (const raw of paths) {
+    if (!raw) continue;
+    const dir = path.normalize(raw);
+    if (seen.has(dir.toLowerCase())) continue;
+    try {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+      seen.add(dir.toLowerCase());
+      dirs.push(dir);
+    } catch {}
+  }
+  return dirs;
+}
+
+function cleanAppName(raw: string): string | null {
+  let name = raw.trim();
+  if (!name) return null;
+  name = name.replace(/\.(lnk|url|appref-ms|exe|cmd|bat)$/i, "");
+  name = name.replace(/\s*-\s*Shortcut$/i, "");
+  name = name.replace(/\s*\(\d+\)$/i, "");
+  name = name.replace(/\s+/g, " ").trim();
+  if (name.length < 2) return null;
+  if (NOISE_APP_NAME.test(name) || NOISE_APP_SEGMENT.test(name)) return null;
+  return name;
+}
+
+function appKey(name: string): string {
+  return name.toLowerCase().replace(/[\s._()[\]{}-]+/g, "");
+}
+
+function mergeApps(...sources: string[][]): string[] {
+  const map = new Map<string, string>();
+  for (const source of sources) {
+    for (const raw of source) {
+      const name = cleanAppName(raw);
+      if (!name) continue;
+      const key = appKey(name);
+      const existing = map.get(key);
+      if (!existing || name.length > existing.length) map.set(key, name);
+      if (map.size >= APP_SCAN_LIMIT) return [...map.values()].sort((a, b) => a.localeCompare(b));
+    }
+  }
+  return [...map.values()].sort((a, b) => a.localeCompare(b));
+}
+
+function getDesktopDirs(): string[] {
+  const home = os.homedir();
+  return uniqueExistingDirs([
+    path.join(home, "Desktop"),
+    path.join(home, "OneDrive", "Desktop"),
+    process.env.PUBLIC ? path.join(process.env.PUBLIC, "Desktop") : undefined,
+    process.env.ONEDRIVE ? path.join(process.env.ONEDRIVE, "Desktop") : undefined,
+    process.env.ONEDRIVECONSUMER ? path.join(process.env.ONEDRIVECONSUMER, "Desktop") : undefined,
+  ]);
+}
+
+function getStartMenuDirs(): string[] {
+  return uniqueExistingDirs([
+    process.env.ProgramData ? path.join(process.env.ProgramData, "Microsoft", "Windows", "Start Menu", "Programs") : undefined,
+    process.env.APPDATA ? path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs") : undefined,
+  ]);
+}
+
+function getDriveRoots(): string[] {
+  if (os.platform() !== "win32") return ["/"];
+  const disks = getDiskInfo();
+  return uniqueExistingDirs(disks.map(d => `${d.name}:\\`));
+}
+
+function getCommonAppRoots(): string[] {
+  const driveRoots = getDriveRoots();
+  const rootNames = [
+    "Program Files",
+    "Program Files (x86)",
+    "Program Files (Arm)",
+    "Applications",
+    "Apps",
+    "PortableApps",
+    "Portable Apps",
+    "Programs",
+    "Software",
+    "Tools",
+    "DevTools",
+  ];
+  const roots: Array<string | undefined> = [
+    process.env.ProgramFiles,
+    process.env["ProgramFiles(x86)"],
+    process.env.ProgramW6432,
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs") : undefined,
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WindowsApps") : undefined,
+    path.join(os.homedir(), "scoop", "apps"),
+    ...driveRoots.flatMap(root => rootNames.map(name => path.join(root, name))),
+  ];
+  return uniqueExistingDirs(roots);
+}
+
+function collectShortcutNames(roots: string[], maxDepth: number, maxEntries: number): string[] {
+  const names: string[] = [];
+  let visited = 0;
+  for (const root of roots) {
+    const stack = [{ dir: root, depth: 0 }];
+    while (stack.length > 0 && names.length < maxEntries && visited < maxEntries * 8) {
+      const { dir, depth } = stack.pop()!;
+      visited++;
+      let entries: fs.Dirent[] = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && depth < maxDepth) {
+          stack.push({ dir: fullPath, depth: depth + 1 });
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!SHORTCUT_EXTENSIONS.has(ext)) continue;
+        const name = cleanAppName(path.basename(entry.name, ext));
+        if (name) names.push(name);
+        if (names.length >= maxEntries) break;
+      }
+    }
+  }
+  return names;
+}
+
+function collectCommonFolderApps(roots: string[], maxEntries: number): string[] {
+  const names: string[] = [];
+  let visited = 0;
+  const skipDirs = new Set(["node_modules", "$recycle.bin", "system volume information", "temp", "tmp", "cache", "logs"]);
+  for (const root of roots) {
+    const stack = [{ dir: root, depth: 0 }];
+    while (stack.length > 0 && names.length < maxEntries && visited < maxEntries * 10) {
+      const { dir, depth } = stack.pop()!;
+      visited++;
+      let entries: fs.Dirent[] = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const cleaned = cleanAppName(entry.name);
+          if (cleaned && !NOISE_APP_NAME.test(cleaned)) names.push(cleaned);
+          if (depth < 2 && !skipDirs.has(entry.name.toLowerCase())) {
+            stack.push({ dir: fullPath, depth: depth + 1 });
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (EXECUTABLE_EXTENSIONS.has(ext)) {
+            const cleaned = cleanAppName(path.basename(entry.name, ext));
+            if (cleaned) names.push(cleaned);
+          }
+        }
+        if (names.length >= maxEntries) break;
+      }
+    }
+  }
+  return names;
+}
+
+function collectPathExecutables(maxEntries: number): string[] {
+  const pathEnv = process.env.PATH || "";
+  const dirs = uniqueExistingDirs(pathEnv.split(path.delimiter));
+  const names: string[] = [];
+  const skip = /\\windows\\|\\system32\\|\\syswow64\\/i;
+  for (const dir of dirs) {
+    if (skip.test(`${dir}\\`)) continue;
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!EXECUTABLE_EXTENSIONS.has(ext)) continue;
+      const cleaned = cleanAppName(path.basename(entry.name, ext));
+      if (cleaned) names.push(cleaned);
+      if (names.length >= maxEntries) return names;
+    }
+  }
+  return names;
+}
+
+function getRegistryInstalledApps(): string[] {
   const apps: string[] = [];
-  const out = exec(`powershell -NoProfile -Command "Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* 2>$null | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName -First 200"`);
+  const out = exec(`powershell -NoProfile -Command "Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* 2>$null | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName -First 1000"`);
   if (out) {
     for (const line of out.split("\n")) {
       const t = line.trim();
@@ -65,6 +262,30 @@ function getInstalledApps(): string[] {
     }
   }
   return apps;
+}
+
+function getInstalledApps(): { apps: string[]; discovery: AppDiscoveryStats } {
+  const registryApps = getRegistryInstalledApps();
+  const startMenuDirs = getStartMenuDirs();
+  const desktopDirs = getDesktopDirs();
+  const commonRoots = getCommonAppRoots();
+  const startMenuApps = collectShortcutNames(startMenuDirs, 6, 600);
+  const desktopApps = collectShortcutNames(desktopDirs, 2, 300);
+  const commonFolderApps = collectCommonFolderApps(commonRoots, 900);
+  const pathExecutables = collectPathExecutables(250);
+  const apps = mergeApps(registryApps, startMenuApps, desktopApps, commonFolderApps, pathExecutables);
+  return {
+    apps,
+    discovery: {
+      registryEntries: registryApps.length,
+      startMenuShortcuts: startMenuApps.length,
+      desktopShortcuts: desktopApps.length,
+      commonFolderEntries: commonFolderApps.length,
+      pathExecutables: pathExecutables.length,
+      scannedRoots: [...startMenuDirs, ...desktopDirs, ...commonRoots].slice(0, 80),
+      limitReached: apps.length >= APP_SCAN_LIMIT,
+    },
+  };
 }
 
 function getStartupPrograms(): string[] {
@@ -118,7 +339,8 @@ function getNetworkInfo(): NetworkProfile {
 
 function scanUserDirectories(): FilesystemOverview {
   const home = os.homedir();
-  const desktop = path.join(home, "Desktop");
+  const desktopDirs = getDesktopDirs();
+  const desktop = desktopDirs[0] || path.join(home, "Desktop");
   const docs = path.join(home, "Documents");
   const downloads = path.join(home, "Downloads");
 
@@ -164,7 +386,7 @@ function scanUserDirectories(): FilesystemOverview {
 
   return {
     homeDir: home,
-    desktopFiles: countFiles(desktop),
+    desktopFiles: desktopDirs.reduce((sum, dir) => sum + countFiles(dir), 0),
     documentsFiles: countFiles(docs),
     downloadsFiles: countFiles(downloads),
     totalUserFiles: countFiles(home),
@@ -187,9 +409,11 @@ function scanHardwareProfile(): HardwareProfile {
 }
 
 function scanSoftwareProfile(): SoftwareProfile {
+  const discovered = getInstalledApps();
   return {
     osVersion: `${os.type()} ${os.release()}`,
-    installedApps: getInstalledApps(),
+    installedApps: discovered.apps,
+    appDiscovery: discovered.discovery,
     startupPrograms: getStartupPrograms(),
     nodeVersion: exec("node --version") || undefined,
     pythonVersion: exec("python --version 2>&1") || exec("python3 --version 2>&1") || undefined,

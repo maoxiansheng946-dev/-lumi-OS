@@ -24,6 +24,7 @@ import { hasClientActionIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork
 import { updatePresence } from "../biometrics/presence";
 import { getVoiceprints } from "../biometrics/store";
 import { formatClientSelfPrompt } from "../client/self_model";
+import { getMusicFailureMessage, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
 
 interface AudioSession {
   sttSession: ReturnType<typeof createStreamingSession> | null;
@@ -543,31 +544,43 @@ async function processVoiceInput(
     logger.info(`[Audio] Cognition: ${cognition.intent.category} (confidence: ${cognition.intent.confidence}), model: ${effectiveModel}`);
 
     // ── Music intent shortcut — intercept before LLM tool-call loop ──
-    if (/放.*歌|放.*音乐|来首歌|播放|听.*歌|来点音乐|给我放|随便放点|我想听|搜.*歌|换.*歌|切.*歌/.test(userText)) {
+    if (isMusicPlaybackRequest(userText)) {
       logger.info('[Audio] Music intent matched, attempting shortcut...');
       try {
         void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
           logger.warn('[Audio] Failed to sync music client mode:', err.message);
         });
-        const { searchAndPlay } = await import('../music/search_play');
         const result = await searchAndPlay(session.userId, socket, userText);
-        if (result.success && result.text) {
-          responseText = result.text;
-          flushSentence(responseText);
-          await Promise.allSettled(ttsPromises);
-          const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-          addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-          addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
-          session.isProcessing = false;
-          session.isSpeaking = false;
-          session.pipelineAbortController = null;
-          socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
-          socket.emit("audio:status", { status: "listening" });
-          socket.emit("agent:status", { status: "idle" });
-          return;
-        }
+        responseText = result.success && result.text ? result.text : getMusicFailureMessage(result.reason);
+        if (!result.success) socket.emit('music:error', { message: responseText });
+        flushSentence(responseText);
+        await Promise.allSettled(ttsPromises);
+        const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+        session.isProcessing = false;
+        session.isSpeaking = false;
+        session.pipelineAbortController = null;
+        socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
+        socket.emit("audio:status", { status: "listening" });
+        socket.emit("agent:status", { status: "idle" });
+        return;
       } catch (musicErr: any) {
-        logger.warn('[Audio] Music intent shortcut failed, falling through to LLM:', musicErr.message);
+        logger.warn('[Audio] Music intent shortcut failed:', musicErr.message);
+        responseText = getMusicFailureMessage(musicErr?.message);
+        socket.emit('music:error', { message: responseText });
+        flushSentence(responseText);
+        await Promise.allSettled(ttsPromises);
+        const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+        session.isProcessing = false;
+        session.isSpeaking = false;
+        session.pipelineAbortController = null;
+        socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
+        socket.emit("audio:status", { status: "listening" });
+        socket.emit("agent:status", { status: "idle" });
+        return;
       }
     }
 

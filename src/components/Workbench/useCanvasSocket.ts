@@ -24,6 +24,7 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
   const pendingChunkRef = useRef<string>('');
   const chunkCardIdRef = useRef<string | null>(null);
   const lastCardIdRef = useRef<string | null>(null);
+  const activeCanvasRequestIdRef = useRef<string | null>(null);
   const rafRef = useRef<number>(0);
   const pendingRef = useRef(false);
 
@@ -96,7 +97,13 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
   useEffect(() => {
     if (!socket) return;
 
-    const onStatus = (data: { status: string; agentName?: string }) => {
+    const isCanvasEvent = (data?: { requestId?: string; source?: string }) => {
+      if (data?.requestId) return data.requestId === activeCanvasRequestIdRef.current;
+      return data?.source === 'canvas';
+    };
+
+    const onStatus = (data: { status: string; agentName?: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       onStatusChange(data.status);
 
       if (data.status === 'thinking') {
@@ -125,10 +132,14 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
             : c
         );
         scheduleFlush();
+        if (data.requestId && data.requestId === activeCanvasRequestIdRef.current) {
+          activeCanvasRequestIdRef.current = null;
+        }
       }
     };
 
-    const onChunk = (data: { text: string }) => {
+    const onChunk = (data: { text: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       if (!data.text) return;
       pendingChunkRef.current += data.text;
 
@@ -148,7 +159,8 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       }
     };
 
-    const onTool = (data: { correlationId?: string; toolCallId?: string; name: string; args?: any; arguments?: any; result?: string; error?: string }) => {
+    const onTool = (data: { correlationId?: string; toolCallId?: string; name: string; args?: any; arguments?: any; result?: string; error?: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       const toolName = data.name || 'unknown_tool';
       const toolArgs = data.args ?? data.arguments;
       const argsStr = toolArgs ? JSON.stringify(toolArgs).slice(0, 200) : '';
@@ -187,11 +199,12 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       });
     };
 
-    const onToolCall = (data: { correlationId?: string; toolCallId?: string; name: string; arguments?: any; result?: string; error?: string }) => {
+    const onToolCall = (data: { correlationId?: string; toolCallId?: string; name: string; arguments?: any; result?: string; error?: string; requestId?: string; source?: string }) => {
       onTool(data);
     };
 
-    const onResponse = (data: { text: string; agentName?: string }) => {
+    const onResponse = (data: { text: string; agentName?: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       if (!data.text) return;
 
       if (chunkCardIdRef.current) {
@@ -223,7 +236,8 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       });
     };
 
-    const onError = (data: { message: string; code?: string }) => {
+    const onError = (data: { message: string; code?: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       addCard({
         id: `error_${Date.now()}`,
         type: 'error',
@@ -233,9 +247,13 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
         groupId: groupIdRef.current,
         status: 'error',
       });
+      if (data.requestId && data.requestId === activeCanvasRequestIdRef.current) {
+        activeCanvasRequestIdRef.current = null;
+      }
     };
 
-    const onProactive = (data: { type?: string; message: string }) => {
+    const onProactive = (data: { type?: string; message: string; requestId?: string; source?: string }) => {
+      if (!isCanvasEvent(data)) return;
       if (data.type === 'distill_hint') {
         addCard({
           id: `proactive_${Date.now()}`,
@@ -276,6 +294,8 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
 
     // Start a new group WITHOUT clearing old cards — canvas accumulates
     const groupId = newGroupId();
+    const requestId = `canvas_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    activeCanvasRequestIdRef.current = requestId;
 
     const userCard: CanvasCard = {
       id: `user_${Date.now()}`,
@@ -286,19 +306,7 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       status: 'done',
     };
 
-    // Emit via socket
-    socket?.emit('agent:chat', {
-      text: text.trim(),
-      history: [],
-      personalityId: 'lumi',
-      category: undefined,
-      agentId: undefined,
-      domain,
-      orgId: null,
-      source: 'canvas',
-    });
-
-    // Add user card after emit to avoid clearing race
+    // Add the user card first so the visible route always starts from the task.
     addCard(userCard);
     if (options.parentCardId) {
       addEdge(options.parentCardId, userCard.id, {
@@ -330,9 +338,30 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       } catch {}
     }, 4000);
 
-    const onSocketDone = () => { clearTimeout(fallbackTimer); };
-    socket?.once('agent:response', onSocketDone);
-    socket?.once('agent:error', onSocketDone);
+    const cleanupSocketDone = () => {
+      socket?.off('agent:response', onSocketDone);
+      socket?.off('agent:error', onSocketDone);
+    };
+    const onSocketDone = (data?: { requestId?: string; source?: string }) => {
+      const matches = data?.requestId ? data.requestId === requestId : data?.source === 'canvas';
+      if (!matches) return;
+      clearTimeout(fallbackTimer);
+      cleanupSocketDone();
+    };
+    socket?.on('agent:response', onSocketDone);
+    socket?.on('agent:error', onSocketDone);
+
+    socket?.emit('agent:chat', {
+      text: text.trim(),
+      history: [],
+      personalityId: 'lumi',
+      category: undefined,
+      agentId: undefined,
+      domain,
+      orgId: null,
+      source: 'canvas',
+      requestId,
+    });
   }, [socket, newGroupId, addCard, addEdge, domain]);
 
   const retryFromCard = useCallback((cardId: string) => {
@@ -371,12 +400,15 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       scheduleFlush();
 
       // Re-emit
+      const requestId = `canvas_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      activeCanvasRequestIdRef.current = requestId;
       socket?.emit('agent:chat', {
         text: userRequest.text,
         history: [],
         personalityId: 'lumi',
         domain,
         source: 'canvas',
+        requestId,
       });
     }
   }, [socket, updateCard, scheduleFlush, domain]);

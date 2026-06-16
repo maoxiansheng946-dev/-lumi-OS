@@ -58,6 +58,8 @@ import {
   Camera,
   Copy,
   Download,
+  FolderPlus,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from './SharedUI';
@@ -623,6 +625,9 @@ interface NativeFilesWindowProps {
   onPickDirectory: () => void;
   onNavigate: (path: string) => void;
   onOpenItem: (path: string) => void;
+  onCreateFolder: (name: string) => void;
+  onRenameItem: (path: string, newName: string) => void;
+  onDeleteItem: (path: string) => void;
 }
 
 function NativeFilesWindow({
@@ -637,11 +642,18 @@ function NativeFilesWindow({
   onPickDirectory,
   onNavigate,
   onOpenItem,
+  onCreateFolder,
+  onRenameItem,
+  onDeleteItem,
 }: NativeFilesWindowProps) {
   const [query, setQuery] = useState('');
   const [pathInput, setPathInput] = useState(currentPath);
   const [sortBy, setSortBy] = useState<'name' | 'kind'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   useEffect(() => {
     setPathInput(currentPath);
   }, [currentPath]);
@@ -689,6 +701,34 @@ function NativeFilesWindow({
     setSortBy(nextSort);
     setSortDirection('asc');
   };
+  const submitNewFolder = (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newFolderName.trim();
+    if (!name) return;
+    onCreateFolder(name);
+    setNewFolderName('');
+    setShowNewFolder(false);
+  };
+  const startRename = (file: NativeFile) => {
+    setRenamingPath(file.path);
+    setRenameValue(file.name);
+  };
+  const submitRename = (event: React.FormEvent, file: NativeFile) => {
+    event.preventDefault();
+    const nextName = renameValue.trim();
+    if (!nextName || nextName === file.name) {
+      setRenamingPath(null);
+      return;
+    }
+    onRenameItem(file.path, nextName);
+    setRenamingPath(null);
+    setRenameValue('');
+  };
+  const confirmDelete = (file: NativeFile) => {
+    const ok = window.confirm(`${t.delete || 'Delete'} "${file.name}"?`);
+    if (!ok) return;
+    onDeleteItem(file.path);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -718,6 +758,14 @@ function NativeFilesWindow({
           {t.refresh || 'Refresh'}
         </button>
         <button
+          onClick={() => setShowNewFolder(prev => !prev)}
+          disabled={isLoading || !currentPath}
+          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <FolderPlus size={15} />
+          {t.newFolder || 'New Folder'}
+        </button>
+        <button
           onClick={onPickDirectory}
           disabled={isLoading}
           className="ml-auto flex h-10 items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 text-xs font-black text-cyan-200 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-30"
@@ -734,6 +782,23 @@ function NativeFilesWindow({
           {t.openInExplorer || 'Open in Explorer'}
         </button>
       </div>
+
+      {showNewFolder && (
+        <form onSubmit={submitNewFolder} className="flex items-center gap-2 rounded-2xl border border-celestial-saturn/20 bg-celestial-saturn/10 px-3 py-2">
+          <FolderPlus size={15} className="shrink-0 text-celestial-saturn" />
+          <input
+            value={newFolderName}
+            onChange={event => setNewFolderName(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Escape') setShowNewFolder(false); }}
+            autoFocus
+            placeholder={t.folderName || 'Folder name'}
+            className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-white/72 outline-none placeholder:text-white/25"
+          />
+          <button type="submit" disabled={!newFolderName.trim()} className="h-8 rounded-lg border border-celestial-saturn/25 bg-celestial-saturn/10 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-celestial-saturn transition-colors hover:bg-celestial-saturn/18 disabled:opacity-30">
+            {t.create || 'Create'}
+          </button>
+        </form>
+      )}
 
       <form onSubmit={handlePathSubmit} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
         <Folder size={16} className="shrink-0 text-celestial-saturn" />
@@ -850,7 +915,7 @@ function NativeFilesWindow({
           </div>
         ) : (
           <div className="h-full overflow-y-auto custom-scrollbar">
-            <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_88px_72px] gap-3 border-b border-white/[0.06] bg-black/70 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/28 backdrop-blur-xl">
+            <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_88px_132px] gap-3 border-b border-white/[0.06] bg-black/70 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/28 backdrop-blur-xl">
               <span>{t.name || 'Name'}</span>
               <span className="justify-self-end">{t.kind || 'Kind'}</span>
               <span className="justify-self-end">{t.action || 'Action'}</span>
@@ -858,32 +923,65 @@ function NativeFilesWindow({
             {visibleFiles.map(file => (
               <div
                 key={file.path}
-                className="group grid w-full grid-cols-[minmax(0,1fr)_88px_72px] items-center gap-3 border-b border-white/[0.04] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
+                className="group grid w-full grid-cols-[minmax(0,1fr)_88px_132px] items-center gap-3 border-b border-white/[0.04] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
               >
-                <button
-                  onClick={() => file.isDirectory ? onNavigate(file.path) : onOpenItem(file.path)}
-                  className="flex min-w-0 items-center gap-3 rounded-lg py-1 text-left"
-                  title={file.path}
-                >
-                  {file.isDirectory ? (
-                    <Folder size={18} className="shrink-0 text-celestial-saturn" />
-                  ) : (
-                    <FileText size={18} className="shrink-0 text-white/35" />
-                  )}
-                  <span className="min-w-0 truncate text-sm font-semibold text-white/68 group-hover:text-white">
-                    {file.name}
-                  </span>
-                </button>
+                {renamingPath === file.path ? (
+                  <form onSubmit={(event) => submitRename(event, file)} className="flex min-w-0 items-center gap-2">
+                    {file.isDirectory ? (
+                      <Folder size={18} className="shrink-0 text-celestial-saturn" />
+                    ) : (
+                      <FileText size={18} className="shrink-0 text-white/35" />
+                    )}
+                    <input
+                      value={renameValue}
+                      onChange={event => setRenameValue(event.target.value)}
+                      onKeyDown={event => { if (event.key === 'Escape') setRenamingPath(null); }}
+                      autoFocus
+                      className="min-w-0 flex-1 rounded-lg border border-celestial-saturn/25 bg-black/35 px-2 py-1 text-sm font-semibold text-white/78 outline-none"
+                    />
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => file.isDirectory ? onNavigate(file.path) : onOpenItem(file.path)}
+                    className="flex min-w-0 items-center gap-3 rounded-lg py-1 text-left"
+                    title={file.path}
+                  >
+                    {file.isDirectory ? (
+                      <Folder size={18} className="shrink-0 text-celestial-saturn" />
+                    ) : (
+                      <FileText size={18} className="shrink-0 text-white/35" />
+                    )}
+                    <span className="min-w-0 truncate text-sm font-semibold text-white/68 group-hover:text-white">
+                      {file.name}
+                    </span>
+                  </button>
+                )}
                 <span className="justify-self-end rounded-lg border border-white/8 bg-white/[0.03] px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/30">
                   {file.isDirectory ? (t.folder || 'Folder') : (t.file || 'File')}
                 </span>
-                <button
-                  onClick={() => onOpenItem(file.path)}
-                  className="justify-self-end rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/40 transition-colors hover:border-celestial-saturn/30 hover:bg-celestial-saturn/10 hover:text-celestial-saturn"
-                  title={file.path}
-                >
-                  {file.isDirectory ? (t.explorer || 'Explorer') : (t.open || 'Open')}
-                </button>
+                <div className="justify-self-end flex items-center gap-1">
+                  <button
+                    onClick={() => onOpenItem(file.path)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/40 transition-colors hover:border-celestial-saturn/30 hover:bg-celestial-saturn/10 hover:text-celestial-saturn"
+                    title={file.isDirectory ? (t.explorer || 'Explorer') : (t.open || 'Open')}
+                  >
+                    {file.isDirectory ? <Folder size={14} /> : <FileText size={14} />}
+                  </button>
+                  <button
+                    onClick={() => startRename(file)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/34 transition-colors hover:bg-white/10 hover:text-white/70"
+                    title={t.rename || 'Rename'}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => confirmDelete(file)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-400/10 bg-red-500/8 text-red-200/45 transition-colors hover:bg-red-500/15 hover:text-red-100"
+                    title={t.delete || 'Delete'}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1170,14 +1268,20 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [newPlan, setNewPlan] = useState({ title: '', priority: 'medium' });
+  const [busyPlanIds, setBusyPlanIds] = useState<string[]>([]);
   const isZh = t?.langCode !== 'en';
   const activeCount = plans.length;
 
   const loadPlans = async () => {
     try {
-      const d = await (await fetch('/api/plans')).json();
+      setLoading(true);
+      const res = await fetch('/api/plans', { credentials: 'include' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to load plans');
       setPlans((d.plans || []).filter((p: any) => p.status !== 'done').slice(0, 5));
-    } catch {} finally { setLoading(false); }
+    } catch (err: any) {
+      toast.error(err?.message || (t.planLoadFailed || 'Failed to load plans'));
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { loadPlans(); }, []);
@@ -1190,20 +1294,45 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
         body: JSON.stringify({ title: newPlan.title, description: '', steps: [], tags: [], source: 'manual', priority: newPlan.priority }),
         credentials: 'include',
       });
-      if (res.ok) {
-        const d = await res.json();
-        setPlans(prev => [d.plan, ...prev].slice(0, 5));
-        setNewPlan({ title: '', priority: 'medium' });
-        setShowNew(false);
-      }
-    } catch {}
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to create plan');
+      setPlans(prev => [d.plan, ...prev].slice(0, 5));
+      setNewPlan({ title: '', priority: 'medium' });
+      setShowNew(false);
+      toast.success(t.planCreated || 'Plan added');
+    } catch (err: any) {
+      toast.error(err?.message || (t.planCreateFailed || 'Failed to create plan'));
+    }
   };
 
   const markDone = async (id: string) => {
+    setBusyPlanIds(prev => prev.includes(id) ? prev : [...prev, id]);
     try {
-      await fetch(`/api/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'done' }), credentials: 'include' });
+      const res = await fetch(`/api/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'done' }), credentials: 'include' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to update plan');
       setPlans(prev => prev.filter(p => p.id !== id));
-    } catch {}
+      toast.success(t.planCompleted || 'Plan completed');
+    } catch (err: any) {
+      toast.error(err?.message || (t.planUpdateFailed || 'Failed to update plan'));
+    } finally {
+      setBusyPlanIds(prev => prev.filter(planId => planId !== id));
+    }
+  };
+
+  const deletePlan = async (id: string) => {
+    setBusyPlanIds(prev => prev.includes(id) ? prev : [...prev, id]);
+    try {
+      const res = await fetch(`/api/plans/${id}`, { method: 'DELETE', credentials: 'include' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to delete plan');
+      setPlans(prev => prev.filter(p => p.id !== id));
+      toast.success(t.planDeleted || 'Plan deleted');
+    } catch (err: any) {
+      toast.error(err?.message || (t.planDeleteFailed || 'Failed to delete plan'));
+    } finally {
+      setBusyPlanIds(prev => prev.filter(planId => planId !== id));
+    }
   };
 
   return (
@@ -1265,11 +1394,14 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
         <div className="space-y-1.5">
           {plans.map((plan: any) => (
             <div key={plan.id} className="flex items-center gap-2 group">
-              <button onClick={(e) => { e.stopPropagation(); markDone(plan.id); }} className="p-0.5 text-white/20 hover:text-green-400 transition-colors">
+              <button onClick={(e) => { e.stopPropagation(); markDone(plan.id); }} disabled={busyPlanIds.includes(plan.id)} className="p-0.5 text-white/20 hover:text-green-400 transition-colors disabled:opacity-30">
                 <Circle size={12} />
               </button>
               <span className="flex-1 text-xs text-white/65 truncate">{plan.title}</span>
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${plan.priority === 'high' ? 'bg-red-400' : plan.priority === 'medium' ? 'bg-amber-400' : 'bg-white/25'}`} />
+              <button onClick={(e) => { e.stopPropagation(); deletePlan(plan.id); }} disabled={busyPlanIds.includes(plan.id)} className="p-0.5 text-white/15 opacity-0 transition-all hover:text-red-300 group-hover:opacity-100 disabled:opacity-30">
+                <Trash2 size={12} />
+              </button>
             </div>
           ))}
         </div>
@@ -1522,6 +1654,45 @@ export function DesktopUI({
       toast.error(err?.message || String(err || 'Failed to open item'));
     }
   }, []);
+
+  const createNativeDirectory = useCallback(async (name: string) => {
+    if (!nativePath || !name.trim()) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result: any = await invoke('create_directory', { parent: nativePath, name: name.trim() });
+      if (!result?.success) throw new Error(result?.output || 'Failed to create folder');
+      toast.success(t.folderCreated || 'Folder created');
+      await loadNativeFiles(nativePath);
+    } catch (err: any) {
+      toast.error(err?.message || String(err || 'Failed to create folder'));
+    }
+  }, [loadNativeFiles, nativePath, t]);
+
+  const renameNativeItem = useCallback(async (path: string, newName: string) => {
+    if (!path || !newName.trim()) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result: any = await invoke('rename_item', { target: path, newName: newName.trim() });
+      if (!result?.success) throw new Error(result?.output || 'Failed to rename item');
+      toast.success(t.itemRenamed || 'Item renamed');
+      await loadNativeFiles(nativePath);
+    } catch (err: any) {
+      toast.error(err?.message || String(err || 'Failed to rename item'));
+    }
+  }, [loadNativeFiles, nativePath, t]);
+
+  const deleteNativeItem = useCallback(async (path: string) => {
+    if (!path) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result: any = await invoke('delete_item', { target: path });
+      if (!result?.success) throw new Error(result?.output || 'Failed to delete item');
+      toast.success(t.itemDeleted || 'Item moved to Recycle Bin');
+      await loadNativeFiles(nativePath);
+    } catch (err: any) {
+      toast.error(err?.message || String(err || 'Failed to delete item'));
+    }
+  }, [loadNativeFiles, nativePath, t]);
 
   const pickNativeDirectory = useCallback(async () => {
     try {
@@ -2645,6 +2816,10 @@ export function DesktopUI({
           if (task.trim()) setCanvasInitialTask(task.trim());
           return;
         }
+        if (windowId === 'memory-avatar') {
+          void openMemoryAvatar();
+          return;
+        }
         if (windowId === 'files') {
           void loadNativeFiles();
         }
@@ -2717,7 +2892,14 @@ export function DesktopUI({
           return;
         }
         if (action === 'show_music_layer' || action === 'hide_music_layer') {
-          if (action === 'show_music_layer') setClientMode('music');
+          if (action === 'show_music_layer') {
+            setClientMode('music');
+            if (!musicSnapshot.track) {
+              openSurface('music-center');
+              respond({ ok: false, action, mode: 'music', reason: 'music_track_required', target: 'music-center' });
+              return;
+            }
+          }
           window.dispatchEvent(new CustomEvent('lumi:music-layer', { detail: { visible: action === 'show_music_layer' } }));
           respond({ ok: true, action, ...(action === 'show_music_layer' ? { mode: 'music' } : {}) });
           return;
@@ -2828,6 +3010,7 @@ export function DesktopUI({
     closeWindow,
     endMeetingAndReport,
     loadNativeFiles,
+    musicSnapshot.track,
     setActiveTab,
     setOperationMode,
     showModeHintBriefly,
@@ -4264,6 +4447,9 @@ export function DesktopUI({
                       onPickDirectory={() => void pickNativeDirectory()}
                       onNavigate={(path) => void loadNativeFiles(path)}
                       onOpenItem={(path) => void openNativeItem(path)}
+                      onCreateFolder={(name) => void createNativeDirectory(name)}
+                      onRenameItem={(path, newName) => void renameNativeItem(path, newName)}
+                      onDeleteItem={(path) => void deleteNativeItem(path)}
                     />
                   ) : windowId === 'tools' ? (
                     <ToolPanel />

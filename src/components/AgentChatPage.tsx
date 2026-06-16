@@ -330,13 +330,21 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
   const streamingMsgId = useRef<string | null>(null);
   const textChatActiveRef = useRef(false);
+  const activeChatRequestIdRef = useRef<string | null>(null);
   const initialLoadDoneRef = useRef(false);
   const lastAgentIdRef = useRef<string>('');
 
   useEffect(() => {
     if (isFounder || !socket) return;
 
-    const onProactive = (data: { message: string; timestamp: string }) => {
+    const isCurrentChatEvent = (data?: { requestId?: string; source?: string }) => {
+      if (data?.requestId) return data.requestId === activeChatRequestIdRef.current;
+      if (data?.source && data.source !== 'chat') return false;
+      return textChatActiveRef.current;
+    };
+
+    const onProactive = (data: { message: string; timestamp: string; requestId?: string; source?: string }) => {
+      if ((data.requestId || data.source) && !isCurrentChatEvent(data)) return;
       setMessages(prev => {
         if (prev.some(m => m.text === data.message && m.type === 'agent')) return prev;
         return [...prev, {
@@ -350,7 +358,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       });
     };
 
-    const onChunk = (data: { text: string; agentName: string }) => {
+    const onChunk = (data: { text: string; agentName: string; requestId?: string; source?: string }) => {
+      if (!isCurrentChatEvent(data)) return;
       if (streamingMsgId.current) {
         setMessages(prev => prev.map(m =>
           m.id === streamingMsgId.current ? { ...m, text: m.text + data.text } : m
@@ -368,7 +377,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       }
     };
 
-    const onTool = (data: { correlationId?: string; name: string; args?: any; arguments?: any; result?: string; error?: string }) => {
+    const onTool = (data: { correlationId?: string; name: string; args?: any; arguments?: any; result?: string; error?: string; requestId?: string; source?: string }) => {
+      if (!isCurrentChatEvent(data)) return;
       const eventId = data.correlationId || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const args = data.arguments ?? data.args;
       const status = data.error ? 'error' : (data.result !== undefined ? 'done' : 'running');
@@ -398,7 +408,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       });
     };
 
-    const onResponse = (data: { text: string; agentName: string; source?: string }) => {
+    const onResponse = (data: { text: string; agentName: string; source?: string; requestId?: string }) => {
+      if (!isCurrentChatEvent(data)) return;
       setIsTyping(false);
       if (streamingMsgId.current) {
         // Finalize streamed message — keep chunked text if response text is empty
@@ -422,7 +433,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       // Auto-speak disabled
     };
 
-    const onStatus = (data: { status: string }) => {
+    const onStatus = (data: { status: string; requestId?: string; source?: string }) => {
+      if (!isCurrentChatEvent(data)) return;
       setIsTyping(data.status === "thinking");
       if (data.status === "idle" || data.status === "error") {
         // Drop partial streaming chunks that were never finalized
@@ -434,7 +446,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       }
     };
 
-    const onError = (data: { message: string; code?: string }) => {
+    const onError = (data: { message: string; code?: string; requestId?: string; source?: string }) => {
+      if (!isCurrentChatEvent(data)) return;
       setIsTyping(false);
       if (streamingMsgId.current) {
         const sid = streamingMsgId.current;
@@ -566,11 +579,48 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     setNewMessage('');
     stop();
     setIsTyping(true);
+    const requestId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    activeChatRequestIdRef.current = requestId;
 
     let resolved = false;
-    const safetyTimer = setTimeout(() => {
-      if (!resolved) { setIsTyping(false); streamingMsgId.current = null; textChatActiveRef.current = false; }
+    let safetyTimer: ReturnType<typeof setTimeout>;
+    let restFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const isCurrentResponse = (data?: { requestId?: string; source?: string }) => {
+      if (data?.requestId) return data.requestId === requestId;
+      if (data?.source && data.source !== 'chat') return false;
+      return true;
+    };
+    const cleanupSocketWaiters = () => {
+      socket.off('agent:response', onResponse);
+      socket.off('agent:error', onError);
+      socket.off('agent:status', onStatus);
+    };
+    const resolve = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(safetyTimer);
+      if (restFallbackTimer) clearTimeout(restFallbackTimer);
+      cleanupSocketWaiters();
+      setIsTyping(false);
+      textChatActiveRef.current = false;
+      if (activeChatRequestIdRef.current === requestId) activeChatRequestIdRef.current = null;
+    };
+    const onResponse = (data?: { requestId?: string; source?: string }) => { if (isCurrentResponse(data)) resolve(); };
+    const onError = (data?: { requestId?: string; source?: string }) => { if (isCurrentResponse(data)) resolve(); };
+    const onStatus = (data: { status: string; requestId?: string; source?: string }) => {
+      if (!isCurrentResponse(data)) return;
+      if (data.status === 'idle' || data.status === 'error') resolve();
+    };
+    safetyTimer = setTimeout(() => {
+      if (!resolved) {
+        streamingMsgId.current = null;
+        resolve();
+      }
     }, 30000);
+
+    socket.on('agent:response', onResponse);
+    socket.on('agent:error', onError);
+    socket.on('agent:status', onStatus);
 
     // Always try socket first
     socket.emit("agent:chat", {
@@ -581,20 +631,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       agentId,
       domain: workDomain,
       orgId: orgConnection?.orgId || null,
+      source: 'chat',
+      requestId,
     });
 
-    const resolve = () => { resolved = true; clearTimeout(safetyTimer); setIsTyping(false); textChatActiveRef.current = false; };
-    const onResponse = () => resolve();
-    const onError = () => resolve();
-    const onStatus = (data: { status: string }) => {
-      if (data.status === 'idle' || data.status === 'error') resolve();
-    };
-    socket.once('agent:response', onResponse);
-    socket.once('agent:error', onError);
-    socket.once('agent:status', onStatus);
-
     // Parallel REST fallback after 5s if socket hasn't responded
-    const restFallbackTimer = setTimeout(async () => {
+    restFallbackTimer = setTimeout(async () => {
       if (resolved) return;
       try {
         const response = await runAgentLogic(text, { platform, aiConfig });

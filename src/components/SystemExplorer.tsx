@@ -41,6 +41,15 @@ interface SystemSnapshot {
   software?: {
     osVersion?: string;
     installedApps?: string[];
+    appDiscovery?: {
+      registryEntries?: number;
+      startMenuShortcuts?: number;
+      desktopShortcuts?: number;
+      commonFolderEntries?: number;
+      pathExecutables?: number;
+      scannedRoots?: string[];
+      limitReached?: boolean;
+    };
     startupPrograms?: string[];
     nodeVersion?: string;
     pythonVersion?: string;
@@ -458,6 +467,7 @@ export function SystemExplorer({ t, onSectionChange }: { t?: any; onSectionChang
   );
 
   const apps = latest?.software?.installedApps || [];
+  const discovery = latest?.software?.appDiscovery;
   const detectedAppGroups = COMMON_APP_MATCHERS
     .map(item => ({
       ...item,
@@ -635,6 +645,15 @@ export function SystemExplorer({ t, onSectionChange }: { t?: any; onSectionChang
           <div className="mt-4 text-xs text-white/30">
             {ui(isZh, `最近扫描看到 ${apps.length} 条已安装应用记录。`, `Latest scan saw ${apps.length} installed app entries.`)}
           </div>
+          {discovery && (
+            <div className="mt-2 text-xs leading-relaxed text-white/28">
+              {ui(
+                isZh,
+                `来源：注册表 ${discovery.registryEntries || 0}，开始菜单 ${discovery.startMenuShortcuts || 0}，桌面 ${discovery.desktopShortcuts || 0}，常见目录 ${discovery.commonFolderEntries || 0}，PATH ${discovery.pathExecutables || 0}。扫描根目录 ${discovery.scannedRoots?.length || 0} 个${discovery.limitReached ? '，已达到上限' : ''}。`,
+                `Sources: registry ${discovery.registryEntries || 0}, Start Menu ${discovery.startMenuShortcuts || 0}, Desktop ${discovery.desktopShortcuts || 0}, common folders ${discovery.commonFolderEntries || 0}, PATH ${discovery.pathExecutables || 0}. Scanned ${discovery.scannedRoots?.length || 0} roots${discovery.limitReached ? ', limit reached' : ''}.`,
+              )}
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">

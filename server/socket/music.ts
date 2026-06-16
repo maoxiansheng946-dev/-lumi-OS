@@ -184,9 +184,9 @@ export function emitMusicAtmosphere(socket: Socket, atmosphere: MusicAtmosphere)
   const userRoom = rooms.find(r => r.startsWith('user:'));
   if (userRoom) {
     socket.to(userRoom).emit('music:atmosphere', atmosphere);
-    if (atmosphere.lyrics) socket.to(userRoom).emit('music:lyrics', atmosphere.lyrics);
+    if (atmosphere.lyrics) socket.to(userRoom).emit('music:lyrics', { lyrics: atmosphere.lyrics });
   }
   socket.emit('music:atmosphere', atmosphere);
-  if (atmosphere.lyrics) socket.emit('music:lyrics', atmosphere.lyrics);
+  if (atmosphere.lyrics) socket.emit('music:lyrics', { lyrics: atmosphere.lyrics });
   startStatePoller(socket, userRoom || 'default');
 }

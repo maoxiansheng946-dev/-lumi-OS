@@ -314,7 +314,7 @@ export function MusicMoodLayer() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 1.6, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-0 z-[9999] select-none"
+      className="fixed inset-0 z-[100000] select-none"
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 

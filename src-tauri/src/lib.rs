@@ -280,6 +280,160 @@ fn list_directory(path: String) -> Vec<NativeFile> {
     read_native_files(&dir)
 }
 
+fn sanitize_child_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Name is required".to_string());
+    }
+    if trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("Name cannot contain path separators".to_string());
+    }
+    if trimmed
+        .chars()
+        .any(|ch| matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return Err("Name contains characters that Windows cannot use".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+#[tauri::command]
+fn create_directory(parent: String, name: String) -> CommandResult {
+    let folder_name = match sanitize_child_name(&name) {
+        Ok(value) => value,
+        Err(output) => {
+            return CommandResult {
+                success: false,
+                output,
+            };
+        }
+    };
+    let parent_path = if parent.trim().is_empty() {
+        dirs_next::home_dir().unwrap_or_default()
+    } else {
+        PathBuf::from(parent)
+    };
+    let target = parent_path.join(folder_name);
+    match std::fs::create_dir(&target) {
+        Ok(_) => CommandResult {
+            success: true,
+            output: format!("Created folder: {}", target.to_string_lossy()),
+        },
+        Err(e) => CommandResult {
+            success: false,
+            output: e.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+fn rename_item(target: String, new_name: String) -> CommandResult {
+    let next_name = match sanitize_child_name(&new_name) {
+        Ok(value) => value,
+        Err(output) => {
+            return CommandResult {
+                success: false,
+                output,
+            };
+        }
+    };
+    let current = PathBuf::from(&target);
+    let parent = match current.parent() {
+        Some(value) => value,
+        None => {
+            return CommandResult {
+                success: false,
+                output: "Cannot rename this location".to_string(),
+            };
+        }
+    };
+    let next = parent.join(next_name);
+    if next.exists() {
+        return CommandResult {
+            success: false,
+            output: "An item with that name already exists".to_string(),
+        };
+    }
+    match std::fs::rename(&current, &next) {
+        Ok(_) => CommandResult {
+            success: true,
+            output: format!("Renamed to: {}", next.to_string_lossy()),
+        },
+        Err(e) => CommandResult {
+            success: false,
+            output: e.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+fn delete_item(target: String) -> CommandResult {
+    let path = PathBuf::from(&target);
+    if !path.exists() {
+        return CommandResult {
+            success: false,
+            output: "Item does not exist".to_string(),
+        };
+    }
+
+    if cfg!(target_os = "windows") {
+        let script = r#"
+          $p = $args[0]
+          Add-Type -AssemblyName Microsoft.VisualBasic
+          $item = Get-Item -LiteralPath $p -ErrorAction Stop
+          if ($item.PSIsContainer) {
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')
+          } else {
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin')
+          }
+        "#;
+        let mut cmd = Command::new("powershell.exe");
+        cmd.args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+            &target,
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000u32);
+        }
+        return match cmd.output() {
+            Ok(out) if out.status.success() => CommandResult {
+                success: true,
+                output: format!("Moved to Recycle Bin: {}", target),
+            },
+            Ok(out) => CommandResult {
+                success: false,
+                output: String::from_utf8_lossy(&out.stderr).to_string(),
+            },
+            Err(e) => CommandResult {
+                success: false,
+                output: e.to_string(),
+            },
+        };
+    }
+
+    let result = if path.is_dir() {
+        std::fs::remove_dir_all(&path)
+    } else {
+        std::fs::remove_file(&path)
+    };
+    match result {
+        Ok(_) => CommandResult {
+            success: true,
+            output: format!("Deleted: {}", target),
+        },
+        Err(e) => CommandResult {
+            success: false,
+            output: e.to_string(),
+        },
+    }
+}
+
 #[tauri::command]
 fn run_command(command: String) -> CommandResult {
     let now = SystemTime::now();
@@ -1551,6 +1705,9 @@ pub fn run() {
             get_live_stats,
             list_home_files,
             list_directory,
+            create_directory,
+            rename_item,
+            delete_item,
             run_command,
             open_item,
             pick_directory,

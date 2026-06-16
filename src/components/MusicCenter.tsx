@@ -24,6 +24,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
   const [cfgMsg, setCfgMsg] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const promptInputRef = useRef<HTMLInputElement | null>(null);
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => isZh ? zh : en;
 
@@ -112,7 +113,11 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
 
   const toggleMoodLayer = () => {
     if (player.visible) player.hide();
-    else player.show();
+    else if (player.track) player.show();
+    else {
+      toast.info(t?.musicLayerNeedsTrack || ui('先让 Lumi 播放一首歌，再打开氛围层。', 'Ask Lumi to play music first, then open the mood layer.'));
+      promptInputRef.current?.focus();
+    }
   };
 
   if (!isOpen) return null;
@@ -215,6 +220,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             <div className="flex-1 flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
               <Search size={15} className="text-white/30" />
               <input
+                ref={promptInputRef}
                 value={musicPrompt}
                 onChange={(e) => setMusicPrompt(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') askLumiToPlay(); }}

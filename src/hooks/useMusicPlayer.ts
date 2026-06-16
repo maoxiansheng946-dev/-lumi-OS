@@ -143,6 +143,22 @@ export function useMusicPlayer() {
   useEffect(() => {
     if (!socket) return;
 
+    const playAudioUrl = (audioUrl: string) => {
+      if (!audioRef.current) return;
+      audioRef.current.src = audioUrl;
+      audioRef.current.play()
+        .then(() => {
+          setState(prev => ({ ...prev, isPlaying: true, lastError: undefined }));
+        })
+        .catch((err: any) => {
+          setState(prev => ({
+            ...prev,
+            isPlaying: false,
+            lastError: err?.message || 'Music audio playback was blocked or failed',
+          }));
+        });
+    };
+
     const onAtmosphere = (data: MusicAtmosphere) => {
       setMusicVisible(true);
       setState(prev => ({
@@ -158,11 +174,9 @@ export function useMusicPlayer() {
         progress: 0,
         duration: data.track.duration ? data.track.duration / 1000 : prev.duration,
         source: data.audioUrl ? 'url' : 'netease',
+        lastError: undefined,
       }));
-      if (data.audioUrl && audioRef.current) {
-        audioRef.current.src = data.audioUrl;
-        audioRef.current.play().catch(() => {});
-      }
+      if (data.audioUrl) playAudioUrl(data.audioUrl);
     };
 
     // Local progress ticker for ncm-cli (mpv) playback — no audio element available
@@ -190,14 +204,12 @@ export function useMusicPlayer() {
         volume: data.volume ?? prev.volume,
         source: data.source ?? prev.source,
       }));
-      if (data.audioUrl && audioRef.current) {
-        audioRef.current.src = data.audioUrl;
-        audioRef.current.play().catch(() => {});
-      }
+      if (data.audioUrl) playAudioUrl(data.audioUrl);
     };
 
-    const onLyrics = (data: { lyrics: MusicLyricLine[] }) => {
-      setState(prev => ({ ...prev, lyrics: data.lyrics || [] }));
+    const onLyrics = (data: { lyrics: MusicLyricLine[] } | MusicLyricLine[]) => {
+      const lyrics = Array.isArray(data) ? data : data.lyrics;
+      setState(prev => ({ ...prev, lyrics: lyrics || [] }));
     };
 
     const onError = (data: { message: string }) => {

@@ -28,7 +28,7 @@ import { recordTokenUsage } from "../llm/token_tracker";
 import { runOrchestratedTask, shouldDistillSkill, buildSkillDescription } from "../agents/orchestrator";
 import { runNLChainer, shouldChainTask } from "../agents/nl_chainer";
 import { autoInstallForTask } from "../agents/auto_installer";
-import { emitMusicAtmosphere } from "../socket/music";
+import { getMusicFailureMessage, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
 import { searchKnowledgeBase } from "../org/kb";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 import { buildProfessionOverlay } from "../autonomy/professions";
@@ -56,20 +56,34 @@ export function registerChatHandler(
   // Handle abort requests
   socket.on("agent:abort_chat", () => {
     const uid = userIdFn(socket);
-    const controller = chatSessionMap.get(uid);
-    if (controller) {
+    let aborted = false;
+    for (const [key, controller] of chatSessionMap.entries()) {
+      if (!key.startsWith(`${uid}:`)) continue;
       controller.abort();
-      chatSessionMap.delete(uid);
-      socket.emit("agent:status", { status: "idle" });
+      chatSessionMap.delete(key);
+      aborted = true;
+    }
+    if (aborted) {
+      socket.emit("agent:status", { status: "idle", source: "chat" });
       socket.emit("agent:response", { text: "[Cancelled]", agentName: "Lumi", source: "chat" });
     }
   });
 
-  socket.on("agent:chat", async (data: { text: string; history: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string }) => {
+  socket.on("agent:chat", async (data: { text: string; history: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string; requestId?: string }) => {
     console.log('[ChatHandler] agent:chat RECEIVED:', JSON.stringify(data).slice(0, 300));
     const { text, history, personalityId = "lumi", category, agentId, mode: payloadMode, source } = data;
+    const requestId = typeof data.requestId === 'string' ? data.requestId.slice(0, 120) : undefined;
+    const eventSource = source || 'chat';
+    const emitAgent = (event: string, payload: Record<string, any> = {}) => {
+      socket.emit(event, {
+        ...payload,
+        source: payload.source || eventSource,
+        ...(requestId ? { requestId } : {}),
+      });
+    };
     const conversationAgentId = agentId || 'lumi';
     const uid = userIdFn(socket);
+    const sessionKey = `${uid}:${eventSource}`;
     console.log('[ChatHandler] uid:', uid, 'agentId:', agentId, 'source:', source);
 
     // Work context comes from the authenticated socket token. Personal mode can be
@@ -93,10 +107,10 @@ export function registerChatHandler(
     console.log('[ChatHandler] domain:', resolvedDomain, 'orgId:', resolvedOrgId);
 
     // Abort any previous chat session for this user
-    const prevController = chatSessionMap.get(uid);
+    const prevController = chatSessionMap.get(sessionKey);
     if (prevController) prevController.abort();
     const abortController = new AbortController();
-    chatSessionMap.set(uid, abortController);
+    chatSessionMap.set(sessionKey, abortController);
 
     try {
       // Look up agent record for memory/emotion isolation
@@ -254,8 +268,8 @@ export function registerChatHandler(
         error?: string;
       }) => {
         const normalized = { ...payload, args: payload.args ?? payload.arguments };
-        socket.emit("agent:tool_call", normalized);
-        socket.emit("agent:tool", normalized);
+        emitAgent("agent:tool_call", normalized);
+        emitAgent("agent:tool", normalized);
       };
 
       const isDirectDesktopTool = (toolName: string) => toolName.startsWith('desktop_');
@@ -300,7 +314,7 @@ export function registerChatHandler(
         });
       });
 
-      socket.emit("agent:status", { status: "thinking", agentName: personality.name });
+      emitAgent("agent:status", { status: "thinking", agentName: personality.name });
       console.log('[ChatHandler] emitted agent:status thinking');
 
       // Read user's operation mode from DB
@@ -385,11 +399,11 @@ export function registerChatHandler(
           }
         }
         if (!found) {
-          socket.emit("agent:error", {
+          emitAgent("agent:error", {
             message: access.reason,
             code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
           });
-          socket.emit("agent:status", { status: "error" });
+          emitAgent("agent:status", { status: "error" });
           return;
         }
       }
@@ -424,9 +438,9 @@ export function registerChatHandler(
       }
 
       if (workflowQuickResult) {
-        socket.emit("agent:status", { status: "responding" });
-        socket.emit("agent:response", { text: workflowQuickResult, agentName: personality.name, source: "chat" });
-        socket.emit("agent:status", { status: "idle" });
+        emitAgent("agent:status", { status: "responding" });
+        emitAgent("agent:response", { text: workflowQuickResult, agentName: personality.name });
+        emitAgent("agent:status", { status: "idle" });
         return;
       }
 
@@ -466,7 +480,7 @@ export function registerChatHandler(
               }
             }
           }
-          socket.emit("agent:response", { text: quickResult.responseText, agentName: personality.name, source: "quick_command" });
+          emitAgent("agent:response", { text: quickResult.responseText, agentName: personality.name });
           if (conversationId) {
             addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: text, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
             if (quickResult.toolCall) {
@@ -475,7 +489,7 @@ export function registerChatHandler(
             addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: quickResult.responseText, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
             socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: source === 'canvas' ? 'canvas' : 'chat' });
           }
-          socket.emit("agent:status", { status: "idle" });
+          emitAgent("agent:status", { status: "idle" });
           // Track topics for quick commands too
           if (conversationId) {
             try {
@@ -483,7 +497,7 @@ export function registerChatHandler(
               for (const topic of topics) trackTopic(conversationId, topic);
             } catch {}
           }
-          chatSessionMap.delete(uid);
+          chatSessionMap.delete(sessionKey);
           return;
         }
       } catch (qcErr: any) {
@@ -547,20 +561,25 @@ export function registerChatHandler(
         console.log(`[Cognition] Direct tool '${cognition.intent.directToolCall?.name}' handled without LLM`);
       }
 
-      // Path A2: Music intent — detect and handle BEFORE orchestrator (so LLM doesn't use desktop_open)
-      if (!responseText && /放.*歌|放.*音乐|来首歌|播放|听.*歌|来点音乐|给我放|随便放点|我想听|搜.*歌|换.*歌|切.*歌/.test(text)) {
+      // Path A2: music intent. Handle before the generic tool loop so Lumi
+      // does not wander into unrelated tools or report raw provider errors.
+      if (!responseText && isMusicPlaybackRequest(text)) {
         try {
           void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
             console.warn('[Music Intent] Failed to sync music client mode:', err.message);
           });
-          const { searchAndPlay } = await import('../music/search_play');
           const result = await searchAndPlay(uid, socket, text);
           if (result.success && result.text) {
             responseText = result.text;
             llmWasCalled = true;
+          } else {
+            responseText = getMusicFailureMessage(result.reason);
+            socket.emit('music:error', { message: responseText });
           }
         } catch (musicErr: any) {
           console.warn('[Music Intent] Failed:', musicErr.message);
+          responseText = getMusicFailureMessage(musicErr?.message);
+          socket.emit('music:error', { message: responseText });
         }
       }
 
@@ -568,13 +587,13 @@ export function registerChatHandler(
         // Path B: Orchestrator — decompose tasks into sub-tasks for worker agents
         // (Skipped for sanctuary agents — they stay in their territory)
         try {
-          socket.emit("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name, phase: exposeAgentWork ? 'orchestrator' : 'background' });
+          emitAgent("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name, phase: exposeAgentWork ? 'orchestrator' : 'background' });
           const orchResult = await runOrchestratedTask(
             text,
             { userId: uid, personalityId, desktopRelay },
             { provider: activeProvider, model: activeModel },
             llmGetters,
-            exposeAgentWork ? (msg) => socket.emit("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
+            exposeAgentWork ? (msg) => emitAgent("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
           );
           if (orchResult) {
             responseText = orchResult.responseText;
@@ -584,7 +603,7 @@ export function registerChatHandler(
             if (shouldDistillSkill(text) && orchResult.workflowResult.totalAgentsUsed >= 2) {
               const skillDesc = buildSkillDescription(text, orchResult.workflowResult);
               console.log('[Orchestrator] Pattern detected — candidate for skill distillation:', skillDesc.slice(0, 100));
-              socket.emit("agent:proactive", {
+              emitAgent("agent:proactive", {
                 type: 'distill_hint',
                 message: 'I notice this type of task is recurring. I can create an automated skill for this — would you like me to?',
                 skillDescription: skillDesc,
@@ -606,13 +625,13 @@ export function registerChatHandler(
         await autoInstallForTask(text, { emit: (event, data) => socket.emit(event, data) });
 
         try {
-          socket.emit("agent:status", { status: "thinking", agentName: personality.name, phase: 'background' });
+          emitAgent("agent:status", { status: "thinking", agentName: personality.name, phase: 'background' });
           const chainerResult = await runNLChainer(
             text,
             { userId: uid, provider: activeProvider, model: activeModel, desktopRelay, context: { isCancelled: () => abortController.signal.aborted, toolPolicy: personality.toolPolicy } },
             llmGetters,
             (step, total, desc) => {
-              socket.emit("agent:status", { status: "thinking", agentName: personality.name, phase: 'background', detail: `Step ${step}/${total}: ${desc}` });
+              emitAgent("agent:status", { status: "thinking", agentName: personality.name, phase: 'background', detail: `Step ${step}/${total}: ${desc}` });
             },
           );
           if (chainerResult.finalResponse) {
@@ -660,7 +679,7 @@ export function registerChatHandler(
           const streamChunks: string[] = [];
           const onChunk: StreamCallback = (chunk) => {
             streamChunks.push(chunk);
-            socket.emit("agent:chunk", { text: chunk, agentName: personality.name });
+            emitAgent("agent:chunk", { text: chunk, agentName: personality.name });
           };
 
           // Sanctuary agents get zero tool access — they can only talk
@@ -724,8 +743,8 @@ export function registerChatHandler(
                 result: record.result?.slice(0, 500),
                 error: record.error,
               };
-              socket.emit("agent:tool_call", toolPayload);
-              socket.emit("agent:tool", toolPayload);
+              emitAgent("agent:tool_call", toolPayload);
+              emitAgent("agent:tool", toolPayload);
             },
             maxIterations,
             llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
@@ -743,7 +762,7 @@ export function registerChatHandler(
                 });
               },
               onProgress: (step: string) => {
-                socket.emit("agent:chunk", { text: `[${step}]\n`, agentName: "Lumi" });
+                emitAgent("agent:chunk", { text: `[${step}]\n`, agentName: "Lumi" });
               },
               ...(isSanctuary
                 ? { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } }
@@ -812,7 +831,7 @@ export function registerChatHandler(
                   { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid, signal: abortController.signal },
                   (chunk) => {
                     fallbackChunks.push(chunk);
-                    socket.emit("agent:chunk", { text: chunk, agentName: personality.name });
+                    emitAgent("agent:chunk", { text: chunk, agentName: personality.name });
                   },
                   llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
                   llmGetters.getOllama, llmGetters.getLmStudio,
@@ -937,15 +956,15 @@ export function registerChatHandler(
       writeDB(db);
 
       // Emit response BEFORE conversation_updated so the client finalizes streaming first
-      socket.emit("agent:response", { text: responseText, agentName: personality.name, source: "chat" });
+      emitAgent("agent:response", { text: responseText, agentName: personality.name });
       // Re-emit conversation_updated AFTER response so the client syncs from API with complete data
       if (conversationId) {
         socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: source === 'canvas' ? 'canvas' : 'chat' });
       }
-      socket.emit("agent:status", { status: "idle" });
+      emitAgent("agent:status", { status: "idle" });
 
       // Clean up abort session
-      chatSessionMap.delete(uid);
+      chatSessionMap.delete(sessionKey);
 
       // Auto-learn from corrections: when user corrects Lumi, extract high-confidence memories
       const correctionPatterns = [/不是/, /不对/, /错了/, /wrong/i, /incorrect/i, /actually/i, /no,?\s/i, /你弄错了/, /不是这样的/];
@@ -1105,10 +1124,10 @@ export function registerChatHandler(
 
     } catch (error: any) {
       console.error("[Socket Agent Error]:", error);
-      socket.emit("agent:error", { message: error.message });
-      socket.emit("agent:status", { status: "error" });
+      emitAgent("agent:error", { message: error.message });
+      emitAgent("agent:status", { status: "error" });
     } finally {
-      chatSessionMap.delete(uid);
+      chatSessionMap.delete(sessionKey);
     }
   });
 }
