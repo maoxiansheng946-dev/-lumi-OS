@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, Phone, Mail, MapPin, MessageSquare, Edit3, Trash2, Search } from 'lucide-react';
+import { useT } from '../lib/useT';
 
 interface Contact {
   id: string; name: string; phone?: string; email?: string; company?: string;
@@ -7,6 +8,9 @@ interface Contact {
 }
 
 export function ContactsPanel() {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -86,9 +90,9 @@ export function ContactsPanel() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2"><Users size={20} className="text-blue-400" />联系人</h2>
+        <h2 className="text-lg font-bold text-white flex items-center gap-2"><Users size={20} className="text-blue-400" />{ui('联系人', 'Contacts')}</h2>
         <button onClick={() => setShowNew(!showNew)} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm flex items-center gap-1">
-          <Plus size={14} /> 添加
+          <Plus size={14} /> {ui('添加', 'Add')}
         </button>
       </div>
 
@@ -96,26 +100,26 @@ export function ContactsPanel() {
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
         <input
           value={search} onChange={e => { setSearch(e.target.value); loadContacts(e.target.value); }}
-          placeholder="搜索联系人..." className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm"
+          placeholder={ui('搜索联系人...', 'Search contacts...')} className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm"
         />
       </div>
 
       {showNew && (
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-          <input value={newContact.name} onChange={e => setNewContact(p => ({ ...p, name: e.target.value }))} placeholder="姓名 *" className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
+          <input value={newContact.name} onChange={e => setNewContact(p => ({ ...p, name: e.target.value }))} placeholder={ui('姓名 *', 'Name *')} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
           <div className="grid grid-cols-2 gap-3">
-            <input value={newContact.phone} onChange={e => setNewContact(p => ({ ...p, phone: e.target.value }))} placeholder="电话" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
-            <input value={newContact.email} onChange={e => setNewContact(p => ({ ...p, email: e.target.value }))} placeholder="邮箱" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
+            <input value={newContact.phone} onChange={e => setNewContact(p => ({ ...p, phone: e.target.value }))} placeholder={ui('电话', 'Phone')} className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
+            <input value={newContact.email} onChange={e => setNewContact(p => ({ ...p, email: e.target.value }))} placeholder={ui('邮箱', 'Email')} className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
           </div>
-          <input value={newContact.company} onChange={e => setNewContact(p => ({ ...p, company: e.target.value }))} placeholder="公司" className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
+          <input value={newContact.company} onChange={e => setNewContact(p => ({ ...p, company: e.target.value }))} placeholder={ui('公司', 'Company')} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm" />
           <div className="flex gap-2">
-            <button onClick={saveContact} disabled={!newContact.name.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm">保存</button>
-            <button onClick={() => setShowNew(false)} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg text-sm">取消</button>
+            <button onClick={saveContact} disabled={!newContact.name.trim()} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm">{ui('保存', 'Save')}</button>
+            <button onClick={() => setShowNew(false)} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg text-sm">{ui('取消', 'Cancel')}</button>
           </div>
         </div>
       )}
 
-      {contacts.length === 0 && <div className="text-white/30 text-center py-12">暂无联系人</div>}
+      {contacts.length === 0 && <div className="text-white/30 text-center py-12">{ui('暂无联系人', 'No contacts yet')}</div>}
 
       <div className="space-y-2">
         {contacts.map(c => (
@@ -126,8 +130,8 @@ export function ContactsPanel() {
                 <input value={editing.phone || ''} onChange={e => setEditing({ ...editing, phone: e.target.value })} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                 <input value={editing.email || ''} onChange={e => setEditing({ ...editing, email: e.target.value })} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                 <div className="flex gap-2">
-                  <button onClick={updateContact} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs">保存</button>
-                  <button onClick={() => setEditing(null)} className="px-3 py-1.5 bg-white/5 text-white/60 rounded-lg text-xs">取消</button>
+                  <button onClick={updateContact} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs">{ui('保存', 'Save')}</button>
+                  <button onClick={() => setEditing(null)} className="px-3 py-1.5 bg-white/5 text-white/60 rounded-lg text-xs">{ui('取消', 'Cancel')}</button>
                 </div>
               </div>
             ) : (
@@ -147,11 +151,11 @@ export function ContactsPanel() {
                   {c.email && <span className="flex items-center gap-1"><Mail size={10} />{c.email}</span>}
                   {c.company && <span className="flex items-center gap-1"><MapPin size={10} />{c.company}</span>}
                 </div>
-                {c.lastInteraction && <div className="text-white/25 text-xs mt-1">最近互动: {new Date(c.lastInteraction).toLocaleDateString()}</div>}
+                {c.lastInteraction && <div className="text-white/25 text-xs mt-1">{ui('最近互动', 'Last interaction')}: {new Date(c.lastInteraction).toLocaleDateString(isZh ? 'zh-CN' : undefined)}</div>}
                 <div className="flex items-center gap-2 mt-2">
                   <input
                     value={interactNote} onChange={e => setInteractNote(e.target.value)}
-                    placeholder="添加互动记录..." className="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white/60 text-xs placeholder:text-white/20"
+                    placeholder={ui('添加互动记录...', 'Add interaction note...')} className="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white/60 text-xs placeholder:text-white/20"
                     onKeyDown={e => { if (e.key === 'Enter') { recordInteraction(c.id, interactNote); } }}
                   />
                   <button onClick={() => recordInteraction(c.id, interactNote)} disabled={!interactNote.trim()} className="p-1.5 text-white/30 hover:text-green-400 disabled:opacity-30">

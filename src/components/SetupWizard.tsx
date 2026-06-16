@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Cpu, Cloud, Mic, CheckCircle, Loader2, ArrowRight, Download, Key, Volume2, Sparkles } from 'lucide-react';
+import { useT } from '../lib/useT';
 
 type Step = 'detect' | 'local-ready' | 'api-setup' | 'voice-test' | 'done';
 
@@ -10,6 +11,9 @@ interface Props {
 }
 
 export function SetupWizard({ onFinish }: Props) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [step, setStep] = useState<Step>('detect');
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'available' | 'not-found'>('checking');
   const [ollamaUrl, setOllamaUrl] = useState(() => {
@@ -152,16 +156,16 @@ export function SetupWizard({ onFinish }: Props) {
             </div>
             <h2 className="text-2xl font-bold text-white">
               {ollamaStatus === 'checking' || lmstudioStatus === 'checking'
-                ? 'Detecting local AI...'
+                ? ui('正在检测本地 AI...', 'Detecting local AI...')
                 : localAIReady
-                ? 'Local AI Found'
-                : 'No Local AI Detected'}
+                ? ui('已发现本地 AI', 'Local AI Found')
+                : ui('未检测到本地 AI', 'No Local AI Detected')}
             </h2>
             <p className="text-white/40 text-sm">
               {localAIReady
-                ? 'Local LLM detected. Your conversations will be fast, private, and free.'
+                ? ui('已检测到本地大模型。日常对话会更快、更私密，也不会产生云端费用。', 'Local LLM detected. Your conversations will be fast, private, and free.')
                 : (localAINotDetected
-                  ? 'No local model found. You can still use Lumi with a cloud API key, or install a local AI runtime.'
+                  ? ui('未发现本地模型。你仍然可以填写云端 API Key 使用 Lumi，或安装本地 AI 运行时。', 'No local model found. You can still use Lumi with a cloud API key, or install a local AI runtime.')
                   : '')
               }
             </p>
@@ -172,7 +176,7 @@ export function SetupWizard({ onFinish }: Props) {
               <span className="text-white/50">Ollama</span>
               {ollamaStatus === 'available' && ollamaModels.length > 0 && (
                 <span className="text-white/40 text-xs">
-                  ({ollamaModels.filter(m => !m.includes('embed') && !m.includes('whisper')).length} models)
+                  ({ollamaModels.filter(m => !m.includes('embed') && !m.includes('whisper')).length} {ui('个模型', 'models')})
                 </span>
               )}
             </div>
@@ -182,7 +186,7 @@ export function SetupWizard({ onFinish }: Props) {
               <span className={`w-2 h-2 rounded-full ${lmstudioStatus === 'available' ? 'bg-green-400' : lmstudioStatus === 'checking' ? 'bg-amber-400 animate-pulse' : 'bg-red-400'}`} />
               <span className="text-white/50">LM Studio</span>
               {lmstudioStatus === 'available' && lmstudioModels.length > 0 && (
-                <span className="text-white/40 text-xs">({lmstudioModels.length} models)</span>
+                <span className="text-white/40 text-xs">({lmstudioModels.length} {ui('个模型', 'models')})</span>
               )}
             </div>
 
@@ -202,7 +206,7 @@ export function SetupWizard({ onFinish }: Props) {
                     onClick={() => handleOllamaUrlChange(ollamaUrl)}
                     className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white text-sm font-medium transition-colors"
                   >
-                    检测
+                    {ui('检测', 'Check')}
                   </button>
                 </div>
                 {/* LM Studio URL */}
@@ -219,7 +223,7 @@ export function SetupWizard({ onFinish }: Props) {
                     onClick={() => handleLmstudioUrlChange(lmstudioUrl)}
                     className="px-4 py-3 bg-amber-600 hover:bg-amber-500 rounded-xl text-white text-sm font-medium transition-colors"
                   >
-                    检测
+                    {ui('检测', 'Check')}
                   </button>
                 </div>
                 <a
@@ -229,7 +233,7 @@ export function SetupWizard({ onFinish }: Props) {
                   className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm transition-colors"
                 >
                   <Download size={16} />
-                  Install Ollama (free)
+                  {ui('安装 Ollama（免费）', 'Install Ollama (free)')}
                 </a>
               </div>
             )}
@@ -238,13 +242,13 @@ export function SetupWizard({ onFinish }: Props) {
                 onClick={() => setStep(localAIReady ? 'voice-test' : 'api-setup')}
                 className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-2xl text-white font-semibold transition-all"
               >
-                {localAIReady ? 'Start Using Lumi' : 'Set Up Cloud API Key'}
+                {localAIReady ? ui('开始使用 Lumi', 'Start Using Lumi') : ui('设置云端 API Key', 'Set Up Cloud API Key')}
                 <ArrowRight size={18} />
               </button>
             )}
             {localAIReady && (
               <button onClick={() => setStep('api-setup')} className="w-full text-white/55 text-sm hover:text-white/50 py-2">
-                Also configure a cloud API key for complex tasks
+                {ui('同时为复杂任务配置云端 API Key', 'Also configure a cloud API key for complex tasks')}
               </button>
             )}
           </div>
@@ -254,12 +258,12 @@ export function SetupWizard({ onFinish }: Props) {
         {step === 'local-ready' && (
           <div className="text-center space-y-6">
             <CheckCircle size={64} className="mx-auto text-green-400" />
-            <h2 className="text-2xl font-bold text-white">You're All Set</h2>
+            <h2 className="text-2xl font-bold text-white">{ui('已经准备好了', "You're All Set")}</h2>
             <p className="text-white/40 text-sm">
-              Lumi will use your local model for everyday conversations. For complex tasks, it will automatically fall back to the cloud.
+              {ui('Lumi 会用你的本地模型处理日常对话。复杂任务可自动切换到云端模型。', 'Lumi will use your local model for everyday conversations. For complex tasks, it will automatically fall back to the cloud.')}
             </p>
             <button onClick={() => setStep('voice-test')} className="w-full px-6 py-4 bg-green-600 hover:bg-green-500 rounded-2xl text-white font-semibold transition-colors">
-              Test Voice <Volume2 size={18} className="inline ml-2" />
+              {ui('测试语音', 'Test Voice')} <Volume2 size={18} className="inline ml-2" />
             </button>
           </div>
         )}
@@ -267,9 +271,9 @@ export function SetupWizard({ onFinish }: Props) {
         {/* Step: API Key Setup */}
         {step === 'api-setup' && (
           <div className="space-y-5">
-            <h2 className="text-xl font-bold text-white text-center">Cloud API Setup</h2>
+            <h2 className="text-xl font-bold text-white text-center">{ui('云端 API 设置', 'Cloud API Setup')}</h2>
             <p className="text-white/40 text-sm text-center">
-              Pick a provider and enter your API key. It will be saved locally — never sent anywhere.
+              {ui('选择服务商并输入 API Key。它会保存在本机，不会被发送到其他地方。', 'Pick a provider and enter your API key. It will be saved locally and never sent anywhere else.')}
             </p>
             <div className="grid grid-cols-3 gap-2">
               {['deepseek', 'qwen', 'openai'].map(p => (
@@ -297,10 +301,10 @@ export function SetupWizard({ onFinish }: Props) {
               className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-colors"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
-              Save & Continue
+              {ui('保存并继续', 'Save & Continue')}
             </button>
             <button onClick={() => setStep('voice-test')} className="w-full text-white/55 text-sm hover:text-white/50 py-2">
-              Skip for now
+              {ui('暂时跳过', 'Skip for now')}
             </button>
           </div>
         )}
@@ -309,16 +313,16 @@ export function SetupWizard({ onFinish }: Props) {
         {step === 'voice-test' && (
           <div className="text-center space-y-6">
             <Mic size={64} className={`mx-auto ${voiceStatus === 'ok' ? 'text-green-400' : voiceStatus === 'failed' ? 'text-red-400' : 'text-blue-400'}`} />
-            <h2 className="text-2xl font-bold text-white">Voice Check</h2>
+            <h2 className="text-2xl font-bold text-white">{ui('语音检查', 'Voice Check')}</h2>
             <p className="text-white/40 text-sm">
-              {voiceStatus === 'idle' && 'Let\'s make sure voice output works.'}
-              {voiceStatus === 'testing' && 'Playing test audio...'}
-              {voiceStatus === 'ok' && 'Voice is working perfectly!'}
-              {voiceStatus === 'failed' && 'Voice needs configuration. You can set it up later in Settings.'}
+              {voiceStatus === 'idle' && ui('先确认语音输出是否正常。', "Let's make sure voice output works.")}
+              {voiceStatus === 'testing' && ui('正在播放测试音频...', 'Playing test audio...')}
+              {voiceStatus === 'ok' && ui('语音工作正常。', 'Voice is working perfectly!')}
+              {voiceStatus === 'failed' && ui('语音还需要配置，你可以稍后在设置中处理。', 'Voice needs configuration. You can set it up later in Settings.')}
             </p>
             {voiceStatus === 'idle' && (
               <button onClick={handleVoiceTest} className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-medium transition-colors">
-                Play Test Audio <Volume2 size={18} className="inline ml-2" />
+                {ui('播放测试音频', 'Play Test Audio')} <Volume2 size={18} className="inline ml-2" />
               </button>
             )}
             <button
@@ -329,7 +333,7 @@ export function SetupWizard({ onFinish }: Props) {
               className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-2xl text-white font-semibold transition-all"
             >
               <Sparkles size={18} />
-              Launch Lumi
+              {ui('启动 Lumi', 'Launch Lumi')}
             </button>
           </div>
         )}
@@ -340,8 +344,8 @@ export function SetupWizard({ onFinish }: Props) {
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}>
               <Sparkles size={64} className="mx-auto text-celestial-saturn" />
             </motion.div>
-            <h2 className="text-2xl font-bold text-white">Lumi is Ready</h2>
-            <p className="text-white/40 text-sm">Your personal AI is live. Start talking — it will learn and grow with you.</p>
+            <h2 className="text-2xl font-bold text-white">{ui('Lumi 已准备好', 'Lumi is Ready')}</h2>
+            <p className="text-white/40 text-sm">{ui('你的个人 AI 已经在线。开始对话吧，它会和你一起学习、成长。', 'Your personal AI is live. Start talking and it will learn and grow with you.')}</p>
           </div>
         )}
       </motion.div>

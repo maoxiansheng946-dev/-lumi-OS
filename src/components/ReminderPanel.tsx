@@ -15,6 +15,8 @@ interface Reminder {
 }
 
 export function ReminderPanel({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [newContent, setNewContent] = useState('');
@@ -47,7 +49,7 @@ export function ReminderPanel({ t }: { t?: any }) {
       if (res.ok) {
         setNewContent('');
         setNewDueAt('');
-        toast.success('提醒已创建');
+        toast.success(ui('提醒已创建', 'Reminder created'));
         fetchReminders();
       }
     } catch {}
@@ -58,7 +60,7 @@ export function ReminderPanel({ t }: { t?: any }) {
     try {
       await fetch(`/api/reminders/${id}`, { method: 'DELETE', credentials: 'include' });
       setReminders(prev => prev.filter(r => r.id !== id));
-      toast.success('已删除');
+      toast.success(ui('已删除', 'Deleted'));
     } catch {}
   };
 
@@ -91,13 +93,13 @@ export function ReminderPanel({ t }: { t?: any }) {
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-amber-400" />
-          <span className="text-xs font-black uppercase tracking-wider text-white/50">新建提醒</span>
+          <span className="text-xs font-black uppercase tracking-wider text-white/50">{ui('新建提醒', 'New Reminder')}</span>
         </div>
         <input
           value={newContent}
           onChange={e => setNewContent(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-          placeholder="提醒内容..."
+          placeholder={ui('提醒内容...', 'Reminder content...')}
           className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/70 placeholder:text-white/40 focus:outline-none focus:border-amber-500/20"
         />
         <div className="flex items-center gap-2">
@@ -114,7 +116,7 @@ export function ReminderPanel({ t }: { t?: any }) {
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500/15 border border-amber-500/25 rounded-xl text-xs font-bold text-amber-400 hover:bg-amber-500/25 disabled:opacity-30 transition-all"
           >
             {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-            添加
+            {ui('添加', 'Add')}
           </button>
         </div>
       </div>
@@ -124,14 +126,14 @@ export function ReminderPanel({ t }: { t?: any }) {
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-celestial-saturn" />
           <span className="text-xs font-black uppercase tracking-wider text-white/55">
-            待处理 ({pending.length})
+            {ui('待处理', 'Pending')} ({pending.length})
           </span>
         </div>
         {pending.length === 0 ? (
-          <p className="text-xs text-white/40 py-4 text-center">暂无待处理提醒</p>
+          <p className="text-xs text-white/40 py-4 text-center">{ui('暂无待处理提醒', 'No pending reminders')}</p>
         ) : (
           pending.map(r => (
-            <ReminderCard key={r.id} reminder={r} onDelete={handleDelete} onMarkFired={handleMarkFired} />
+            <ReminderCard key={r.id} reminder={r} onDelete={handleDelete} onMarkFired={handleMarkFired} isZh={isZh} />
           ))
         )}
       </div>
@@ -142,11 +144,11 @@ export function ReminderPanel({ t }: { t?: any }) {
           <div className="flex items-center gap-2">
             <CheckCircle2 size={14} className="text-emerald-400" />
             <span className="text-xs font-black uppercase tracking-wider text-white/45">
-              已完成 ({fired.length})
+              {ui('已完成', 'Done')} ({fired.length})
             </span>
           </div>
           {fired.slice(0, 10).map(r => (
-            <ReminderCard key={r.id} reminder={r} onDelete={handleDelete} />
+            <ReminderCard key={r.id} reminder={r} onDelete={handleDelete} isZh={isZh} />
           ))}
         </div>
       )}
@@ -158,10 +160,12 @@ function ReminderCard({
   reminder,
   onDelete,
   onMarkFired,
+  isZh,
 }: {
   reminder: Reminder;
   onDelete: (id: string) => void;
   onMarkFired?: (id: string) => void;
+  isZh: boolean;
 }) {
   const isFired = reminder.status === 'fired';
   const hasDue = !!reminder.dueAt;
@@ -189,10 +193,10 @@ function ReminderCard({
         <div className="flex items-center gap-2 mt-0.5">
           {hasDue && (
             <span className={`text-[12px] font-mono ${isOverdue ? 'text-red-400' : 'text-white/45'}`}>
-              {new Date(reminder.dueAt!).toLocaleString('zh-CN', {
+              {new Date(reminder.dueAt!).toLocaleString(isZh ? 'zh-CN' : undefined, {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
               })}
-              {isOverdue && ' (已过期)'}
+              {isOverdue && (isZh ? ' (已过期)' : ' (overdue)')}
             </span>
           )}
         </div>
@@ -202,7 +206,7 @@ function ReminderCard({
           <button
             onClick={() => onMarkFired(reminder.id)}
             className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 transition-colors"
-            title="标记完成"
+            title={isZh ? '标记完成' : 'Mark complete'}
           >
             <CheckCircle2 size={12} className="text-emerald-400" />
           </button>
@@ -210,7 +214,7 @@ function ReminderCard({
         <button
           onClick={() => onDelete(reminder.id)}
           className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 transition-colors"
-          title="删除"
+          title={isZh ? '删除' : 'Delete'}
         >
           <Trash2 size={12} className="text-red-400" />
         </button>

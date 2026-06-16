@@ -39,6 +39,8 @@ const CHAT_SEARCH_LIMIT = 200;
 export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed, onOpenCanvas }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void; onOpenCanvas?: (task?: string) => void }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [agentMetadata, setAgentMetadata] = useState<Partial<AgentResponse>>({});
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const { platform, isElectron } = usePlatform();
   const { aiConfig, orgConnection, workDomain, operationMode } = useApp();
   const socket = socketService.connect();
@@ -61,11 +63,11 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const hasDesktop = installedSkillNames.some((n: string) => ['desktop', 'commander'].some(k => n.includes(k)));
 
   const quickSuggestions = [
-    { id: 'chat', label: t.suggestChat || '随便聊聊', prompt: '你好Lumi，今天有什么有趣的发现吗？', show: true },
-    { id: 'creative', label: t.suggestCreative || '生成一张图片', prompt: '帮我生成一张星空下的赛博朋克城市图片', show: hasCreativeSkill },
-    { id: 'fetch', label: t.suggestFetch || '总结网页内容', prompt: '帮我抓取这篇文章的内容并总结要点', show: hasFetcher },
-    { id: 'desktop', label: t.suggestDesktop || '桌面整理', prompt: '帮我把桌面上的文件按日期整理一下', show: hasDesktop },
-    { id: 'music', label: t.suggestMusic || '创作一首音乐', prompt: '帮我创作一首舒缓的钢琴曲，带有海浪的声音', show: hasCreativeSkill },
+    { id: 'chat', label: t.suggestChat || ui('随便聊聊', 'Just Chat'), prompt: ui('你好 Lumi，今天有什么有趣的发现吗？', 'Hi Lumi, any interesting discoveries today?'), show: true },
+    { id: 'creative', label: t.suggestCreative || ui('生成一张图片', 'Generate Image'), prompt: ui('帮我生成一张星空下的赛博朋克城市图片', 'Generate an image of a cyberpunk city under a starry sky'), show: hasCreativeSkill },
+    { id: 'fetch', label: t.suggestFetch || ui('总结网页内容', 'Summarize Webpage'), prompt: ui('帮我抓取这篇文章的内容并总结要点', 'Fetch this article and summarize the key points'), show: hasFetcher },
+    { id: 'desktop', label: t.suggestDesktop || ui('桌面整理', 'Organize Desktop'), prompt: ui('帮我把桌面上的文件按日期整理一下', 'Organize the desktop files by date'), show: hasDesktop },
+    { id: 'music', label: t.suggestMusic || ui('创作一首音乐', 'Create Music'), prompt: ui('帮我创作一首舒缓的钢琴曲，带有海浪的声音', 'Create a calm piano track with ocean wave ambience'), show: hasCreativeSkill },
   ];
 
   const visibleSuggestions = quickSuggestions.filter(s => s.show).slice(0, 4);

@@ -27,6 +27,7 @@ interface ServerHealth {
 type HealthMap = Record<string, ServerHealth>;
 
 export function MCPSettings({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -293,11 +294,11 @@ export function MCPSettings({ t }: { t?: any }) {
                 const status = h?.status || (server.connected ? 'connected' : 'disconnected');
                 const crashes = h?.consecutiveCrashes || 0;
                 const statusLabel =
-                  status === 'connected' ? (t?.mcpConnected || '已连接')
-                  : status === 'restarting' ? (t?.mcpRestarting || `重启中${crashes > 0 ? ` (第${crashes}次)` : ''}`)
-                  : status === 'crashed' ? (t?.mcpCrashed || `已崩溃 (${crashes}次)`)
-                  : status === 'failed' ? (t?.mcpFailed || `已放弃 (${crashes}次失败)`)
-                  : t?.mcpDisconnected || '未连接';
+                  status === 'connected' ? (t?.mcpConnected || (isZh ? '已连接' : 'Connected'))
+                  : status === 'restarting' ? (t?.mcpRestarting || (isZh ? `重启中${crashes > 0 ? ` (第${crashes}次)` : ''}` : `Restarting${crashes > 0 ? ` (${crashes})` : ''}`))
+                  : status === 'crashed' ? (t?.mcpCrashed || (isZh ? `已崩溃 (${crashes}次)` : `Crashed (${crashes})`))
+                  : status === 'failed' ? (t?.mcpFailed || (isZh ? `已放弃 (${crashes}次失败)` : `Failed (${crashes} attempts)`))
+                  : t?.mcpDisconnected || (isZh ? '未连接' : 'Disconnected');
                 const dotColor =
                   status === 'connected' ? 'bg-green-500'
                   : status === 'restarting' ? 'bg-amber-400'

@@ -29,21 +29,26 @@ interface DistillResult {
   summary: DistillSummary;
 }
 
+type LocalizedText = { zh: string; en: string };
+
+const localize = (isZh: boolean, zh: string, en: string) => (isZh ? zh : en);
+const pickText = (isZh: boolean, text: LocalizedText) => (isZh ? text.zh : text.en);
+
 const RELATIONSHIP_TYPES = [
-  { id: 'close_friend', label: '挚友', icon: <Users size={18} />, desc: '最好的朋友、知心人' },
-  { id: 'family', label: '亲人', icon: <Heart size={18} />, desc: '家人、长辈、兄弟姐妹' },
-  { id: 'lover', label: '恋人', icon: <Heart size={18} className="text-rose-400" />, desc: '曾经或现在的爱人' },
-  { id: 'mentor', label: '导师', icon: <GraduationCap size={18} />, desc: '老师、师父、引路人' },
-  { id: 'colleague', label: '同事', icon: <Briefcase size={18} />, desc: '并肩工作的伙伴' },
+  { id: 'close_friend', label: { zh: '挚友', en: 'Close Friend' }, icon: <Users size={18} />, desc: { zh: '最好的朋友、知心人', en: 'Best friend and confidant' } },
+  { id: 'family', label: { zh: '亲人', en: 'Family' }, icon: <Heart size={18} />, desc: { zh: '家人、长辈、兄弟姐妹', en: 'Family, elders, siblings' } },
+  { id: 'lover', label: { zh: '恋人', en: 'Partner' }, icon: <Heart size={18} className="text-rose-400" />, desc: { zh: '曾经或现在的爱人', en: 'Past or present romantic partner' } },
+  { id: 'mentor', label: { zh: '导师', en: 'Mentor' }, icon: <GraduationCap size={18} />, desc: { zh: '老师、师父、引路人', en: 'Teacher, guide, or mentor' } },
+  { id: 'colleague', label: { zh: '同事', en: 'Colleague' }, icon: <Briefcase size={18} />, desc: { zh: '并肩工作的伙伴', en: 'Work partner or teammate' } },
 ];
 
 const DIM_ORDER = ['analytical', 'intuitive', 'systematic', 'creative', 'warmth', 'directness', 'playfulness', 'formality'];
-const DIM_LABELS: Record<string, string> = {
-  analytical: '分析', intuitive: '直觉', systematic: '系统', creative: '创造',
-  warmth: '温度', directness: '直接', playfulness: '趣味', formality: '正式',
+const DIM_LABELS: Record<string, LocalizedText> = {
+  analytical: { zh: '分析', en: 'Analytical' }, intuitive: { zh: '直觉', en: 'Intuitive' }, systematic: { zh: '系统', en: 'Systematic' }, creative: { zh: '创造', en: 'Creative' },
+  warmth: { zh: '温度', en: 'Warmth' }, directness: { zh: '直接', en: 'Direct' }, playfulness: { zh: '趣味', en: 'Playful' }, formality: { zh: '正式', en: 'Formal' },
 };
 
-function MiniRadar({ cognitiveStyle, socialStyle }: { cognitiveStyle?: Record<string, number>; socialStyle?: Record<string, number> }) {
+function MiniRadar({ cognitiveStyle, socialStyle, isZh = true }: { cognitiveStyle?: Record<string, number>; socialStyle?: Record<string, number>; isZh?: boolean }) {
   if (!cognitiveStyle || !socialStyle) return null;
   const values = { ...cognitiveStyle, ...socialStyle };
   const cx = 90, cy = 90, r = 75;
@@ -66,7 +71,7 @@ function MiniRadar({ cognitiveStyle, socialStyle }: { cognitiveStyle?: Record<st
         const angle = (Math.PI * 2 * i) / DIM_ORDER.length - Math.PI / 2;
         const lx = cx + (r + 15) * Math.cos(angle);
         const ly = cy + (r + 15) * Math.sin(angle);
-        return <text key={dim} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" className="fill-white/20" style={{ fontSize: '7px', fontFamily: 'monospace' }}>{DIM_LABELS[dim]}</text>;
+        return <text key={dim} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" className="fill-white/20" style={{ fontSize: '7px', fontFamily: 'monospace' }}>{pickText(isZh, DIM_LABELS[dim])}</text>;
       })}
       <polygon points={vertices.map(v => `${v.x},${v.y}`).join(' ')} fill="rgba(192,132,252,0.25)" stroke="rgba(192,132,252,0.6)" strokeWidth={1} />
       {vertices.map((v, i) => <circle key={i} cx={v.x} cy={v.y} r={2.5} fill="rgba(192,132,252,0.9)" />)}
@@ -74,18 +79,20 @@ function MiniRadar({ cognitiveStyle, socialStyle }: { cognitiveStyle?: Record<st
   );
 }
 
-function EvidenceBadge({ grade }: { grade: 'verbatim' | 'artifact' | 'impression' }) {
+function EvidenceBadge({ grade, isZh = true }: { grade: 'verbatim' | 'artifact' | 'impression'; isZh?: boolean }) {
   const config = {
-    verbatim: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', label: '原话' },
-    artifact: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', label: '事实' },
-    impression: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', label: '推测' },
+    verbatim: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', label: { zh: '原话', en: 'Quote' } },
+    artifact: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', label: { zh: '事实', en: 'Fact' } },
+    impression: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', label: { zh: '推测', en: 'Inferred' } },
   };
   const c = config[grade] || config.impression;
-  return <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${c.bg} ${c.border} ${c.text}`}>{c.label}</span>;
+  return <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${c.bg} ${c.border} ${c.text}`}>{pickText(isZh, c.label)}</span>;
 }
 
 export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctuary?: (agent: any) => void }) {
   const { createAgent, user, login } = useApp();
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => localize(isZh, zh, en);
   const [currentStep, setCurrentStep] = useState(1);
   const [distilling, setDistilling] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -115,10 +122,10 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
       const text = ev.target?.result as string;
       setChatLog(text);
       const lineCount = text.split('\n').filter(l => l.trim()).length;
-      toast.success(`Loaded ${lineCount} lines from ${file.name}`);
+      toast.success(localize(isZh, `已从 ${file.name} 读取 ${lineCount} 行`, `Loaded ${lineCount} lines from ${file.name}`));
     };
     reader.readAsText(file);
-  }, []);
+  }, [isZh]);
 
   const handleAudioUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -142,19 +149,20 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
           // Append transcript to chat log for richer distillation
           if (data.text) {
             setChatLog(prev => prev + '\n\n[语音记录]\n' + data.text.split('\n').map((l: string) => `Target: ${l}`).join('\n'));
-            toast.success(`已转录 ${Math.round((data.text?.length || 0) / 20)} 秒语音`);
+            const seconds = Math.round((data.text?.length || 0) / 20);
+            toast.success(localize(isZh, `已转录 ${seconds} 秒语音`, `Transcribed about ${seconds} seconds of audio`));
           }
         } else {
-          toast.error('语音转录失败');
+          toast.error(localize(isZh, '语音转录失败', 'Audio transcription failed'));
         }
       } catch {
-        toast.error('语音转录失败');
+        toast.error(localize(isZh, '语音转录失败', 'Audio transcription failed'));
       } finally {
         setAudioTranscribing(false);
       }
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [isZh]);
 
   const handleDistill = async () => {
     if (!user) { login(); return; }
@@ -223,10 +231,15 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
   };
 
   const steps = [
-    { id: 1, title: '数据上传', icon: <Upload size={18} /> },
-    { id: 2, title: '人格蒸馏', icon: <Zap size={18} /> },
-    { id: 3, title: '领地创建', icon: <Castle size={18} /> },
+    { id: 1, title: ui('数据上传', 'Data Upload'), icon: <Upload size={18} /> },
+    { id: 2, title: ui('人格蒸馏', 'Personality Distill'), icon: <Zap size={18} /> },
+    { id: 3, title: ui('领地创建', 'Sanctuary Setup'), icon: <Castle size={18} /> },
   ];
+
+  const relationshipLabel = (id: string) => {
+    const rel = RELATIONSHIP_TYPES.find(item => item.id === id);
+    return rel ? pickText(isZh, rel.label) : id;
+  };
 
   return (
     <div className="h-full flex flex-col bg-zinc-950/90">
@@ -235,7 +248,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
         <div className="flex items-center gap-3">
           <Castle size={18} className="text-fuchsia-400" />
           <div>
-            <h2 className="text-sm font-black text-white/90 uppercase tracking-wider">智能体生成实验室</h2>
+            <h2 className="text-sm font-black text-white/90 uppercase tracking-wider">{ui('智能体生成实验室', 'Agent Generation Lab')}</h2>
             <p className="text-xs text-white/55 font-mono">{t?.memoryAvatarLab || 'Memory Avatar Lab'}</p>
           </div>
         </div>
@@ -259,11 +272,11 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
             <motion.div key="s1" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-2xl mx-auto space-y-6">
               <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300/80 leading-relaxed">
                 <AlertTriangle size={14} className="inline mr-2" />
-                这是从数据中蒸馏出的记忆化身，不是那个人本身。请确认您有权使用这些数据，且用途符合伦理。
+                {ui('这是从数据中蒸馏出的记忆化身，不是那个人本身。请确认您有权使用这些数据，且用途符合伦理。', 'This memory avatar is distilled from data. It is not the person themselves. Please confirm you have the right to use the data and that the purpose is ethical.')}
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-bold uppercase tracking-wider text-white/55">聊天记录文件</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('聊天记录文件', 'Chat Log File')}</label>
                 <input ref={fileInputRef} type="file" accept=".txt,.json,.csv" onChange={handleFileLoad} className="hidden" />
                 <div
                   onClick={() => fileInputRef.current?.click()}
@@ -273,14 +286,14 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                     <>
                       <FileText size={36} className="text-fuchsia-400" />
                       <span className="text-sm text-white/60 font-medium">{fileName}</span>
-                      <span className="text-xs text-white/45">{chatLog.split('\n').filter(l => l.trim()).length} lines loaded</span>
+                      <span className="text-xs text-white/45">{ui(`${chatLog.split('\n').filter(l => l.trim()).length} 行已读取`, `${chatLog.split('\n').filter(l => l.trim()).length} lines loaded`)}</span>
                     </>
                   ) : (
                     <>
                       <Upload size={36} className="text-white/40" />
                       <div className="text-center space-y-1">
-                        <p className="text-sm text-white/40">上传聊天记录导出文件</p>
-                        <p className="text-xs text-white/40">支持微信、QQ导出 .txt，纯文本</p>
+                        <p className="text-sm text-white/40">{ui('上传聊天记录导出文件', 'Upload exported chat logs')}</p>
+                        <p className="text-xs text-white/40">{ui('支持微信、QQ 导出 .txt，纯文本', 'Supports WeChat, QQ .txt exports, and plain text')}</p>
                       </div>
                     </>
                   )}
@@ -292,7 +305,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                       onClick={() => setFormat(f)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${format === f ? 'bg-fuchsia-500/20 border border-fuchsia-500/30 text-fuchsia-400' : 'bg-white/5 border border-white/5 text-white/55 hover:bg-white/10'}`}
                     >
-                      {f === 'wechat' ? '微信' : f === 'qq' ? 'QQ' : 'Plain'}
+                      {f === 'wechat' ? ui('微信', 'WeChat') : f === 'qq' ? 'QQ' : 'Plain'}
                     </button>
                   ))}
                 </div>
@@ -300,7 +313,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
 
               {/* Audio upload for voice recording */}
               <div className="space-y-3">
-                <label className="text-xs font-bold uppercase tracking-wider text-white/55">语音记录（可选）</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('语音记录（可选）', 'Voice Recording (optional)')}</label>
                 <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac" onChange={handleAudioUpload} className="hidden" />
                 <div
                   onClick={() => audioInputRef.current?.click()}
@@ -311,13 +324,13 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                       {audioTranscribing ? (
                         <>
                           <Loader2 size={28} className="text-fuchsia-400 animate-spin" />
-                          <span className="text-xs text-white/40">转录中...</span>
+                          <span className="text-xs text-white/40">{ui('转录中...', 'Transcribing...')}</span>
                         </>
                       ) : (
                         <>
                           <Headphones size={28} className="text-fuchsia-400" />
                           <span className="text-xs text-white/50">{audioFile.name}</span>
-                          <span className="text-xs text-white/45">已转录 — 语音特征将纳入人格分析</span>
+                          <span className="text-xs text-white/45">{ui('已转录 - 语音特征将纳入人格分析', 'Transcribed - voice traits will be included in analysis')}</span>
                         </>
                       )}
                     </>
@@ -325,8 +338,8 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                     <>
                       <Mic size={28} className="text-white/40" />
                       <div className="text-center space-y-1">
-                        <p className="text-xs text-white/55">上传语音录音</p>
-                        <p className="text-[12px] text-white/35">MP3 / WAV / OGG — 用于分析语气和口头禅</p>
+                        <p className="text-xs text-white/55">{ui('上传语音录音', 'Upload voice recording')}</p>
+                        <p className="text-[12px] text-white/35">{ui('MP3 / WAV / OGG - 用于分析语气和口头禅', 'MP3 / WAV / OGG - used to analyze tone and phrases')}</p>
                       </div>
                     </>
                   )}
@@ -334,7 +347,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-bold uppercase tracking-wider text-white/55">关系类型</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('关系类型', 'Relationship Type')}</label>
                 <div className="grid grid-cols-5 gap-2">
                   {RELATIONSHIP_TYPES.map(rel => (
                     <button
@@ -343,7 +356,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                       className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${relationshipType === rel.id ? 'bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-400' : 'bg-white/5 border-white/5 text-white/55 hover:bg-white/10'}`}
                     >
                       {rel.icon}
-                      <span className="text-[12px] font-bold">{rel.label}</span>
+                      <span className="text-[12px] font-bold">{pickText(isZh, rel.label)}</span>
                     </button>
                   ))}
                 </div>
@@ -356,7 +369,7 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                   className="flex items-center gap-2 px-8 py-3 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-sm font-bold text-fuchsia-400 hover:bg-fuchsia-500/30 disabled:opacity-30 transition-all"
                 >
                   {distilling ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                  {distilling ? '蒸馏中...' : '开始人格蒸馏'}
+                  {distilling ? ui('蒸馏中...', 'Distilling...') : ui('开始人格蒸馏', 'Start Personality Distill')}
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -370,27 +383,27 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
               <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2">
                   <Eye size={14} className="text-fuchsia-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-white/55">蒸馏结果 — {distillResult.inferredName}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('蒸馏结果', 'Distill Result')} - {distillResult.inferredName}</span>
                 </div>
                 <p className="text-sm text-white/60 leading-relaxed italic">"{distillResult.narrative}"</p>
                 <div className="flex gap-3 text-xs text-white/55 font-mono">
-                  <span>{distillResult.summary.messageCount} 条消息</span>
-                  <span>{distillResult.seedMemories.length} 条记忆</span>
-                  <span>{distillResult.relationshipType}</span>
+                  <span>{ui(`${distillResult.summary.messageCount} 条消息`, `${distillResult.summary.messageCount} messages`)}</span>
+                  <span>{ui(`${distillResult.seedMemories.length} 条记忆`, `${distillResult.seedMemories.length} memories`)}</span>
+                  <span>{relationshipLabel(distillResult.relationshipType)}</span>
                   <span className="text-fuchsia-400">{distillResult.personalityConfig.expressionStyle.tone}</span>
                 </div>
               </div>
 
               {/* Radar */}
               <div className="p-6 bg-white/5 border border-white/10 rounded-2xl">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white/55 mb-3">8 维人格向量</h3>
-                <MiniRadar cognitiveStyle={distillResult.summary.cognitiveStyle} socialStyle={distillResult.summary.socialStyle} />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/55 mb-3">{ui('8 维人格向量', '8-D Personality Vector')}</h3>
+                <MiniRadar cognitiveStyle={distillResult.summary.cognitiveStyle} socialStyle={distillResult.summary.socialStyle} isZh={isZh} />
               </div>
 
               {/* Common phrases */}
               {distillResult.summary.topPhrases && distillResult.summary.topPhrases.length > 0 && (
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white/55">常用表达</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('常用表达', 'Common Phrases')}</span>
                   <div className="flex flex-wrap gap-2">
                     {distillResult.summary.topPhrases.map((p, i) => (
                       <span key={i} className="px-3 py-1 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-full text-xs text-fuchsia-300">{p}</span>
@@ -401,11 +414,11 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
 
               {/* Seed Memories with Evidence */}
               <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/55">种子记忆 ({distillResult.seedMemories.length})</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('种子记忆', 'Seed Memories')} ({distillResult.seedMemories.length})</span>
                 <div className="space-y-2 max-h-64 overflow-auto">
                   {distillResult.seedMemories.slice(0, 10).map((mem, i) => (
                     <div key={i} className="flex items-start gap-3 p-3 bg-white/[0.02] rounded-xl border border-white/5">
-                      <EvidenceBadge grade={mem.evidenceGrade} />
+                      <EvidenceBadge grade={mem.evidenceGrade} isZh={isZh} />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-white/50 leading-relaxed">{mem.content}</p>
                         <span className="text-[12px] text-white/40 font-mono">{mem.keywords?.join(', ')}</span>
@@ -418,28 +431,28 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
 
               {/* Sanctuary config */}
               <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/55">领地配置</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-white/55">{ui('领地配置', 'Sanctuary Settings')}</span>
                 <input
                   value={sanctuaryName}
                   onChange={(e) => setSanctuaryName(e.target.value)}
-                  placeholder="领地名称..."
+                  placeholder={ui('领地名称...', 'Sanctuary name...')}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 placeholder:text-white/40 focus:outline-none focus:border-fuchsia-500/30"
                 />
                 <div className="text-[12px] text-white/45 font-mono space-y-1">
-                  <p>• 工具权限：无（仅对话）</p>
-                  <p>• 记忆隔离：私有（不共享）</p>
-                  <p>• 演化：冻结（不自动变化）</p>
-                  <p>• 通知：关闭（只在领地内可见）</p>
+                  <p>{ui('• 工具权限：无（仅对话）', '- Tool permission: none (chat only)')}</p>
+                  <p>{ui('• 记忆隔离：私有（不共享）', '- Memory isolation: private (not shared)')}</p>
+                  <p>{ui('• 演化：冻结（不自动变化）', '- Evolution: frozen (no automatic drift)')}</p>
+                  <p>{ui('• 通知：关闭（只在领地内可见）', '- Notifications: off (visible only inside sanctuary)')}</p>
                 </div>
               </div>
 
               <div className="flex justify-between pt-2">
                 <button onClick={() => setCurrentStep(1)} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white/40 hover:bg-white/10 transition-all">
-                  <ArrowLeft size={14} /> 返回
+                  <ArrowLeft size={14} /> {ui('返回', 'Back')}
                 </button>
                 <button onClick={handleCreateSanctuary} disabled={creating} className="flex items-center gap-2 px-8 py-3 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-sm font-bold text-fuchsia-400 hover:bg-fuchsia-500/30 disabled:opacity-30 transition-all">
                   {creating ? <Loader2 size={16} className="animate-spin" /> : <Castle size={16} />}
-                  {creating ? '创建中...' : '创建领地'}
+                  {creating ? ui('创建中...', 'Creating...') : ui('创建领地', 'Create Sanctuary')}
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -453,17 +466,17 @@ export function MemoryAvatarLab({ t, onEnterSanctuary }: { t: any; onEnterSanctu
                 <CheckCircle size={48} className="text-fuchsia-400" />
               </div>
               <div className="space-y-2">
-                <h2 className="text-2xl font-black tracking-tighter text-white/90">领地已创建</h2>
+                <h2 className="text-2xl font-black tracking-tighter text-white/90">{ui('领地已创建', 'Sanctuary Created')}</h2>
                 <p className="text-sm text-white/40 max-w-sm mx-auto">
-                  "{sanctuaryName || distillResult.inferredName}" 的记忆化身已安放在专属领地中。现在可以进入领地与 ta 对话。
+                  {ui(`"${sanctuaryName || distillResult.inferredName}" 的记忆化身已安放在专属领地中。现在可以进入领地与 ta 对话。`, `The memory avatar for "${sanctuaryName || distillResult.inferredName}" has been placed in its private sanctuary. You can enter now and start talking.`)}
                 </p>
               </div>
               <div className="flex gap-4 justify-center">
                 <button onClick={reset} className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white/40 hover:bg-white/10 transition-all">
-                  再创建一个
+                  {ui('再创建一个', 'Create Another')}
                 </button>
                 <button className="px-6 py-3 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-sm font-bold text-fuchsia-400 hover:bg-fuchsia-500/30 transition-all">
-                  进入领地 <ArrowRight size={14} className="inline ml-1" />
+                  {ui('进入领地', 'Enter Sanctuary')} <ArrowRight size={14} className="inline ml-1" />
                 </button>
               </div>
             </motion.div>

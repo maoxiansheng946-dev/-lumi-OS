@@ -14,6 +14,8 @@ import { useSocket } from '@/hooks/useSocket';
 import { toast } from 'sonner';
 
 export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any; onEnterSanctuary?: () => void }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -326,7 +328,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-white/60 leading-relaxed italic">
-                "{founderVision || "LumiAI 旨在构建一个去中心化的智能协议..."}"
+                "{founderVision || ui('LumiAI 旨在构建一个去中心化的智能协议...', 'LumiAI aims to build a decentralized intelligence protocol...')}"
               </p>
               <Button 
                 onClick={onEnterSanctuary}
@@ -405,7 +407,7 @@ Lumi Core Agent
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20">
                   <MessageSquare size={48} />
-                  <p className="text-sm">尚未有交互记录<br/>开始与您的本地智能体对话</p>
+                  <p className="text-sm">{ui('尚未有交互记录', 'No interactions yet')}<br />{ui('开始与您的本地智能体对话', 'Start talking with your local agent')}</p>
                 </div>
               )}
               <AnimatePresence initial={false}>
@@ -424,7 +426,7 @@ Lumi Core Agent
                       {msg.text}
                     </div>
                     <span className="text-[12px] uppercase tracking-tighter opacity-30 mt-1 px-2">
-                      {msg.userName} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {msg.userName} • {new Date(msg.timestamp).toLocaleTimeString(isZh ? 'zh-CN' : undefined, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </motion.div>
                 ))}
@@ -442,7 +444,7 @@ Lumi Core Agent
                 <Input
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="输入指令或留言..."
+                  placeholder={ui('输入指令或留言...', 'Type a command or message...')}
                   className="bg-black/20 border-white/10 rounded-xl focus-visible:ring-celestial-saturn/50"
                 />
                 <Button 

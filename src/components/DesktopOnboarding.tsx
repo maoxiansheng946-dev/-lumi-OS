@@ -33,44 +33,62 @@ interface TutorialStep {
 
 export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
 
   const steps: TutorialStep[] = [
     {
-      eyebrow: '01 / 桌面入口',
-      title: '先从桌面开始',
-      description: 'Lumi 的主要能力都放在桌面图标、Dock 和搜索里。打开一个入口后，窗口会像桌面应用一样停留在工作区。',
-      action: '试着打开 Chat 或 Skill Center',
-      bullets: ['双击桌面图标打开功能', '底部 Dock 保留常用入口', '已打开窗口会自动出现在 Dock'],
+      eyebrow: ui('01 / 桌面入口', '01 / Desktop Entry'),
+      title: ui('先从桌面开始', 'Start From The Desktop'),
+      description: ui('Lumi 的主要能力都放在桌面图标、Dock 和搜索里。打开一个入口后，窗口会像桌面应用一样停留在工作区。', 'Lumi keeps the main abilities in desktop icons, the dock, and search. Open an entry and its window stays in the workspace like a real desktop app.'),
+      action: ui('试着打开 Chat 或 Skill Center', 'Try opening Chat or Skill Center'),
+      bullets: [
+        ui('双击桌面图标打开功能', 'Double-click desktop icons to open features'),
+        ui('底部 Dock 保留常用入口', 'The dock keeps common entries nearby'),
+        ui('已打开窗口会自动出现在 Dock', 'Open windows appear in the dock automatically'),
+      ],
       icon: <Sparkles size={34} className="text-celestial-saturn" />,
       accent: 'bg-celestial-saturn',
       preview: 'desktop',
     },
     {
-      eyebrow: '02 / 交代任务',
-      title: '用一句话告诉 Lumi 要做什么',
-      description: '你可以点中心球、打开 Chat，或者用麦克风说话。适合让它打开软件、处理文件、查信息、执行连续步骤。',
-      action: '输入或说出一个明确任务',
-      bullets: ['文字适合复杂任务', '语音适合快速指令', '执行前会显示关键状态'],
+      eyebrow: ui('02 / 交代任务', '02 / Give A Task'),
+      title: ui('用一句话告诉 Lumi 要做什么', 'Tell Lumi What To Do In One Sentence'),
+      description: ui('你可以点中心球、打开 Chat，或者用麦克风说话。适合让它打开软件、处理文件、查信息、执行连续步骤。', 'Click the center orb, open Chat, or speak through the microphone. Use this for opening apps, handling files, checking information, and running multi-step work.'),
+      action: ui('输入或说出一个明确任务', 'Type or speak a clear task'),
+      bullets: [
+        ui('文字适合复杂任务', 'Text is best for complex tasks'),
+        ui('语音适合快速指令', 'Voice is best for quick commands'),
+        ui('执行前会显示关键状态', 'Key execution states stay visible'),
+      ],
       icon: <MessageSquare size={34} className="text-blue-300" />,
       accent: 'bg-blue-400',
       preview: 'chat',
     },
     {
-      eyebrow: '03 / 执行模式',
-      title: '先看模式，再让 AI 动手',
-      description: '模式会影响 Lumi 的执行方式。键鼠偏界面操作，命令偏终端和文件任务，自由适合多步后台流程。',
-      action: '根据任务切换键鼠 / 命令 / 自由',
-      bullets: ['键鼠：点击、读屏、操作当前界面', '命令：终端、文件、开发和批量任务', '自由：多步任务，敏感操作仍会确认'],
+      eyebrow: ui('03 / 执行模式', '03 / Execution Mode'),
+      title: ui('先看模式，再让 AI 动手', 'Check The Mode Before Lumi Acts'),
+      description: ui('模式会影响 Lumi 的执行方式。聊天适合纯交流，助手会按任务调用能力，自动执行适合多步可见流程。', 'Modes affect how Lumi acts. Chat is conversation-only, Assistant chooses abilities for the task, and Auto Execute handles visible multi-step work.'),
+      action: ui('根据任务切换聊天 / 助手 / 自动执行', 'Switch between Chat / Assistant / Auto Execute'),
+      bullets: [
+        ui('聊天：只回答，不主动动手', 'Chat: answer only, no proactive actions'),
+        ui('助手：按需调用工具、技能和团队', 'Assistant: use tools, skills, and teams as needed'),
+        ui('自动执行：多步任务，敏感操作仍会确认', 'Auto Execute: multi-step work, sensitive actions still require confirmation'),
+      ],
       icon: <MousePointer2 size={34} className="text-cyan-300" />,
       accent: 'bg-cyan-400',
       preview: 'mode',
     },
     {
-      eyebrow: '04 / 快速查找',
-      title: '找不到入口就搜索',
-      description: '顶部搜索可以直接打开 Chat、Settings、Knowledge Base、Skill Center 等功能。记不住位置时，搜索最快。',
-      action: '搜索一个功能名并回车打开',
-      bullets: ['输入功能名即可筛选', '回车打开第一个结果', '适合快速切换常用工具'],
+      eyebrow: ui('04 / 快速查找', '04 / Quick Search'),
+      title: ui('找不到入口就搜索', 'Search When You Cannot Find An Entry'),
+      description: ui('顶部搜索可以直接打开 Chat、Settings、Knowledge Base、Skill Center 等功能。记不住位置时，搜索最快。', 'Top search can open Chat, Settings, Knowledge Base, Skill Center, and more. When you do not remember where something lives, search is fastest.'),
+      action: ui('搜索一个功能名并回车打开', 'Search a feature name and press Enter'),
+      bullets: [
+        ui('输入功能名即可筛选', 'Type a feature name to filter'),
+        ui('回车打开第一个结果', 'Press Enter to open the first result'),
+        ui('适合快速切换常用工具', 'Useful for switching common tools quickly'),
+      ],
       icon: <Search size={34} className="text-purple-300" />,
       accent: 'bg-purple-400',
       preview: 'search',
@@ -119,14 +137,14 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
         <div className="flex h-full min-h-[280px] flex-col justify-between rounded-2xl border border-white/10 bg-[#0d1220] p-5">
           <div className="space-y-4">
             <div className="max-w-[78%] rounded-2xl rounded-tl-sm bg-white/10 px-4 py-3 text-sm text-white/72">
-              帮我打开浏览器，并整理今天要处理的文件。
+              {ui('帮我打开浏览器，并整理今天要处理的文件。', 'Open the browser and organize the files I need to handle today.')}
             </div>
             <div className="ml-auto max-w-[82%] rounded-2xl rounded-tr-sm border border-blue-300/25 bg-blue-400/12 px-4 py-3 text-sm text-blue-50">
-              我会先确认执行模式，然后打开浏览器和文件入口。
+              {ui('我会先确认执行模式，然后打开浏览器和文件入口。', 'I will confirm the execution mode first, then open the browser and file entry.')}
             </div>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/28 p-3">
-            <div className="flex-1 rounded-xl bg-white/8 px-4 py-3 text-sm text-white/35">输入任务...</div>
+            <div className="flex-1 rounded-xl bg-white/8 px-4 py-3 text-sm text-white/35">{ui('输入任务...', 'Type a task...')}</div>
             <button className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-400 text-black">
               <Mic size={18} />
             </button>
@@ -140,9 +158,9 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
         <div className="h-full min-h-[280px] rounded-2xl border border-white/10 bg-[#0c1420] p-5">
           <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
             {[
-              ['键鼠', '操作界面', MousePointer2],
-              ['命令', '终端文件', Keyboard],
-              ['自由', '多步执行', Zap],
+              [ui('聊天', 'Chat'), ui('只交流', 'Talk only'), MessageSquare],
+              [ui('助手', 'Assistant'), ui('调用能力', 'Use abilities'), MousePointer2],
+              [ui('自动执行', 'Auto'), ui('多步执行', 'Multi-step'), Zap],
             ].map(([label, hint, Icon], index) => {
               const ActiveIcon = Icon as typeof MousePointer2;
               return (
@@ -160,13 +178,17 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
             })}
           </div>
           <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
-            <div className="text-sm font-black text-cyan-50">当前：键鼠模式</div>
+            <div className="text-sm font-black text-cyan-50">{ui('当前：助手模式', 'Current: Assistant Mode')}</div>
             <p className="mt-2 text-sm leading-relaxed text-cyan-50/68">
-              适合打开软件、点击界面、读屏并操作当前桌面。需要动手前，Lumi 会显示正在做什么。
+              {ui('适合按任务选择工具、技能、团队、画布或键鼠操作。需要动手前，Lumi 会显示正在做什么。', 'Lumi can choose tools, skills, teams, canvas, or desktop control for the task. Before acting, Lumi shows what is happening.')}
             </p>
           </div>
           <div className="mt-4 space-y-2">
-            {['读取当前窗口', '定位可点击区域', '执行点击或输入'].map(label => (
+            {[
+              ui('理解当前任务', 'Understand the task'),
+              ui('选择合适能力', 'Choose the right ability'),
+              ui('展示执行进度', 'Show execution progress'),
+            ].map(label => (
               <div key={label} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-sm text-white/55">
                 <CheckCircle2 size={16} className="text-cyan-300" />
                 {label}
@@ -225,14 +247,14 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
             onClick={onFinish}
             className="absolute right-5 top-5 z-10 text-xs font-black uppercase tracking-[0.2em] text-white/35 transition-colors hover:text-white/70"
           >
-            {t.skip || '跳过'}
+            {t.skip || ui('跳过', 'Skip')}
           </button>
 
           <aside className="border-b border-white/10 bg-white/[0.03] p-6 md:border-b-0 md:border-r">
             <div className="text-xs font-black uppercase tracking-[0.28em] text-white/32">First Run</div>
-            <h2 className="mt-3 text-2xl font-black text-white">Lumi 桌面教程</h2>
+            <h2 className="mt-3 text-2xl font-black text-white">{ui('Lumi 桌面教程', 'Lumi Desktop Tutorial')}</h2>
             <p className="mt-3 text-sm leading-relaxed text-white/50">
-              跟着四步先摸清入口、对话、执行模式和搜索。
+              {ui('跟着四步先摸清入口、对话、执行模式和搜索。', 'Follow four steps to understand entries, chat, execution modes, and search.')}
             </p>
 
             <div className="mt-7 space-y-2">
@@ -273,7 +295,7 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
                   <p className="mt-5 max-w-2xl text-base leading-8 text-white/62">{step.description}</p>
 
                   <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <div className="text-xs font-black uppercase tracking-[0.22em] text-white/35">现在要做</div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-white/35">{ui('现在要做', 'Do Now')}</div>
                     <div className="mt-2 text-lg font-black text-white">{step.action}</div>
                   </div>
 
@@ -293,7 +315,7 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
                       onClick={() => setCurrentStep(prev => prev - 1)}
                       className="h-12 rounded-2xl border border-white/10 px-5 text-sm font-black text-white/55 transition-colors hover:bg-white/8 hover:text-white"
                     >
-                      上一步
+                      {ui('上一步', 'Previous')}
                     </button>
                   )}
                   {currentStep < steps.length - 1 ? (
@@ -301,7 +323,7 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
                       onClick={() => setCurrentStep(prev => prev + 1)}
                       className="flex h-12 min-w-36 items-center justify-center gap-2 rounded-2xl bg-white px-6 text-sm font-black text-black transition-transform hover:scale-[1.02] active:scale-95"
                     >
-                      下一步
+                      {ui('下一步', 'Next')}
                       <ChevronRight size={18} />
                     </button>
                   ) : (
@@ -309,7 +331,7 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
                       onClick={onFinish}
                       className="flex h-12 min-w-40 items-center justify-center gap-2 rounded-2xl bg-celestial-saturn px-6 text-sm font-black text-black shadow-[0_0_34px_rgba(255,200,80,0.25)] transition-transform hover:scale-[1.02] active:scale-95"
                     >
-                      进入桌面
+                      {ui('进入桌面', 'Enter Desktop')}
                       <Zap size={18} fill="currentColor" />
                     </button>
                   )}

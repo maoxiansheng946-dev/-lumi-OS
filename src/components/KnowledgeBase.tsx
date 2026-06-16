@@ -372,7 +372,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
               {/* Left: title */}
               <div className="flex items-center gap-3 bg-black/40 backdrop-blur-xl border border-white/[0.08] rounded-2xl px-4 py-2">
                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
-                <span className="text-xs font-black text-white/50 uppercase tracking-[0.2em]">智库</span>
+                <span className="text-xs font-black text-white/50 uppercase tracking-[0.2em]">{t.knowledgeBase || 'Knowledge Base'}</span>
               </div>
 
               {/* Search */}

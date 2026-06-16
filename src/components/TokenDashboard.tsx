@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Zap, TrendingUp, Clock, Layers, RefreshCw, AlertTriangle } from 'lucide-react';
 import { GlassCard } from './SharedUI';
 import { socketService } from '@/services/socketService';
+import { useT } from '../lib/useT';
 
 interface ProviderStats {
   promptTokens: number;
@@ -55,6 +56,9 @@ function formatNumber(n: number): string {
 }
 
 export const TokenDashboard: React.FC = () => {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
@@ -69,7 +73,7 @@ export const TokenDashboard: React.FC = () => {
         fetch(`/api/llm/usage?days=${days}`, { credentials: 'include' }),
         fetch('/api/subscription/status', { credentials: 'include' }),
       ]);
-      if (!usageResp.ok) throw new Error(usageResp.status === 401 ? 'Login required' : `HTTP ${usageResp.status}`);
+      if (!usageResp.ok) throw new Error(usageResp.status === 401 ? ui('需要登录', 'Login required') : `HTTP ${usageResp.status}`);
       const res = await usageResp.json();
       setData(res);
       if (subResp.ok) {
@@ -84,7 +88,7 @@ export const TokenDashboard: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load');
+      setError(err.message || ui('加载失败', 'Failed to load'));
     } finally {
       setLoading(false);
     }
@@ -134,8 +138,8 @@ export const TokenDashboard: React.FC = () => {
             <Zap size={16} className="text-amber-400" />
           </div>
           <div>
-            <h2 className="text-sm font-black tracking-tight">Token Usage</h2>
-            <p className="text-xs text-white/50 font-medium">LLM API consumption</p>
+            <h2 className="text-sm font-black tracking-tight">{ui('Token 用量', 'Token Usage')}</h2>
+            <p className="text-xs text-white/50 font-medium">{ui('LLM API 消耗', 'LLM API consumption')}</p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 bg-white/5 rounded-xl p-1">
@@ -147,7 +151,7 @@ export const TokenDashboard: React.FC = () => {
                 days === d ? 'bg-white/15 text-white' : 'text-white/55 hover:text-white/50'
               }`}
             >
-              {d}天
+              {d}{ui('天', 'd')}
             </button>
           ))}
           <button onClick={fetchUsage} className="p-1.5 rounded-lg hover:bg-white/5 text-white/55 hover:text-white/60 transition-all">
@@ -172,10 +176,10 @@ export const TokenDashboard: React.FC = () => {
             <GlassCard className="p-4 rounded-2xl border-white/5 bg-white/[0.03]">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp size={13} className="text-amber-400/70" />
-                <span className="text-[12px] font-bold text-white/50 uppercase tracking-wider">Total Tokens</span>
+                <span className="text-[12px] font-bold text-white/50 uppercase tracking-wider">{ui('Token 总量', 'Total Tokens')}</span>
               </div>
               <div className="text-2xl font-black tracking-tight">{formatTokens(data?.grandTotal || 0)}</div>
-              <div className="text-xs text-white/45 mt-0.5">{formatNumber(data?.recordCount || 0)} API calls</div>
+              <div className="text-xs text-white/45 mt-0.5">{formatNumber(data?.recordCount || 0)} {ui('次 API 调用', 'API calls')}</div>
             </GlassCard>
 
             {/* Quota */}
@@ -183,13 +187,13 @@ export const TokenDashboard: React.FC = () => {
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle size={13} className={quotaPct >= 80 ? 'text-amber-400' : 'text-white/50'} />
                 <span className="text-[12px] font-bold text-white/50 uppercase tracking-wider">
-                  Quota · {quota?.plan || 'Free'}
+                  {ui('额度', 'Quota')} · {quota?.plan || 'Free'}
                 </span>
               </div>
               {quota ? (
                 <>
                   <div className="text-lg font-black tracking-tight">
-                    {formatTokens(quota.remaining)} <span className="text-xs text-white/45 font-normal">left</span>
+                    {formatTokens(quota.remaining)} <span className="text-xs text-white/45 font-normal">{ui('剩余', 'left')}</span>
                   </div>
                   <div className="mt-2 h-1.5 rounded-full bg-white/5 overflow-hidden">
                     <motion.div
@@ -204,7 +208,7 @@ export const TokenDashboard: React.FC = () => {
                   </div>
                 </>
               ) : (
-                <div className="text-sm text-white/45">No subscription data</div>
+                <div className="text-sm text-white/45">{ui('暂无订阅数据', 'No subscription data')}</div>
               )}
             </GlassCard>
           </div>
@@ -212,10 +216,10 @@ export const TokenDashboard: React.FC = () => {
           {/* Providers + Ring */}
           <GlassCard className="p-4 rounded-2xl border-white/5 bg-white/[0.03]">
             <h3 className="text-[12px] font-bold text-white/45 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Layers size={10} /> Providers
+              <Layers size={10} /> {ui('服务商', 'Providers')}
             </h3>
             {providers.length === 0 ? (
-              <p className="text-white/45 text-xs py-6 text-center">No usage data yet.</p>
+              <p className="text-white/45 text-xs py-6 text-center">{ui('暂无用量数据。', 'No usage data yet.')}</p>
             ) : (
               <div className="flex items-center gap-5">
                 {/* Ring */}
@@ -256,7 +260,7 @@ export const TokenDashboard: React.FC = () => {
                             <span className="text-xs font-bold text-white/60">{PROVIDER_LABELS[provider] || provider}</span>
                           </div>
                           <span className="text-xs font-mono text-white/40">
-                            {formatTokens(stats.totalTokens)} <span className="text-white/40">· {stats.calls} calls</span>
+                            {formatTokens(stats.totalTokens)} <span className="text-white/40">· {stats.calls} {ui('次调用', 'calls')}</span>
                           </span>
                         </div>
                         <div className="h-1 rounded-full bg-white/5 overflow-hidden">
@@ -276,10 +280,10 @@ export const TokenDashboard: React.FC = () => {
           {/* Daily chart */}
           <GlassCard className="flex-1 p-4 rounded-2xl border-white/5 bg-white/[0.03] flex flex-col">
             <h3 className="text-[12px] font-bold text-white/45 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Clock size={10} /> Daily Trend
+              <Clock size={10} /> {ui('每日趋势', 'Daily Trend')}
             </h3>
             {!data?.daily || data.daily.length === 0 ? (
-              <p className="text-white/45 text-xs py-6 text-center">No daily data yet.</p>
+              <p className="text-white/45 text-xs py-6 text-center">{ui('暂无每日数据。', 'No daily data yet.')}</p>
             ) : (
               <div className="flex-1 flex flex-col justify-end">
                 <div className="flex items-end gap-[2px] flex-1">

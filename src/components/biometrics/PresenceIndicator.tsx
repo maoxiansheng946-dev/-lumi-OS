@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
+import { useT } from '../../lib/useT';
 
 interface PresenceIndicatorProps {
   status: 'present' | 'uncertain' | 'away';
@@ -7,10 +8,12 @@ interface PresenceIndicatorProps {
 }
 
 export function PresenceIndicator({ status, faceConfidence, voiceConfidence }: PresenceIndicatorProps) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
   const colors = {
-    present: { bg: 'rgba(76,175,80,0.8)', ring: 'rgba(76,175,80,0.3)', label: '在场' },
-    uncertain: { bg: 'rgba(255,193,7,0.8)', ring: 'rgba(255,193,7,0.3)', label: '不确定' },
-    away: { bg: 'rgba(244,67,54,0.8)', ring: 'rgba(244,67,54,0.3)', label: '离场' },
+    present: { bg: 'rgba(76,175,80,0.8)', ring: 'rgba(76,175,80,0.3)', label: isZh ? '在场' : 'Present' },
+    uncertain: { bg: 'rgba(255,193,7,0.8)', ring: 'rgba(255,193,7,0.3)', label: isZh ? '不确定' : 'Uncertain' },
+    away: { bg: 'rgba(244,67,54,0.8)', ring: 'rgba(244,67,54,0.3)', label: isZh ? '离场' : 'Away' },
   };
 
   const c = colors[status];

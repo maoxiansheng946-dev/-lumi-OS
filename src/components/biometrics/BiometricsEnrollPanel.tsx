@@ -3,13 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mic, Camera, Shield, CheckCircle2, Loader2, Trash2, RefreshCw } from 'lucide-react';
 import { useVoiceprint } from '../../hooks/useVoiceprint';
 import { useFaceRecognition } from '../../hooks/useFaceRecognition';
+import { useT } from '../../lib/useT';
 import { toast } from 'sonner';
 
 export function BiometricsEnrollPanel() {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const voiceprint = useVoiceprint();
   const faceRecognition = useFaceRecognition({ enabled: true });
 
-  const [voiceLabel, setVoiceLabel] = useState('我的声音');
+  const [voiceLabel, setVoiceLabel] = useState(() => ui('我的声音', 'My voice'));
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'recording' | 'done'>('idle');
   const [voiceProgress, setVoiceProgress] = useState(0);
 
@@ -54,42 +58,42 @@ export function BiometricsEnrollPanel() {
 
     if (result.success) {
       setVoiceStatus('done');
-      toast.success('声纹录入成功');
+      toast.success(ui('声纹录入成功', 'Voiceprint enrolled'));
       loadEnrolled();
     } else {
       setVoiceStatus('idle');
-      toast.error('声纹录入失败，请靠近麦克风重试');
+      toast.error(ui('声纹录入失败，请靠近麦克风重试', 'Voiceprint enrollment failed. Move closer to the microphone and try again.'));
     }
-  }, [voiceStatus, voiceLabel, voiceprint, loadEnrolled]);
+  }, [voiceStatus, voiceLabel, voiceprint, loadEnrolled, ui]);
 
   // ── Face enrollment ──
   const handleFaceEnroll = useCallback(async () => {
     if (faceStatus === 'scanning') return;
     setFaceStatus('scanning');
 
-    const result = await faceRecognition.enrollFace('我的面孔');
+    const result = await faceRecognition.enrollFace(ui('我的面孔', 'My face'));
     if (result.success) {
       setFaceStatus('done');
-      toast.success('人脸录入成功');
+      toast.success(ui('人脸录入成功', 'Face enrolled'));
       loadEnrolled();
     } else {
       setFaceStatus('idle');
-      toast.error('人脸录入失败，请正对摄像头再试');
+      toast.error(ui('人脸录入失败，请正对摄像头再试', 'Face enrollment failed. Look at the camera and try again.'));
     }
-  }, [faceStatus, faceRecognition, loadEnrolled]);
+  }, [faceStatus, faceRecognition, loadEnrolled, ui]);
 
   // ── Delete ──
   const handleDelete = useCallback(async (type: string, id: string) => {
     try {
       const res = await fetch(`/api/auth/biometric/${type}/${id}`, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
-        toast.success('已删除');
+        toast.success(ui('已删除', 'Deleted'));
         loadEnrolled();
       }
     } catch {
-      toast.error('删除失败');
+      toast.error(ui('删除失败', 'Delete failed'));
     }
-  }, [loadEnrolled]);
+  }, [loadEnrolled, ui]);
 
   return (
     <div className="space-y-8">
@@ -100,8 +104,8 @@ export function BiometricsEnrollPanel() {
             <Mic size={20} className="text-amber-400" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white/90">声纹录入</h3>
-            <p className="text-xs text-white/45">录制 3 秒语音提取声纹特征</p>
+            <h3 className="text-sm font-bold text-white/90">{ui('声纹录入', 'Voiceprint Enrollment')}</h3>
+            <p className="text-xs text-white/45">{ui('录制 3 秒语音提取声纹特征', 'Record 3 seconds of speech to extract voiceprint features')}</p>
           </div>
         </div>
 
@@ -111,7 +115,7 @@ export function BiometricsEnrollPanel() {
           value={voiceLabel}
           onChange={e => setVoiceLabel(e.target.value)}
           className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white/80 placeholder-white/30 focus:outline-none focus:border-amber-500/40"
-          placeholder="语音标签..."
+          placeholder={ui('语音标签...', 'Voice label...')}
         />
 
         {/* Record button */}
@@ -127,7 +131,7 @@ export function BiometricsEnrollPanel() {
                 className="flex items-center gap-3"
               >
                 <Mic size={20} className="text-amber-400" />
-                <span className="text-sm font-medium text-amber-300">开始录入声纹</span>
+                <span className="text-sm font-medium text-amber-300">{ui('开始录入声纹', 'Start Voiceprint Enrollment')}</span>
               </motion.div>
             )}
             {voiceStatus === 'recording' && (
@@ -136,7 +140,7 @@ export function BiometricsEnrollPanel() {
               >
                 <span className="text-sm text-amber-300 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  正在录音，请说话...
+                  {ui('正在录音，请说话...', 'Recording. Please speak...')}
                 </span>
                 <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <motion.div
@@ -152,7 +156,7 @@ export function BiometricsEnrollPanel() {
                 className="flex items-center gap-3"
               >
                 <CheckCircle2 size={20} className="text-green-400" />
-                <span className="text-sm font-medium text-green-400">录入完成</span>
+                <span className="text-sm font-medium text-green-400">{ui('录入完成', 'Enrollment Complete')}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -166,7 +170,7 @@ export function BiometricsEnrollPanel() {
                 <div className="flex items-center gap-2">
                   <Mic size={14} className="text-amber-400/60" />
                   <span className="text-sm text-white/70">{vp.label}</span>
-                  <span className="text-[10px] text-white/30">{vp.sampleCount} 帧</span>
+                  <span className="text-[10px] text-white/30">{vp.sampleCount} {ui('帧', 'frames')}</span>
                 </div>
                 <button onClick={() => handleDelete('voiceprint', vp.id)}
                   className="p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-red-400 transition-colors"
@@ -186,8 +190,8 @@ export function BiometricsEnrollPanel() {
             <Camera size={20} className="text-blue-400" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white/90">人脸录入</h3>
-            <p className="text-xs text-white/45">正对摄像头保持 2 秒</p>
+            <h3 className="text-sm font-bold text-white/90">{ui('人脸录入', 'Face Enrollment')}</h3>
+            <p className="text-xs text-white/45">{ui('正对摄像头保持 2 秒', 'Look at the camera for 2 seconds')}</p>
           </div>
         </div>
 
@@ -203,7 +207,7 @@ export function BiometricsEnrollPanel() {
                 className="flex items-center gap-3"
               >
                 <Camera size={20} className="text-blue-400" />
-                <span className="text-sm font-medium text-blue-300">开始录入人脸</span>
+                <span className="text-sm font-medium text-blue-300">{ui('开始录入人脸', 'Start Face Enrollment')}</span>
               </motion.div>
             )}
             {faceStatus === 'scanning' && (
@@ -211,7 +215,7 @@ export function BiometricsEnrollPanel() {
                 className="flex items-center gap-3"
               >
                 <Loader2 size={20} className="text-blue-400 animate-spin" />
-                <span className="text-sm text-blue-300">正在扫描人脸...</span>
+                <span className="text-sm text-blue-300">{ui('正在扫描人脸...', 'Scanning face...')}</span>
               </motion.div>
             )}
             {faceStatus === 'done' && (
@@ -219,7 +223,7 @@ export function BiometricsEnrollPanel() {
                 className="flex items-center gap-3"
               >
                 <CheckCircle2 size={20} className="text-green-400" />
-                <span className="text-sm font-medium text-green-400">录入完成</span>
+                <span className="text-sm font-medium text-green-400">{ui('录入完成', 'Enrollment Complete')}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -250,8 +254,8 @@ export function BiometricsEnrollPanel() {
         <div>
           <p className="text-xs text-white/60">
             {voiceprints.length === 0 && faces.length === 0
-              ? '尚未录入生物特征 — 录入后可防止 Lumi 响应陌生人'
-              : `已录入 ${voiceprints.length} 组声纹 + ${faces.length} 组人脸`
+              ? ui('尚未录入生物特征 — 录入后可防止 Lumi 响应陌生人', 'No biometrics enrolled yet - enroll them to prevent Lumi from responding to strangers')
+              : ui(`已录入 ${voiceprints.length} 组声纹 + ${faces.length} 组人脸`, `${voiceprints.length} voiceprints + ${faces.length} faces enrolled`)
             }
           </p>
         </div>

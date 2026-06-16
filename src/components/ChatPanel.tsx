@@ -35,6 +35,8 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript }: ChatPanelProps) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -71,10 +73,10 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
   const hasDesktop = installedSkillNames.some((n: string) => ['desktop', 'commander'].some(k => n.includes(k)));
 
   const quickSuggestions = [
-    { label: '随便聊聊', prompt: '你好Lumi，今天有什么有趣的发现吗？', show: true },
-    { label: '生成图片', prompt: '帮我生成一张星空下的赛博朋克城市图片', show: hasCreativeSkill },
-    { label: '总结网页', prompt: '帮我抓取这篇文章的内容并总结要点', show: hasFetcher },
-    { label: '桌面整理', prompt: '帮我把桌面上的文件按日期整理一下', show: hasDesktop },
+    { label: ui('随便聊聊', 'Just Chat'), prompt: ui('你好 Lumi，今天有什么有趣的发现吗？', 'Hi Lumi, any interesting discoveries today?'), show: true },
+    { label: ui('生成图片', 'Generate Image'), prompt: ui('帮我生成一张星空下的赛博朋克城市图片', 'Generate an image of a cyberpunk city under a starry sky'), show: hasCreativeSkill },
+    { label: ui('总结网页', 'Summarize Webpage'), prompt: ui('帮我抓取这篇文章的内容并总结要点', 'Fetch this article and summarize the key points'), show: hasFetcher },
+    { label: ui('桌面整理', 'Organize Desktop'), prompt: ui('帮我把桌面上的文件按日期整理一下', 'Organize the desktop files by date'), show: hasDesktop },
   ];
   const visibleSuggestions = quickSuggestions.filter(s => s.show).slice(0, 4);
 

@@ -36,6 +36,8 @@ export function OrgHub() {
   const [switchBusy, setSwitchBusy] = useState(false);
   const { workDomain, switchDomain, orgConnection } = useApp();
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   const allNavItems: NavItem[] = useMemo(() => [
     { id: 'dashboard', label: t.orgDashboard, icon: <Home size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
@@ -45,11 +47,11 @@ export function OrgHub() {
     { id: 'review', label: t.orgReview, icon: <ClipboardCheck size={16} />, roles: ['owner', 'admin'] },
     { id: 'members', label: t.orgMembers, icon: <Users size={16} />, roles: ['owner', 'admin'] },
     { id: 'audit', label: t.orgAudit, icon: <ScrollText size={16} />, roles: ['owner', 'admin'] },
-    { id: 'legal', label: t.legalHub || '律所', icon: <Scale size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
-    { id: 'design', label: t.designHub || '设计所', icon: <Palette size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
+    { id: 'legal', label: t.legalHub || ui('律所', 'Legal'), icon: <Scale size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
+    { id: 'design', label: t.designHub || ui('设计所', 'Design'), icon: <Palette size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
     { id: 'settings', label: t.orgSettings, icon: <Settings size={16} />, roles: ['owner', 'admin'] },
-    { id: 'branch', label: t.branchTerminal || '分支终端', icon: <GitBranch size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
-  ], [t]);
+    { id: 'branch', label: t.branchTerminal || ui('分支终端', 'Branch Terminal'), icon: <GitBranch size={16} />, roles: ['owner', 'admin', 'member', 'viewer'] },
+  ], [t, isZh]);
 
   const roleLabel: Record<string, { label: string; icon: React.ReactNode; color: string }> = useMemo(() => ({
     owner:  { label: t.orgRoleOwner,  icon: <Shield size={10} />, color: 'text-amber-400 bg-amber-500/10' },

@@ -2390,7 +2390,7 @@ export function DesktopUI({
           setEquippedAccessories(accessories);
           localStorage.setItem('lumi_accessories', JSON.stringify(accessories));
         }
-        toast.info('桌面形象已从另一设备同步');
+        toast.info(lang === 'zh' ? '桌面形象已从另一设备同步' : 'Desktop avatar synced from another device');
       }
     };
     const onAgentPromoted = (data: { agentName: string; skillName?: string }) => {
@@ -2412,13 +2412,21 @@ export function DesktopUI({
     };
 
     const onWakeDetected = (data: { keyword: string }) => {
-      addNotification({ type: 'info', title: '唤醒词检测', message: `检测到唤醒词 "${data.keyword}"` });
+      addNotification({
+        type: 'info',
+        title: lang === 'zh' ? '唤醒词检测' : 'Wake Word Detected',
+        message: lang === 'zh' ? `检测到唤醒词 "${data.keyword}"` : `Detected wake word "${data.keyword}"`,
+      });
     };
     const onWakeError = (data: { message: string }) => {
       console.warn('[Wake] Error:', data.message);
     };
     const onWakeStarted = () => {
-      addNotification({ type: 'info', title: '语音唤醒', message: '语音唤醒服务已启动' });
+      addNotification({
+        type: 'info',
+        title: lang === 'zh' ? '语音唤醒' : 'Voice Wake',
+        message: lang === 'zh' ? '语音唤醒服务已启动' : 'Voice wake service started',
+      });
     };
 
     const onTokenUsageUpdate = (_data: { totalTokens: number; provider: string }) => {
@@ -2427,7 +2435,13 @@ export function DesktopUI({
     const onTokenQuotaUpdate = (data: { used: number; cap: number; remaining: number }) => {
       const pct = data.used / data.cap;
       if (pct >= 0.9) {
-        addNotification({ type: 'warning', title: 'Token 配额告警', message: `已使用 ${Math.round(pct * 100)}%（${data.used.toLocaleString()} / ${data.cap.toLocaleString()}）` });
+        addNotification({
+          type: 'warning',
+          title: lang === 'zh' ? 'Token 配额告警' : 'Token Quota Alert',
+          message: lang === 'zh'
+            ? `已使用 ${Math.round(pct * 100)}%（${data.used.toLocaleString()} / ${data.cap.toLocaleString()}）`
+            : `${Math.round(pct * 100)}% used (${data.used.toLocaleString()} / ${data.cap.toLocaleString()})`,
+        });
       }
     };
 
@@ -3105,9 +3119,9 @@ export function DesktopUI({
   const operationModeOptions = [
     {
       id: 'chat' as const,
-      label: t.modeChat || '聊天',
-      title: t.modeChatTitle || '聊天模式',
-      description: t.modeChatDesc || '只回答和交流，不主动调用工具、键鼠、命令、团队或画布。',
+      label: t.modeChat || (lang === 'zh' ? '聊天' : 'Chat'),
+      title: t.modeChatTitle || (lang === 'zh' ? '聊天模式' : 'Chat mode'),
+      description: t.modeChatDesc || (lang === 'zh' ? '只回答和交流，不主动调用工具、键鼠、命令、团队或画布。' : 'Conversation only. Lumi will not proactively call tools, control desktop, use commands, teams, or canvas.'),
       hint: t.modeChatHint || 'Conversation only',
       icon: <MessageSquare size={16} />,
     },
@@ -3129,17 +3143,17 @@ export function DesktopUI({
     },
     {
       id: 'assistant' as const,
-      label: t.modeAssistant || '助手',
-      title: t.modeAssistantTitle || '助手模式',
-      description: t.modeAssistantDesc || '按任务选择键鼠、命令、工具、技能或团队；复杂画布任务先提示再执行。',
+      label: t.modeAssistant || (lang === 'zh' ? '助手' : 'Assistant'),
+      title: t.modeAssistantTitle || (lang === 'zh' ? '助手模式' : 'Assistant mode'),
+      description: t.modeAssistantDesc || (lang === 'zh' ? '按任务选择键鼠、命令、工具、技能或团队；复杂画布任务先提示再执行。' : 'Choose desktop control, commands, tools, skills, or teams by task; prompt before complex canvas work.'),
       hint: t.modeAssistantHint || 'Guided execution',
       icon: <Sparkles size={16} />,
     },
     {
       id: 'autonomous' as const,
-      label: t.modeAutoExecute || '自动执行',
-      title: t.modeAutoExecuteTitle || '自动执行模式',
-      description: t.modeAutoExecuteDesc || '适合多步任务；可自动使用画布、键鼠、命令、工具和团队，并展示进度。',
+      label: t.modeAutoExecute || (lang === 'zh' ? '自动执行' : 'Auto Execute'),
+      title: t.modeAutoExecuteTitle || (lang === 'zh' ? '自动执行模式' : 'Auto Execute mode'),
+      description: t.modeAutoExecuteDesc || (lang === 'zh' ? '适合多步任务；可自动使用画布、键鼠、命令、工具和团队，并展示进度。' : 'For multi-step tasks. Lumi can use canvas, desktop control, commands, tools, and teams while showing progress.'),
       hint: t.modeAutoExecuteHint || 'Multi-step visible work',
       icon: <Zap size={16} />,
     },
@@ -3523,14 +3537,14 @@ export function DesktopUI({
                {/* Server connection status */}
                <span
                  className={`w-2 h-2 rounded-full ${socket?.connected ? 'bg-green-400 shadow-[0_0_6px] shadow-green-400/60' : 'bg-red-400 animate-pulse'}`}
-                 title={socket?.connected ? '服务已连接' : '服务未连接'}
+                  title={socket?.connected ? (lang === 'zh' ? '服务已连接' : 'Service connected') : (lang === 'zh' ? '服务未连接' : 'Service disconnected')}
                />
                {/* Volume mute toggle */}
-               <button onClick={toggleMute} className="flex items-center gap-1 hover:text-white transition-colors" title={isMuted ? '取消静音' : '静音'}>
+                <button onClick={toggleMute} className="flex items-center gap-1 hover:text-white transition-colors" title={isMuted ? (lang === 'zh' ? '取消静音' : 'Unmute') : (lang === 'zh' ? '静音' : 'Mute')}>
                  {isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} />}
                </button>
                {/* Battery — real via navigator.getBattery() */}
-               <BatteryIndicator />
+                <BatteryIndicator lang={lang} />
                <button
                  onClick={toggleWallpaperMode}
                  className={`h-6 px-2 rounded-md border transition-all flex items-center gap-1 text-[12px] font-bold uppercase tracking-wider ${
@@ -3538,7 +3552,7 @@ export function DesktopUI({
                      ? 'bg-celestial-saturn/20 text-celestial-saturn border-celestial-saturn/30'
                      : 'bg-white/5 border-white/5 text-white/55 hover:bg-white/10 hover:text-white'
                  }`}
-                 title={isWallpaperMode ? '退出壁纸模式' : '壁纸模式'}
+                  title={isWallpaperMode ? (lang === 'zh' ? '退出壁纸模式' : 'Exit wallpaper mode') : (lang === 'zh' ? '壁纸模式' : 'Wallpaper mode')}
                >
                  <Zap size={10} className={isWallpaperMode ? 'animate-pulse' : ''} />
                  {isWallpaperMode ? 'Fusion' : 'Focus'}
@@ -3561,21 +3575,21 @@ export function DesktopUI({
               <button
                 onClick={handleWindowMinimize}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors"
-                title="最小化"
+                title={lang === 'zh' ? '最小化' : 'Minimize'}
               >
                 <Minus size={14} />
               </button>
               <button
                 onClick={handleWindowMaximize}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors"
-                title="最大化"
+                title={lang === 'zh' ? '最大化' : 'Maximize'}
               >
                 <Square size={12} />
               </button>
               <button
                 onClick={handleWindowClose}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-white/55 hover:text-white hover:bg-red-500/80 transition-colors"
-                title="关闭"
+                title={lang === 'zh' ? '关闭' : 'Close'}
               >
                 <X size={14} />
               </button>
@@ -3715,7 +3729,7 @@ export function DesktopUI({
                 <button
                   onClick={() => toggleWindow('avatar-studio')}
                   className={`cursor-pointer transition-all ${callState !== 'idle' ? 'animate-pulse' : ''}`}
-                  title={`${selectedPet.name} — 点击打开形象设计室`}
+                  title={lang === 'zh' ? `${selectedPet.name} - 点击打开形象设计室` : `${selectedPet.name} - open Avatar Studio`}
                 >
                   <PetAvatar
                     pet={selectedPet}
@@ -3753,10 +3767,10 @@ export function DesktopUI({
                     e.stopPropagation();
                     setSelectedPet(null);
                     savePetPrefsToServer(null, equippedAccessories);
-                    toast.info('已切换回粒子人脸');
+                    toast.info(lang === 'zh' ? '已切换回粒子人脸' : 'Switched back to particle face');
                   }}
                   className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white/10 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/30 hover:border-red-500/40"
-                  title="切换回粒子人脸"
+                  title={lang === 'zh' ? '切换回粒子人脸' : 'Switch back to particle face'}
                 >
                   <X size={10} className="text-white/60" />
                 </button>
@@ -3794,7 +3808,7 @@ export function DesktopUI({
               </div>
               {wakeEnabled && wakeWord.isListening && callState === 'idle' && (
                 <div className="mt-2 text-xs text-white/45 uppercase tracking-[0.25em] font-mono">
-                  Listening for &ldquo;Lumi&rdquo;
+                  {lang === 'zh' ? '正在监听 "Lumi"' : 'Listening for "Lumi"'}
                 </div>
               )}
               {wakeEnabled && wakeWord.error && (
@@ -3804,12 +3818,12 @@ export function DesktopUI({
               )}
               {wakeEnabled && !wakeWord.isListening && !wakeWord.error && callState === 'idle' && (
                 <div className="mt-2 text-xs text-yellow-400/40 font-mono">
-                  Wake word initializing...
+                  {lang === 'zh' ? '唤醒词初始化中...' : 'Wake word initializing...'}
                 </div>
               )}
               {!wakeEnabled && callState === 'idle' && (
                 <div className="mt-2 text-xs text-white/30 font-mono">
-                  Wake word off
+                  {lang === 'zh' ? '唤醒词未开启' : 'Wake word off'}
                 </div>
               )}
               </>
@@ -4305,6 +4319,7 @@ export function DesktopUI({
                   ) : windowId === 'avatar-studio' ? (
                     <AvatarStudio
                       t={t}
+                      lang={lang}
                       selectedPetId={selectedPet?.id}
                       onSelectPet={handleSelectPet}
                       equippedAccessories={equippedAccessories}
@@ -4315,7 +4330,7 @@ export function DesktopUI({
                       onResetToSphere={() => {
                         setSelectedPet(null);
                         savePetPrefsToServer(null, equippedAccessories);
-                        toast.info('已切换回原始圆球');
+                        toast.info(lang === 'zh' ? '已切换回原始圆球' : 'Switched back to the default sphere');
                       }}
                     />
                   ) : windowId === 'sound' ? (
@@ -4672,7 +4687,7 @@ function VoiceCard({ voice, isCloned, isPlaying, onPlay }: { voice: any; isClone
   );
 }
 
-function BatteryIndicator() {
+function BatteryIndicator({ lang = 'zh' }: { lang?: 'en' | 'zh' }) {
   const [level, setLevel] = useState<number | null>(null);
   const [charging, setCharging] = useState(false);
 
@@ -4691,7 +4706,10 @@ function BatteryIndicator() {
   if (level === null) return <Battery size={14} />;
 
   return (
-    <div className="flex items-center gap-1" title={`电池 ${level}%${charging ? ' (充电中)' : ''}`}>
+    <div
+      className="flex items-center gap-1"
+      title={lang === 'zh' ? `电池 ${level}%${charging ? ' (充电中)' : ''}` : `Battery ${level}%${charging ? ' (charging)' : ''}`}
+    >
       <Battery size={14} className={level <= 20 ? 'text-red-400' : level <= 50 ? 'text-yellow-400' : ''} />
       <span className="text-xs font-bold">{level}%</span>
     </div>

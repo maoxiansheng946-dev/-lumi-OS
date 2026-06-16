@@ -3,6 +3,7 @@ export type TranslationMap = { en: TranslationDict; zh: TranslationDict };
 
 export const translations: TranslationMap = {
   en: {
+    langCode: "en",
     welcome: "Welcome to",
     tagline: "A decentralized ecosystem for personal intelligence and collaborative evolution. Build the future on your own data.",
     begin: "Start Interacting",
@@ -1611,6 +1612,7 @@ export const translations: TranslationMap = {
     review: "Review",
   },
   zh: {
+    langCode: "zh",
     welcome: "欢迎来到",
     tagline: "去中心化的个人智能与协作进化生态。在您自己的数据之上构建未来。",
     begin: "开始交互",

@@ -4,6 +4,7 @@ import { Globe, Cpu, Gavel, Database, Megaphone, Activity, Zap, ChevronRight } f
 import { GlassCard } from './SharedUI';
 
 export function ContributorNodePanel({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
   const [isExpanded, setIsExpanded] = useState(false);
   const creditsPerDay = 12.5;
 
@@ -71,7 +72,7 @@ className="w-72"
               className="overflow-hidden space-y-3"
             >
               <p className="text-[12px] text-white/50 leading-relaxed border-t border-white/5 pt-3">
-                {t?.contributorDesc || '即便不是全职架构师，您也可以通过贡献本地算力或参与伦理讨论，成为生态的一部分。'}
+                {t?.contributorDesc || (isZh ? '即便不是全职架构师，您也可以通过贡献本地算力或参与伦理讨论，成为生态的一部分。' : 'Even if you are not a full-time architect, you can join the ecosystem by contributing local compute or participating in ethics discussions.')}
               </p>
 
               <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">

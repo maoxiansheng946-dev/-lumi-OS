@@ -17,6 +17,8 @@ interface OrgStatus {
 
 export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const { user, refreshUser, orgConnection, workDomain, switchDomain } = useApp();
   const [status, setStatus] = useState<OrgStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
       const data = await res.json();
       if (res.ok) {
         setCreateResult('success');
-        setCreateMsg('Organization created successfully. Refreshing session...');
+        setCreateMsg(ui('组织创建成功，正在刷新会话...', 'Organization created successfully. Refreshing session...'));
         // Refresh user session so JWT picks up the orgId
         try { await refreshUser(); } catch {}
         // Re-check org status
@@ -75,11 +77,11 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
         }, 500);
       } else {
         setCreateResult('error');
-        setCreateMsg(data.error || 'Failed to create organization');
+        setCreateMsg(data.error || ui('创建组织失败', 'Failed to create organization'));
       }
     } catch (err: any) {
       setCreateResult('error');
-      setCreateMsg(err.message || 'Connection failed');
+      setCreateMsg(err.message || ui('连接失败', 'Connection failed'));
     } finally {
       setCreating(false);
     }
@@ -114,7 +116,9 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">{t.orgWorkSpace || 'Organization Workspace'}</h2>
-            <p className="text-white/45 text-sm mt-2">已加入组织。进入组织工作台前，需要先切换到工作域。</p>
+            <p className="text-white/45 text-sm mt-2">
+              {ui('已加入组织。进入组织工作台前，需要先切换到工作域。', 'You have joined an organization. Switch to the work domain before opening the org workspace.')}
+            </p>
           </div>
           {switchMsg && <p className="text-red-400 text-sm">{switchMsg}</p>}
           <button
@@ -129,7 +133,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
                   orgRole: result.connection?.orgRole || orgConnection?.orgRole || null,
                 });
               } else {
-                setSwitchMsg(result.message || '工作域切换失败');
+                setSwitchMsg(result.message || ui('工作域切换失败', 'Failed to switch to work domain'));
               }
               setSwitchingWork(false);
             }}
@@ -137,7 +141,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
             className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors"
           >
             {switchingWork ? <Loader2 size={18} className="animate-spin" /> : <Briefcase size={18} />}
-            {switchingWork ? '切换中...' : '切换到工作域'}
+            {switchingWork ? ui('切换中...', 'Switching...') : ui('切换到工作域', 'Switch to Work Domain')}
           </button>
           {onBack && (
             <button onClick={onBack} className="text-white/50 text-sm hover:text-white/70">
@@ -205,7 +209,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
 
             {onBack && (
               <button onClick={onBack} className="w-full text-center text-white/55 text-sm hover:text-white/50 py-2">
-                ← {t.back || '返回'}
+                ← {t.back || ui('返回', 'Back')}
               </button>
             )}
           </motion.div>

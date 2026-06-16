@@ -13,6 +13,8 @@ interface Props {
 
 export function WorkModeSwitch({ domain, onToggle, connected }: Props) {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [switching, setSwitching] = useState(false);
   const isWork = domain === 'work';
 
@@ -22,12 +24,12 @@ export function WorkModeSwitch({ domain, onToggle, connected }: Props) {
     try {
       const result = await onToggle();
       if (result?.success) {
-        toast.success(result.message || (result.domain === 'work' ? '已切换到工作域' : '已切换到个人域'));
+        toast.success(result.message || (result.domain === 'work' ? ui('已切换到工作域', 'Switched to work domain') : ui('已切换到个人域', 'Switched to personal domain')));
       } else {
-        toast.error(result?.message || '模式切换失败');
+        toast.error(result?.message || ui('模式切换失败', 'Mode switch failed'));
       }
     } catch (err: any) {
-      toast.error(err.message || '模式切换失败');
+      toast.error(err.message || ui('模式切换失败', 'Mode switch failed'));
     } finally {
       setSwitching(false);
     }
@@ -43,7 +45,7 @@ export function WorkModeSwitch({ domain, onToggle, connected }: Props) {
           : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
       } ${switching ? 'opacity-70 cursor-wait' : ''}`}
       whileTap={{ scale: 0.95 }}
-      title={isWork ? '切换到个人域' : connected ? '切换到工作域' : '未发现可用组织，点击后会尝试自动发现'}
+      title={isWork ? ui('切换到个人域', 'Switch to personal domain') : connected ? ui('切换到工作域', 'Switch to work domain') : ui('未发现可用组织，点击后会尝试自动发现', 'No available organization found. Click to try auto-discovery.')}
     >
       <motion.div
         className={`absolute left-1 top-1 bottom-1 w-[calc(50%-4px)] rounded-full ${
@@ -54,7 +56,7 @@ export function WorkModeSwitch({ domain, onToggle, connected }: Props) {
       />
       <span className="relative z-10 flex items-center gap-1.5">
         {switching ? <Loader2 size={14} className="animate-spin" /> : isWork ? <Briefcase size={14} /> : <User size={14} />}
-        {isWork ? 'Work' : 'Personal'}
+        {isWork ? ui('工作', 'Work') : ui('个人', 'Personal')}
       </span>
       {!connected && (
         <span className="relative z-10 text-xs text-amber-400 ml-1">{t.orgConnectionOffline}</span>

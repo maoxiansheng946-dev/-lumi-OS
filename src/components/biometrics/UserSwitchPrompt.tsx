@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { useState, useEffect, useCallback } from 'react';
+import { useT } from '../../lib/useT';
 
 interface DetectedUser {
   uid: string;
@@ -12,6 +13,8 @@ interface UserSwitchPromptProps {
 }
 
 export function UserSwitchPrompt({ socket }: UserSwitchPromptProps) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
   const [detected, setDetected] = useState<DetectedUser | null>(null);
   const [switching, setSwitching] = useState(false);
 
@@ -72,8 +75,8 @@ export function UserSwitchPrompt({ socket }: UserSwitchPromptProps) {
                 </span>
               </div>
               <div>
-                <p className="text-sm text-white/90 font-medium">检测到 {detected.username}</p>
-                <p className="text-[10px] text-white/40">置信度 {Math.round(detected.confidence * 100)}%</p>
+                <p className="text-sm text-white/90 font-medium">{isZh ? '检测到' : 'Detected'} {detected.username}</p>
+                <p className="text-[10px] text-white/40">{isZh ? '置信度' : 'Confidence'} {Math.round(detected.confidence * 100)}%</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -82,13 +85,13 @@ export function UserSwitchPrompt({ socket }: UserSwitchPromptProps) {
                 disabled={switching}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/80 text-black hover:bg-amber-400 transition-colors"
               >
-                {switching ? '切换中...' : '切换'}
+                {switching ? (isZh ? '切换中...' : 'Switching...') : (isZh ? '切换' : 'Switch')}
               </button>
               <button
                 onClick={handleDismiss}
                 className="px-3 py-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
               >
-                忽略
+                {isZh ? '忽略' : 'Ignore'}
               </button>
             </div>
           </div>

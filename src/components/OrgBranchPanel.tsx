@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, GitBranch, Link, RefreshCw, Server, Shield, Unlink, XCircle } from 'lucide-react';
+import { useT } from '../lib/useT';
 
 type BranchStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
@@ -40,21 +41,24 @@ function normalizeState(payload: any): BranchState {
   };
 }
 
-function statusLabel(status: BranchStatus) {
+function statusLabel(status: BranchStatus, isZh: boolean) {
   switch (status) {
-    case 'connected': return '已连接';
-    case 'connecting': return '连接中';
-    case 'reconnecting': return '重连中';
-    case 'error': return '连接异常';
-    default: return '未连接';
+    case 'connected': return isZh ? '已连接' : 'Connected';
+    case 'connecting': return isZh ? '连接中' : 'Connecting';
+    case 'reconnecting': return isZh ? '重连中' : 'Reconnecting';
+    case 'error': return isZh ? '连接异常' : 'Connection error';
+    default: return isZh ? '未连接' : 'Disconnected';
   }
 }
 
-function formatTime(value: string | null) {
-  return value ? new Date(value).toLocaleString() : '暂无';
+function formatTime(value: string | null, isZh: boolean) {
+  return value ? new Date(value).toLocaleString(isZh ? 'zh-CN' : undefined) : (isZh ? '暂无' : 'None');
 }
 
 export function OrgBranchPanel() {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => isZh ? zh : en;
   const [state, setState] = useState<BranchState>(emptyState);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(() => ({
@@ -74,7 +78,7 @@ export function OrgBranchPanel() {
   const loadState = async () => {
     try {
       const res = await fetch('/api/branch/state', { credentials: 'include' });
-      if (!res.ok) throw new Error(`状态读取失败 (${res.status})`);
+      if (!res.ok) throw new Error(`${ui('状态读取失败', 'Failed to read status')} (${res.status})`);
       const next = normalizeState(await res.json());
       setState(next);
       setForm(prev => ({
@@ -83,7 +87,7 @@ export function OrgBranchPanel() {
         companyUrl: prev.companyUrl || next.companyUrl || 'http://127.0.0.1:3000',
       }));
     } catch (err: any) {
-      setError(err.message || '状态读取失败');
+      setError(err.message || ui('状态读取失败', 'Failed to read status'));
     } finally {
       setLoading(false);
     }
@@ -95,7 +99,7 @@ export function OrgBranchPanel() {
     setError('');
     setMessage('');
     if (!form.orgId.trim() || !form.companyUrl.trim() || !form.token.trim()) {
-      setError('请填写组织 ID、公司服务地址和连接令牌');
+      setError(ui('请填写组织 ID、公司服务地址和连接令牌', 'Enter organization ID, company server URL, and connection token'));
       return;
     }
 
@@ -112,12 +116,12 @@ export function OrgBranchPanel() {
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) throw new Error(data.error || `连接失败 (${res.status})`);
+      if (!res.ok || data.success === false) throw new Error(data.error || `${ui('连接失败', 'Connection failed')} (${res.status})`);
       setState(normalizeState(data));
       setForm(prev => ({ ...prev, token: '' }));
-      setMessage('分支终端已连接到组织服务器');
+      setMessage(ui('分支终端已连接到组织服务器', 'Branch terminal connected to the organization server'));
     } catch (err: any) {
-      setError(err.message || '连接失败');
+      setError(err.message || ui('连接失败', 'Connection failed'));
     } finally {
       setConnecting(false);
     }
@@ -129,11 +133,11 @@ export function OrgBranchPanel() {
     try {
       const res = await fetch('/api/branch/disconnect', { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `断开失败 (${res.status})`);
+      if (!res.ok) throw new Error(data.error || `${ui('断开失败', 'Disconnect failed')} (${res.status})`);
       setState(normalizeState(data));
-      setMessage('已断开组织分支连接');
+      setMessage(ui('已断开组织分支连接', 'Organization branch disconnected'));
     } catch (err: any) {
-      setError(err.message || '断开失败');
+      setError(err.message || ui('断开失败', 'Disconnect failed'));
     }
   };
 
@@ -144,15 +148,15 @@ export function OrgBranchPanel() {
     try {
       const res = await fetch('/api/branch/sync', { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `同步失败 (${res.status})`);
+      if (!res.ok) throw new Error(data.error || `${ui('同步失败', 'Sync failed')} (${res.status})`);
       if (data.state) setState(normalizeState(data));
       if (Array.isArray(data.errors) && data.errors.length > 0) {
         setError(data.errors.join('；'));
       } else {
-        setMessage(`同步完成：${data.synced || 0} 条工作域数据`);
+        setMessage(isZh ? `同步完成：${data.synced || 0} 条工作域数据` : `Sync complete: ${data.synced || 0} work-domain records`);
       }
     } catch (err: any) {
-      setError(err.message || '同步失败');
+      setError(err.message || ui('同步失败', 'Sync failed'));
     } finally {
       setSyncing(false);
     }
@@ -165,7 +169,7 @@ export function OrgBranchPanel() {
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-lg font-bold text-white flex items-center gap-2">
           <GitBranch size={20} className="text-purple-400" />
-          分支终端
+          {ui('分支终端', 'Branch Terminal')}
         </h2>
         <span className={`text-xs px-3 py-1 rounded-full border ${
           connected
@@ -174,7 +178,7 @@ export function OrgBranchPanel() {
               ? 'text-red-400 bg-red-500/10 border-red-500/20'
               : 'text-white/45 bg-white/5 border-white/10'
         }`}>
-          {statusLabel(state.status)}
+          {statusLabel(state.status, isZh)}
         </span>
       </div>
 
@@ -184,33 +188,33 @@ export function OrgBranchPanel() {
             <>
               <CheckCircle2 size={16} className="text-green-400" />
               <span className="text-white text-sm">
-                已连接到 <span className="text-purple-400">{state.orgId}</span>
+                {ui('已连接到', 'Connected to')} <span className="text-purple-400">{state.orgId}</span>
               </span>
             </>
           ) : (
             <>
               <XCircle size={16} className="text-white/30" />
-              <span className="text-white/45 text-sm">未连接到公司组织服务器</span>
+              <span className="text-white/45 text-sm">{ui('未连接到公司组织服务器', 'Not connected to the company organization server')}</span>
             </>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-white/45">
           <div className="bg-black/20 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-white/60 mb-1"><Server size={12} /> 公司服务地址</div>
-            <div className="font-mono truncate">{state.companyUrl || '未配置'}</div>
+            <div className="flex items-center gap-1.5 text-white/60 mb-1"><Server size={12} /> {ui('公司服务地址', 'Company Server URL')}</div>
+            <div className="font-mono truncate">{state.companyUrl || ui('未配置', 'Not configured')}</div>
           </div>
           <div className="bg-black/20 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-white/60 mb-1"><Shield size={12} /> 当前域</div>
-            <div>{state.currentDomain === 'work' ? '工作域' : '个人域'}</div>
+            <div className="flex items-center gap-1.5 text-white/60 mb-1"><Shield size={12} /> {ui('当前域', 'Current Domain')}</div>
+            <div>{state.currentDomain === 'work' ? ui('工作域', 'Work') : ui('个人域', 'Personal')}</div>
           </div>
           <div className="bg-black/20 rounded-lg p-3">
-            <div className="text-white/60 mb-1">上次心跳</div>
-            <div>{formatTime(state.lastHeartbeatAt)}</div>
+            <div className="text-white/60 mb-1">{ui('上次心跳', 'Last Heartbeat')}</div>
+            <div>{formatTime(state.lastHeartbeatAt, isZh)}</div>
           </div>
           <div className="bg-black/20 rounded-lg p-3">
-            <div className="text-white/60 mb-1">上次同步</div>
-            <div>{formatTime(state.lastSyncAt)}</div>
+            <div className="text-white/60 mb-1">{ui('上次同步', 'Last Sync')}</div>
+            <div>{formatTime(state.lastSyncAt, isZh)}</div>
           </div>
         </div>
 
@@ -220,10 +224,10 @@ export function OrgBranchPanel() {
         {connected ? (
           <div className="flex gap-2 pt-1">
             <button onClick={sync} disabled={syncing} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-lg text-sm flex items-center gap-1">
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> {syncing ? '同步中...' : '同步工作数据'}
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> {syncing ? ui('同步中...', 'Syncing...') : ui('同步工作数据', 'Sync Work Data')}
             </button>
             <button onClick={disconnect} className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg text-sm flex items-center gap-1">
-              <Unlink size={14} /> 断开
+              <Unlink size={14} /> {ui('断开', 'Disconnect')}
             </button>
           </div>
         ) : (
@@ -232,13 +236,13 @@ export function OrgBranchPanel() {
               <input
                 value={form.companyUrl}
                 onChange={e => setForm(prev => ({ ...prev, companyUrl: e.target.value }))}
-                placeholder="公司服务地址，例如 http://192.168.1.10:3000"
+                placeholder={ui('公司服务地址，例如 http://192.168.1.10:3000', 'Company server URL, e.g. http://192.168.1.10:3000')}
                 className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm"
               />
               <input
                 value={form.orgId}
                 onChange={e => setForm(prev => ({ ...prev, orgId: e.target.value }))}
-                placeholder="组织 ID"
+                placeholder={ui('组织 ID', 'Organization ID')}
                 className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm"
               />
             </div>
@@ -246,15 +250,15 @@ export function OrgBranchPanel() {
               type="password"
               value={form.token}
               onChange={e => setForm(prev => ({ ...prev, token: e.target.value }))}
-              placeholder="连接令牌 / 公司服务器登录 token"
+              placeholder={ui('连接令牌 / 公司服务器登录 token', 'Connection token / company server login token')}
               className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 text-sm"
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-white/35">
-                分支终端会把工作域数据同步到公司服务器，个人域数据仍保留在本机。
+                {ui('分支终端会把工作域数据同步到公司服务器，个人域数据仍保留在本机。', 'The branch terminal syncs work-domain data to the company server. Personal-domain data remains local.')}
               </p>
               <button onClick={connect} disabled={connecting} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm flex items-center gap-1 whitespace-nowrap">
-                <Link size={14} /> {connecting ? '连接中...' : '连接'}
+                <Link size={14} /> {connecting ? ui('连接中...', 'Connecting...') : ui('连接', 'Connect')}
               </button>
             </div>
           </div>
