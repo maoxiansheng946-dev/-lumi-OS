@@ -89,8 +89,8 @@ export function OrgHub() {
     const target = workDomain === 'personal' ? 'work' : 'personal';
     const result = await switchDomain(target);
     setSwitchBusy(false);
-    if (result.success) toast.success(result.message || (target === 'work' ? 'Entered work domain' : 'Entered personal domain'));
-    else toast.error(result.message || 'Failed to switch domain');
+    if (result.success) toast.success(result.message || (target === 'work' ? ui('已进入工作域', 'Entered work domain') : ui('已进入个人域', 'Entered personal domain')));
+    else toast.error(result.message || ui('工作域切换失败', 'Failed to switch domain'));
   };
 
   const renderView = () => {
@@ -139,7 +139,7 @@ export function OrgHub() {
             } disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {switchBusy ? <Loader2 size={12} className="animate-spin" /> : workDomain === 'work' ? <Briefcase size={12} /> : <User size={12} />}
-            {switchBusy ? (t.switching || 'Switching...') : workDomain === 'work' ? t.orgWorkDomain : t.orgPersonalDomain}
+            {switchBusy ? (t.switching || ui('切换中...', 'Switching...')) : workDomain === 'work' ? t.orgWorkDomain : t.orgPersonalDomain}
           </button>
         </div>
 

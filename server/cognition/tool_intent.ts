@@ -11,16 +11,30 @@ const AUTONOMOUS_TASK_PATTERNS: RegExp[] = [
   /(?:规划|搭建|设计|准备|整理|分析|审查|研究|实现|重构|生成|创建|制作).*(?:项目|报告|文档|方案|代码|仓库|工作流|画布|团队|智能体|文件|资料)/u,
 ];
 
+const CLIENT_ACTION_INTENT_PATTERNS: RegExp[] = [
+  /\b(switch|change|set|enter|open|start|turn\s+on)\b.*\b(chat|assistant|meeting|music|auto(?:nomous)?|auto\s+execute|autonomous)\s+mode\b/i,
+  /\b(open|start|show|hide|close)\b.*\b(meeting\s+notes?|music\s+center|mood\s+layer|knowledge\s+base|canvas|settings|wallpaper\s+mode|organization|org\s+workspace|cloud|files?|skills?|tools?|avatar|sound\s+studio|devices?|sync|kernel|monitor|plan|planner)\b/i,
+  /\b(play|put\s+on|listen\s+to)\b.*\b(music|song|playlist|album)\b/i,
+  /(?:\u5207\u6362|\u5207\u5230|\u6362\u5230|\u8fdb\u5165|\u6253\u5f00|\u5f00\u542f|\u542f\u52a8).*(?:\u804a\u5929|\u52a9\u624b|\u4f1a\u8bae|\u97f3\u4e50|\u81ea\u52a8\u6267\u884c|\u81ea\u4e3b\u6267\u884c|\u4f1a\u8bae\u6a21\u5f0f|\u97f3\u4e50\u6a21\u5f0f|\u52a9\u624b\u6a21\u5f0f|\u804a\u5929\u6a21\u5f0f|\u6c1b\u56f4\u5c42|\u97f3\u4e50\u4e2d\u5fc3|\u77e5\u8bc6\u5e93|\u753b\u5e03|\u8bbe\u7f6e|\u58c1\u7eb8\u6a21\u5f0f|\u7ec4\u7ec7|\u4e91\u7aef|\u6587\u4ef6|\u6280\u80fd|\u5de5\u5177|\u5f62\u8c61|\u58f0\u97f3|\u8bbe\u5907|\u540c\u6b65|\u5185\u6838|\u76d1\u63a7|\u8ba1\u5212|\u56e2\u961f)/u,
+  /(?:\u653e|\u64ad\u653e|\u542c).*(?:\u97f3\u4e50|\u6b4c|\u6b4c\u66f2|\u6b4c\u5355|\u4e13\u8f91)/u,
+];
+
 export function hasExplicitToolIntent(text: string): boolean {
   const normalized = text.trim();
   if (!normalized) return false;
   return TOOL_INTENT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+export function hasClientActionIntent(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  return CLIENT_ACTION_INTENT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function shouldAllowToolUseForTurn(text: string, source?: string, operationMode?: string): boolean {
   if (source === 'canvas') return true;
   const mode = normalizeOperationMode(operationMode);
-  if (mode === 'chat' || mode === 'meeting' || mode === 'music') return false;
+  if (mode === 'chat' || mode === 'meeting' || mode === 'music') return hasClientActionIntent(text);
   if (mode === 'autonomous' && AUTONOMOUS_TASK_PATTERNS.some((pattern) => pattern.test(text.trim()))) return true;
   if (hasExplicitToolIntent(text)) return true;
   return false;

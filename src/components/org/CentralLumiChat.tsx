@@ -11,8 +11,10 @@ interface Message {
 
 export function CentralLumiChat() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hello! I'm your company's Lumi. I can help with policies, culture, knowledge base, and more. What would you like to know?", timestamp: Date.now() },
+    { role: 'assistant', content: ui('你好，我是你们公司的 Lumi。我可以协助查询制度、文化、知识库和组织信息。你想了解什么？', "Hello! I'm your company's Lumi. I can help with policies, culture, knowledge base, and more. What would you like to know?"), timestamp: Date.now() },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,13 +63,13 @@ export function CentralLumiChat() {
       });
 
       const data = await chatRes.json();
-      const reply = data.text || data.response || data.reply || data.message || data.error || "I'm having trouble processing that right now.";
+      const reply = data.text || data.response || data.reply || data.message || data.error || ui('我现在处理这个问题有点困难。', "I'm having trouble processing that right now.");
 
       setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: "I'm currently unable to reach the company server. Please check your connection.",
+        content: ui('我现在无法连接公司服务，请检查网络或组织服务状态。', "I'm currently unable to reach the company server. Please check your connection."),
         timestamp: Date.now(),
       }]);
     } finally {
@@ -84,7 +86,7 @@ export function CentralLumiChat() {
         </div>
         <div>
           <h2 className="text-lg font-bold text-white">{t.orgChat}</h2>
-          <p className="text-white/55 text-xs">Organizational AI — ask about policies, culture, and knowledge</p>
+          <p className="text-white/55 text-xs">{ui('组织 AI：询问制度、文化和知识', 'Organizational AI — ask about policies, culture, and knowledge')}</p>
         </div>
       </div>
 
@@ -113,7 +115,7 @@ export function CentralLumiChat() {
             }`}>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
               <span className="text-xs text-white/45 mt-1 block">
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(msg.timestamp).toLocaleTimeString(isZh ? 'zh-CN' : undefined, { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
           </motion.div>
@@ -138,7 +140,7 @@ export function CentralLumiChat() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about company policies, knowledge base..."
+            placeholder={ui('询问公司制度、知识库...', 'Ask about company policies, knowledge base...')}
             className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
           />
           <button

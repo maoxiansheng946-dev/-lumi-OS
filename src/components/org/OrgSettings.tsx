@@ -7,6 +7,8 @@ import { useApp } from '../../contexts/AppContext';
 
 export function OrgSettings() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const { orgConnection, switchDomain } = useApp();
   const [org, setOrg] = useState<any>(null);
   const [name, setName] = useState('');
@@ -30,14 +32,14 @@ export function OrgSettings() {
       if (!orgId) {
         const orgsRes = await fetch('/api/org/org', { credentials: 'include' });
         const orgs = await orgsRes.json().catch(() => []);
-        if (!orgsRes.ok) throw new Error((orgs as any).error || `Failed to load organizations (${orgsRes.status})`);
-        if (!Array.isArray(orgs) || orgs.length === 0) throw new Error('No organization found');
+        if (!orgsRes.ok) throw new Error((orgs as any).error || ui(`组织列表加载失败（${orgsRes.status}）`, `Failed to load organizations (${orgsRes.status})`));
+        if (!Array.isArray(orgs) || orgs.length === 0) throw new Error(ui('未找到组织', 'No organization found'));
         orgId = orgs[0].id || orgs[0].orgId;
       }
 
       const orgDetailRes = await fetch(`/api/org/org/${orgId}`, { credentials: 'include' });
       const orgData = await orgDetailRes.json().catch(() => ({}));
-      if (!orgDetailRes.ok) throw new Error(orgData.error || `Failed to load organization (${orgDetailRes.status})`);
+      if (!orgDetailRes.ok) throw new Error(orgData.error || ui(`组织加载失败（${orgDetailRes.status}）`, `Failed to load organization (${orgDetailRes.status})`));
       setOrg(orgData);
       setName(orgData.name || '');
     } catch (err: any) {
@@ -57,10 +59,10 @@ export function OrgSettings() {
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+      if (!res.ok) throw new Error(data.error || ui(`保存失败（${res.status}）`, `Save failed (${res.status})`));
       setOrg(data);
       setName(data.name || name);
-      setFeedback({ type: 'success', text: t.orgSettingsSaved || 'Organization settings saved' });
+      setFeedback({ type: 'success', text: t.orgSettingsSaved || ui('组织设置已保存', 'Organization settings saved') });
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
     } finally { setSaving(false); }
@@ -78,9 +80,9 @@ export function OrgSettings() {
         credentials: 'include',
       });
       const inv = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(inv.error || `Invitation creation failed (${res.status})`);
+      if (!res.ok) throw new Error(inv.error || ui(`邀请码创建失败（${res.status}）`, `Invitation creation failed (${res.status})`));
       setInvitationCode(inv.code);
-      setFeedback({ type: 'success', text: t.invitationCreated || 'Invitation code created' });
+      setFeedback({ type: 'success', text: t.invitationCreated || ui('邀请码已创建', 'Invitation code created') });
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
     } finally { setGenerating(false); }
@@ -93,13 +95,13 @@ export function OrgSettings() {
   };
 
   const handleDelete = async () => {
-    if (!org || !confirm('This action is irreversible. Are you sure?')) return;
+    if (!org || !confirm(ui('这个操作不可恢复。确定要删除吗？', 'This action is irreversible. Are you sure?'))) return;
     setFeedback(null);
     try {
       const res = await fetch(`/api/org/org/${org.id}`, { method: 'DELETE', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Delete failed (${res.status})`);
-      setFeedback({ type: 'success', text: t.organizationDeleted || 'Organization deleted' });
+      if (!res.ok) throw new Error(data.error || ui(`删除失败（${res.status}）`, `Delete failed (${res.status})`));
+      setFeedback({ type: 'success', text: t.organizationDeleted || ui('组织已删除', 'Organization deleted') });
       setOrg(null);
       void switchDomain('personal').finally(() => {
         window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'home' } }));
@@ -131,7 +133,7 @@ export function OrgSettings() {
           </div>
         )}
         <Building2 size={32} className="mx-auto mb-2 opacity-30" />
-        <div>No organization found. Create one first.</div>
+        <div>{ui('未找到组织，请先创建一个。', 'No organization found. Create one first.')}</div>
       </div>
     );
   }
@@ -156,9 +158,9 @@ export function OrgSettings() {
 
       {/* General */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-        <h3 className="text-white font-medium">General</h3>
+        <h3 className="text-white font-medium">{ui('基础信息', 'General')}</h3>
         <div>
-          <label className="text-white/55 text-xs block mb-1">Organization Name</label>
+          <label className="text-white/55 text-xs block mb-1">{ui('组织名称', 'Organization Name')}</label>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
@@ -175,19 +177,19 @@ export function OrgSettings() {
           className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          Save Changes
+          {ui('保存修改', 'Save Changes')}
         </Button>
       </div>
 
       {/* Invitations */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-        <h3 className="text-white font-medium">Invitation Codes</h3>
+        <h3 className="text-white font-medium">{ui('邀请码', 'Invitation Codes')}</h3>
         <p className="text-white/40 text-xs">
-          Generate an invitation code for new members. Share the 8-character code.
+          {ui('为新成员生成邀请码，并分享这个 8 位代码。', 'Generate an invitation code for new members. Share the 8-character code.')}
         </p>
         <div className="flex items-end gap-3">
           <div>
-            <label className="text-white/55 text-xs block mb-1">Default Role</label>
+            <label className="text-white/55 text-xs block mb-1">{ui('默认角色', 'Default Role')}</label>
             <select
               value={invitationRole}
               onChange={e => setInvitationRole(e.target.value)}
@@ -204,7 +206,7 @@ export function OrgSettings() {
             className="bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-2"
           >
             {generating ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
-            Generate Code
+            {ui('生成邀请码', 'Generate Code')}
           </Button>
         </div>
 
@@ -215,7 +217,7 @@ export function OrgSettings() {
             className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 flex items-center justify-between"
           >
             <div>
-              <p className="text-white/55 text-xs mb-1">Invitation Code</p>
+              <p className="text-white/55 text-xs mb-1">{ui('邀请码', 'Invitation Code')}</p>
               <p className="text-2xl font-mono font-bold text-green-400 tracking-[0.2em]">
                 {invitationCode}
               </p>
@@ -225,7 +227,7 @@ export function OrgSettings() {
               className="bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1"
             >
               {copied ? <CheckCircle size={14} className="text-green-400" /> : <Copy size={14} />}
-              {copied ? 'Copied!' : 'Copy'}
+              {copied ? ui('已复制', 'Copied!') : ui('复制', 'Copy')}
             </Button>
           </motion.div>
         )}
@@ -234,16 +236,16 @@ export function OrgSettings() {
       {/* Danger zone */}
       <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-6 space-y-4">
         <h3 className="text-red-400 font-medium flex items-center gap-2">
-          <Trash2 size={16} /> Danger Zone
+          <Trash2 size={16} /> {ui('危险区', 'Danger Zone')}
         </h3>
         <p className="text-white/55 text-xs">
-          Deleting your organization is irreversible. All KB articles, templates, and member data will be permanently removed.
+          {ui('删除组织不可恢复。所有知识库文章、模板和成员数据都会被永久移除。', 'Deleting your organization is irreversible. All KB articles, templates, and member data will be permanently removed.')}
         </p>
         <Button
           onClick={handleDelete}
           className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 rounded-lg"
         >
-          Delete Organization
+          {ui('删除组织', 'Delete Organization')}
         </Button>
       </div>
     </div>

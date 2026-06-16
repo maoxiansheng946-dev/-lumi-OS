@@ -16,6 +16,8 @@ interface Member {
 
 export function OrgMembers() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const { orgConnection } = useApp();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,16 +37,16 @@ export function OrgMembers() {
       let orgIdVal = orgConnection?.orgId || '';
       if (!orgIdVal) {
         const orgsRes = await fetch('/api/org/org', { credentials: 'include' });
-        if (!orgsRes.ok) throw new Error(`Failed to load organizations (${orgsRes.status})`);
+        if (!orgsRes.ok) throw new Error(ui(`组织列表加载失败（${orgsRes.status}）`, `Failed to load organizations (${orgsRes.status})`));
         const orgs = await orgsRes.json();
-        if (orgs.length === 0) throw new Error('No organization found');
+        if (orgs.length === 0) throw new Error(ui('未找到组织', 'No organization found'));
         orgIdVal = orgs[0].id || orgs[0].orgId;
       }
       setOrgId(orgIdVal);
 
       const membersRes = await fetch(`/api/org/org/${orgIdVal}/members`, { credentials: 'include' });
       const data = await membersRes.json().catch(() => []);
-      if (!membersRes.ok) throw new Error(data.error || `Failed to load members (${membersRes.status})`);
+      if (!membersRes.ok) throw new Error(data.error || ui(`成员加载失败（${membersRes.status}）`, `Failed to load members (${membersRes.status})`));
       setMembers(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.message || String(err));
@@ -66,7 +68,7 @@ export function OrgMembers() {
         loadOrgAndMembers();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || `Invite failed (${res.status})`);
+        setError(data.error || ui(`邀请失败（${res.status}）`, `Invite failed (${res.status})`));
       }
     } catch (err: any) {
       setError(err.message || String(err));
@@ -81,7 +83,7 @@ export function OrgMembers() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Remove failed (${res.status})`);
+        throw new Error(data.error || ui(`移除失败（${res.status}）`, `Remove failed (${res.status})`));
       }
       loadOrgAndMembers();
     } catch (err: any) {
@@ -99,7 +101,7 @@ export function OrgMembers() {
     const s = map[role] || map.member;
     return (
       <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${s.color}`}>
-        {s.icon} {role}
+        {s.icon} {role === 'owner' ? t.orgRoleOwner : role === 'admin' ? t.orgRoleAdmin : role === 'viewer' ? t.orgRoleViewer : t.orgRoleMember}
       </span>
     );
   };
@@ -111,7 +113,7 @@ export function OrgMembers() {
           <Users size={24} className="text-green-400" />
           {t.orgMembers}
         </h2>
-        <p className="text-white/40 text-sm">{members.length} member(s)</p>
+        <p className="text-white/40 text-sm">{ui(`${members.length} 位成员`, `${members.length} member(s)`)}</p>
       </div>
 
       {error && (
@@ -124,16 +126,16 @@ export function OrgMembers() {
       {/* Invite */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-end gap-3">
         <div className="flex-1">
-          <label className="text-white/55 text-xs mb-1 block">Invite User by ID</label>
+          <label className="text-white/55 text-xs mb-1 block">{ui('按用户 ID 邀请', 'Invite User by ID')}</label>
           <input
             value={inviteUserId}
             onChange={e => setInviteUserId(e.target.value)}
-            placeholder="User ID..."
+            placeholder={ui('用户 ID...', 'User ID...')}
             className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none"
           />
         </div>
         <div>
-          <label className="text-white/55 text-xs mb-1 block">Role</label>
+          <label className="text-white/55 text-xs mb-1 block">{ui('角色', 'Role')}</label>
           <select
             value={inviteRole}
             onChange={e => setInviteRole(e.target.value)}
@@ -150,7 +152,7 @@ export function OrgMembers() {
           className="bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-1"
         >
           {inviting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-          Add
+          {ui('添加', 'Add')}
         </Button>
       </div>
 
@@ -173,7 +175,7 @@ export function OrgMembers() {
                 <div>
                   <p className="text-white text-sm font-medium">{member.userId}</p>
                   <p className="text-white/55 text-xs">
-                    {member.joinedAt ? `Joined ${new Date(member.joinedAt).toLocaleDateString()}` : 'Pending'}
+                    {member.joinedAt ? ui(`加入于 ${new Date(member.joinedAt).toLocaleDateString('zh-CN')}`, `Joined ${new Date(member.joinedAt).toLocaleDateString()}`) : ui('待加入', 'Pending')}
                     {member.status !== 'active' && <span className="text-amber-400 ml-2">{member.status}</span>}
                   </p>
                 </div>
@@ -184,7 +186,7 @@ export function OrgMembers() {
                   <button
                     onClick={() => handleRemove(member.userId)}
                     className="p-1.5 rounded-lg hover:bg-red-500/10 text-white/45 hover:text-red-400 transition-colors"
-                    title="Remove member"
+                    title={ui('移除成员', 'Remove member')}
                   >
                     <UserMinus size={14} />
                   </button>

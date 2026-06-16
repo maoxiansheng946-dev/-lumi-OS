@@ -17,6 +17,8 @@ interface Article {
 
 export function KnowledgeBaseBrowser() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [articles, setArticles] = useState<Article[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -34,7 +36,7 @@ export function KnowledgeBaseBrowser() {
     try {
       const res = await fetch('/api/org/kb/articles', { credentials: 'include' });
       const data = await res.json().catch(() => []);
-      if (!res.ok) throw new Error(data.error || `Failed to load articles (${res.status})`);
+      if (!res.ok) throw new Error(data.error || ui(`文章加载失败（${res.status}）`, `Failed to load articles (${res.status})`));
       setArticles(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.message || String(err));
@@ -53,7 +55,7 @@ export function KnowledgeBaseBrowser() {
         credentials: 'include',
       });
       const data = await res.json().catch(() => []);
-      if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
+      if (!res.ok) throw new Error(data.error || ui(`搜索失败（${res.status}）`, `Search failed (${res.status})`));
       setSearchResults(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.message || String(err));
@@ -81,13 +83,13 @@ export function KnowledgeBaseBrowser() {
             <BookOpen size={24} className="text-blue-400" />
             {t.orgKB}
           </h2>
-          <p className="text-white/40 text-sm">Company policies, SOPs, and documentation</p>
+          <p className="text-white/40 text-sm">{ui('公司制度、SOP 和文档', 'Company policies, SOPs, and documentation')}</p>
         </div>
         <Button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb-edit' } }))}
           className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm flex items-center gap-1"
         >
-          <Plus size={14} /> New Article
+          <Plus size={14} /> {ui('新建文章', 'New Article')}
         </Button>
       </div>
 
@@ -104,7 +106,7 @@ export function KnowledgeBaseBrowser() {
         <input
           value={searchQuery}
           onChange={e => handleSearchInput(e.target.value)}
-          placeholder="Search knowledge base..."
+          placeholder={ui('搜索知识库...', 'Search knowledge base...')}
           className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
         />
         {searching && <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-white/55" />}
@@ -119,7 +121,7 @@ export function KnowledgeBaseBrowser() {
             exit={{ opacity: 0 }}
             className="bg-white/5 border border-blue-500/20 rounded-xl p-4 space-y-2"
           >
-            <p className="text-white/55 text-xs font-medium">Semantic Search Results</p>
+            <p className="text-white/55 text-xs font-medium">{ui('语义搜索结果', 'Semantic Search Results')}</p>
             {searchResults.map((r, i) => (
               <button
                 key={`${r.articleId}-${i}`}
@@ -133,7 +135,7 @@ export function KnowledgeBaseBrowser() {
                   {r.title}
                 </p>
                 <p className="text-white/40 text-xs mt-1 line-clamp-2">{r.chunk}</p>
-                <p className="text-white/45 text-xs mt-1">Score: {r.score.toFixed(2)}</p>
+                <p className="text-white/45 text-xs mt-1">{ui('得分', 'Score')}: {r.score.toFixed(2)}</p>
               </button>
             ))}
           </motion.div>
@@ -145,12 +147,12 @@ export function KnowledgeBaseBrowser() {
         {loading ? (
           <div className="text-center py-12 text-white/55">
             <Loader2 size={24} className="mx-auto animate-spin mb-2" />
-            Loading articles...
+            {ui('正在加载文章...', 'Loading articles...')}
           </div>
         ) : articles.length === 0 ? (
           <div className="text-center py-12 text-white/55">
             <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
-            No articles yet
+            {ui('还没有文章', 'No articles yet')}
           </div>
         ) : (
           articles.map((article) => (
@@ -199,19 +201,19 @@ export function KnowledgeBaseBrowser() {
                 onClick={() => setSelectedArticle(null)}
                 className="flex items-center gap-2 text-sm text-white/40 hover:text-white"
               >
-                <ArrowLeft size={14} /> {t.back || 'Back'}
+                <ArrowLeft size={14} /> {t.back || ui('返回', 'Back')}
               </button>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb-edit', articleId: selectedArticle.id } }))}
                 className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-xs font-bold text-blue-300 transition-colors hover:bg-blue-500/20"
               >
-                <Pencil size={13} /> {t.editArticle || 'Edit'}
+                <Pencil size={13} /> {t.editArticle || ui('编辑', 'Edit')}
               </button>
             </div>
             <h3 className="text-lg font-bold text-white mb-2">{selectedArticle.title}</h3>
             <div className="flex items-center gap-2 mb-4">
               <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">{selectedArticle.category}</span>
-              <span className="text-xs text-white/45"><Clock size={12} className="inline mr-1" />{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-white/45"><Clock size={12} className="inline mr-1" />{new Date(selectedArticle.createdAt).toLocaleDateString(isZh ? 'zh-CN' : undefined)}</span>
             </div>
             <div className="prose prose-invert text-white/70 text-sm whitespace-pre-wrap leading-relaxed">
               {selectedArticle.content}

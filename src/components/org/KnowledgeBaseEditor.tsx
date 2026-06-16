@@ -11,6 +11,8 @@ interface Props {
 
 export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('general');
@@ -29,7 +31,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
       fetch(`/api/org/kb/articles/${articleId}`, { credentials: 'include' })
         .then(async r => {
           const data = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(data.error || `Failed to load article (${r.status})`);
+          if (!r.ok) throw new Error(data.error || ui(`文章加载失败（${r.status}）`, `Failed to load article (${r.status})`));
           return data;
         })
         .then(a => {
@@ -52,7 +54,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
 
   const handleSave = async () => {
     if (!title.trim() || !content.trim()) {
-      setError(t.articleRequiredFields || 'Title and content are required');
+      setError(t.articleRequiredFields || ui('标题和正文不能为空', 'Title and content are required'));
       return;
     }
     setSaving(true);
@@ -73,9 +75,9 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+      if (!res.ok) throw new Error(data.error || ui(`保存失败（${res.status}）`, `Save failed (${res.status})`));
 
-      setSuccess(articleId ? (t.articleUpdated || 'Article updated') : (t.articleCreated || 'Article created'));
+      setSuccess(articleId ? (t.articleUpdated || ui('文章已更新', 'Article updated')) : (t.articleCreated || ui('文章已创建', 'Article created')));
       if (!articleId) { setTitle(''); setContent(''); setTags(''); }
       setTimeout(() => onSaved?.(), 350);
     } catch (err: any) {
@@ -95,7 +97,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
     <div className="p-6 space-y-4 max-w-3xl mx-auto">
       <h2 className="text-xl font-bold text-white flex items-center gap-2">
         <FileText size={24} className="text-blue-400" />
-        {articleId ? (t.editArticle || 'Edit Article') : (t.newArticle || 'New Article')}
+        {articleId ? (t.editArticle || ui('编辑文章', 'Edit Article')) : (t.newArticle || ui('新建文章', 'New Article'))}
       </h2>
 
       {error && (
@@ -115,7 +117,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
-          placeholder={t.articleTitle || 'Article title...'}
+          placeholder={t.articleTitle || ui('文章标题...', 'Article title...')}
           className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
         />
         <select
@@ -123,21 +125,21 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
           onChange={e => setCategory(e.target.value)}
           className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/70 text-sm focus:outline-none"
         >
-          <option value="general">{t.catGeneral || 'General'}</option>
-          <option value="policy">{t.catPolicy || 'Policy'}</option>
+          <option value="general">{t.catGeneral || ui('通用', 'General')}</option>
+          <option value="policy">{t.catPolicy || ui('制度', 'Policy')}</option>
           <option value="sop">{t.catSOP || 'SOP'}</option>
-          <option value="product">{t.catProduct || 'Product'}</option>
-          <option value="culture">{t.catCulture || 'Culture'}</option>
+          <option value="product">{t.catProduct || ui('产品', 'Product')}</option>
+          <option value="culture">{t.catCulture || ui('文化', 'Culture')}</option>
           <option value="hr">{t.catHR || 'HR'}</option>
-          <option value="tech">{t.catTechnical || 'Technical'}</option>
+          <option value="tech">{t.catTechnical || ui('技术', 'Technical')}</option>
         </select>
         <select
           value={status}
           onChange={e => setStatus(e.target.value as any)}
           className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/70 text-sm focus:outline-none"
         >
-          <option value="draft">{t.draftStatus || 'Draft'}</option>
-          <option value="published">{t.publishedStatus || 'Published'}</option>
+          <option value="draft">{t.draftStatus || ui('草稿', 'Draft')}</option>
+          <option value="published">{t.publishedStatus || ui('已发布', 'Published')}</option>
         </select>
       </div>
 
@@ -146,7 +148,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         <input
           value={tags}
           onChange={e => setTags(e.target.value)}
-          placeholder={t.tagsCommaSeparated || 'Tags (comma separated)'}
+          placeholder={t.tagsCommaSeparated || ui('标签（用逗号分隔）', 'Tags (comma separated)')}
           className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
         />
       </div>
@@ -154,7 +156,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
       <textarea
         value={content}
         onChange={e => setContent(e.target.value)}
-        placeholder={t.writeArticleContent || 'Write your article content here... Markdown supported.'}
+        placeholder={t.writeArticleContent || ui('在这里编写文章内容，支持 Markdown。', 'Write your article content here... Markdown supported.')}
         className="w-full h-64 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40 resize-y font-mono"
       />
 
@@ -165,13 +167,13 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
           className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2"
         >
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          {articleId ? (t.updateArticle || 'Update Article') : (t.createArticle || 'Create Article')}
+          {articleId ? (t.updateArticle || ui('更新文章', 'Update Article')) : (t.createArticle || ui('创建文章', 'Create Article'))}
         </Button>
         <Button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb' } }))}
           className="bg-white/10 hover:bg-white/20 text-white/70 rounded-lg flex items-center gap-2"
         >
-          <BookOpen size={16} /> {t.backToKB || 'Back to KB'}
+          <BookOpen size={16} /> {t.backToKB || ui('返回知识库', 'Back to KB')}
         </Button>
       </div>
     </div>

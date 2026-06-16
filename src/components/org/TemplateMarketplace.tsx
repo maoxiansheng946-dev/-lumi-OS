@@ -23,6 +23,8 @@ interface Template {
 
 export function TemplateMarketplace() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const socket = useSocket();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filtered, setFiltered] = useState<Template[]>([]);
@@ -68,7 +70,7 @@ export function TemplateMarketplace() {
         setFiltered(data);
       } else {
         const data = await res.json().catch(() => ({}));
-        setFeedback({ type: 'error', text: data.error || `${t.templateLoadFailed || 'Failed to load templates'} (${res.status})` });
+        setFeedback({ type: 'error', text: data.error || `${t.templateLoadFailed || ui('模板加载失败', 'Failed to load templates')} (${res.status})` });
       }
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
@@ -88,10 +90,10 @@ export function TemplateMarketplace() {
         const data = await res.json();
         // Refresh list to update download count
         loadTemplates();
-        setFeedback({ type: 'success', text: `${t.templateAdded || 'Template added to your agents'}: ${data.template.name}` });
+        setFeedback({ type: 'success', text: `${t.templateAdded || ui('模板已添加到你的智能体', 'Template added to your agents')}: ${data.template.name}` });
       } else {
         const data = await res.json().catch(() => ({}));
-        setFeedback({ type: 'error', text: data.error || `${t.templateInstallFailed || 'Template install failed'} (${res.status})` });
+        setFeedback({ type: 'error', text: data.error || `${t.templateInstallFailed || ui('模板安装失败', 'Template install failed')} (${res.status})` });
       }
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
@@ -105,9 +107,9 @@ export function TemplateMarketplace() {
       <div>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <Package size={24} className="text-purple-400" />
-          {t.templateMarketplace || 'Template Marketplace'}
+          {t.templateMarketplace || ui('模板市场', 'Template Marketplace')}
         </h2>
-        <p className="text-white/40 text-sm">{t.templateMarketplaceDesc || 'Discover and install agent templates from your organization'}</p>
+        <p className="text-white/40 text-sm">{t.templateMarketplaceDesc || ui('发现并安装组织内的智能体模板', 'Discover and install agent templates from your organization')}</p>
       </div>
 
       {feedback && (
@@ -128,7 +130,7 @@ export function TemplateMarketplace() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={t.searchTemplates || 'Search templates...'}
+            placeholder={t.searchTemplates || ui('搜索模板...', 'Search templates...')}
             className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-purple-500/40"
           />
         </div>
@@ -137,7 +139,7 @@ export function TemplateMarketplace() {
           onChange={e => setCategory(e.target.value)}
           className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white/60 text-sm"
         >
-          <option value="">{t.allCategoriesFilter || 'All Categories'}</option>
+          <option value="">{t.allCategoriesFilter || ui('全部分类', 'All Categories')}</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
@@ -148,7 +150,7 @@ export function TemplateMarketplace() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-white/55">
           <Package size={32} className="mx-auto mb-2 opacity-30" />
-          {t.noTemplatesFound || 'No templates found'}
+          {t.noTemplatesFound || ui('未找到模板', 'No templates found')}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
@@ -208,7 +210,7 @@ export function TemplateMarketplace() {
                 <Tag size={12} /> {selected.category}
               </span>
               <span className="text-xs text-white/40 flex items-center gap-1">
-                <Download size={12} /> {selected.downloadCount} {t.numInstalls || 'installs'}
+                <Download size={12} /> {selected.downloadCount} {t.numInstalls || ui('次安装', 'installs')}
               </span>
               <span className="text-xs text-white/40 flex items-center gap-1">
                 <Clock size={12} /> v{selected.version}
@@ -225,7 +227,7 @@ export function TemplateMarketplace() {
               ) : (
                 <Download size={16} />
               )}
-              {installing === selected.id ? (t.installingTemplate || 'Installing...') : (t.installTemplate || 'Install Template')}
+              {installing === selected.id ? (t.installingTemplate || ui('安装中...', 'Installing...')) : (t.installTemplate || ui('安装模板', 'Install Template'))}
             </Button>
 
             {feedback?.type === 'success' && (

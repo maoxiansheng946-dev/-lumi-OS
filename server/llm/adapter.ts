@@ -25,6 +25,24 @@ export interface LLMUsageRecord {
   totalTokens: number;
 }
 
+function filterToolDeclarationsForPolicy(
+  declarations: ReturnType<ToolRegistry['getToolDeclarations']>,
+  context?: ToolContext,
+): ReturnType<ToolRegistry['getToolDeclarations']> {
+  const policy = context?.toolPolicy;
+  if (!policy) return declarations;
+  if (policy.forbiddenTools?.includes('*')) return [];
+
+  const allowed = new Set(policy.allowedTools || []);
+  const forbidden = new Set(policy.forbiddenTools || []);
+  return declarations.filter((declaration) => {
+    const name = declaration.function.name;
+    if (forbidden.has(name)) return false;
+    if (allowed.has('*')) return true;
+    return allowed.has(name);
+  });
+}
+
 export async function runWithTools(
   messages: NormalizedMessage[],
   toolRegistry: ToolRegistry,
@@ -55,7 +73,8 @@ export async function runWithTools(
     ? 'auto'  // Keep as 'auto' for the dispatch logic below
     : config.provider;
 
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
+  const effectiveMaxIterations = Math.max(0, Math.min(maxIterations, context?.toolPolicy?.maxIterations ?? maxIterations));
+  for (let iteration = 0; iteration < effectiveMaxIterations; iteration++) {
     // Check for cancellation between iterations
     if (context?.isCancelled?.()) {
       return {
@@ -64,7 +83,7 @@ export async function runWithTools(
         usageRecords,
       };
     }
-    const toolDeclarations = toolRegistry.getToolDeclarations();
+    const toolDeclarations = filterToolDeclarationsForPolicy(toolRegistry.getToolDeclarations(), context);
 
     const llmStart = Date.now();
     const response = onStreamChunk

@@ -20,7 +20,7 @@ import { queryMemories, addMemory } from "../memory/store";
 import { matchQuickCommand } from "../cognition/quick_commands";
 import { recordTokenUsage } from "../llm/token_tracker";
 import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
-import { shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
+import { hasClientActionIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { updatePresence } from "../biometrics/presence";
 import { getVoiceprints } from "../biometrics/store";
 import { formatClientSelfPrompt } from "../client/self_model";
@@ -288,9 +288,15 @@ async function processVoiceInput(
 
   const opModeConfigV = getOperationModeConfig(operationMode);
   const allowToolUseForTurn = shouldAllowToolUseForTurn(userText, undefined, operationMode);
+  const clientActionOnlyTurn = hasClientActionIntent(userText) && (operationMode === 'chat' || operationMode === 'meeting' || operationMode === 'music');
+  const clientActionToolPolicy = clientActionOnlyTurn
+    ? { allowedTools: ['client_get_state', 'client_action'], requireConfirmation: [], forbiddenTools: [], maxIterations: 4 }
+    : null;
   const exposeAgentWork = shouldExposeAgentWork(userText);
-  logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode}`);
-  const opModeOverlay = opModeConfigV && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting') ? '\n\n' + opModeConfigV.promptOverlay : '';
+  logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode} clientActionOnly=${clientActionOnlyTurn}`);
+  const opModeOverlay = clientActionOnlyTurn
+    ? '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. For music requests, switch to music mode before opening the music center or mood layer. For meeting/autonomous mode, use the client action confirmation flow when required.'
+    : (opModeConfigV && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting') ? '\n\n' + opModeConfigV.promptOverlay : '');
   const interactionOverlay = allowToolUseForTurn
     ? toolVoiceOverlay
     : baseVoiceOverlay + '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, assemble a team, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';
@@ -369,9 +375,11 @@ async function processVoiceInput(
   const toolContext = {
     desktopRelay,
     llmGetters,
-    ...(operationMode === 'assistant' || operationMode === 'autonomous' ? { requestConfirmation } : {}),
+    ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn ? { requestConfirmation } : {}),
     isCancelled: () => pipelineAbort?.signal.aborted ?? false,
-    ...(allowToolUseForTurn && opModeConfigV
+    ...(clientActionToolPolicy
+      ? { toolPolicy: clientActionToolPolicy }
+      : allowToolUseForTurn && opModeConfigV
       ? { toolPolicy: opModeConfigV.toolPolicy }
       : { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } }),
   };
@@ -538,6 +546,9 @@ async function processVoiceInput(
     if (/放.*歌|放.*音乐|来首歌|播放|听.*歌|来点音乐|给我放|随便放点|我想听|搜.*歌|换.*歌|切.*歌/.test(userText)) {
       logger.info('[Audio] Music intent matched, attempting shortcut...');
       try {
+        void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
+          logger.warn('[Audio] Failed to sync music client mode:', err.message);
+        });
         const { searchAndPlay } = await import('../music/search_play');
         const result = await searchAndPlay(session.userId, socket, userText);
         if (result.success && result.text) {
@@ -563,7 +574,7 @@ async function processVoiceInput(
     // ── Orchestrator: complex/moderate tasks → multi-agent decomposition ──
     let usedOrchestrator = false;
     const complexity = classifyComplexity(userText, { userId: session.userId, personalityId: session.personalityId });
-    if (allowToolUseForTurn && (complexity === 'complex' || complexity === 'moderate')) {
+    if (allowToolUseForTurn && !clientActionOnlyTurn && (complexity === 'complex' || complexity === 'moderate')) {
       try {
         socket.emit("agent:status", { status: "thinking", agentName: "Lumi", phase: exposeAgentWork ? 'orchestrator' : 'background' });
         const voiceLeadIn = exposeAgentWork
@@ -625,7 +636,12 @@ async function processVoiceInput(
       if (pipelineAbort?.signal.aborted) break;
 
       logger.info(`[Audio] LLM iter ${iter + 1}/${maxIterations}: provider=${provider} model=${effectiveModel}`);
-      const toolDeclarations = allowToolUseForTurn ? toolRegistry.getToolDeclarations() : [];
+      const toolDeclarations = allowToolUseForTurn
+        ? toolRegistry.getToolDeclarations().filter((declaration) => {
+            if (!clientActionToolPolicy) return true;
+            return clientActionToolPolicy.allowedTools.includes(declaration.function.name);
+          })
+        : [];
 
       const streamResult = await makeLLMCallStreaming(
         messages as NormalizedMessage[],

@@ -33,7 +33,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
         const userMsg = {
           id: Date.now().toString(),
           text,
-          userName: user?.displayName || 'User',
+          userName: user?.displayName || ui('用户', 'User'),
           timestamp: new Date().toISOString(),
           type: 'user'
         };
@@ -123,7 +123,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
         setMessages(data.map((i: any) => ({
           id: i.id,
           text: i.content,
-          userName: i.role === 'user' ? (user?.displayName || 'User') : (agentConfig?.name || 'Lumi'),
+          userName: i.role === 'user' ? (user?.displayName || ui('用户', 'User')) : (agentConfig?.name || 'Lumi'),
           timestamp: i.timestamp,
           type: i.role === 'user' ? 'user' : 'agent'
         })));
@@ -183,17 +183,17 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
           const ctx = data.sensoryContext;
           if (ctx && ctx.deviceCount > 0) {
             const caps: string[] = [];
-            if (ctx.hasAudio) caps.push('Audio Input');
-            if (ctx.hasVideo) caps.push('Camera');
-            if (ctx.hasSpatial) caps.push('Spatial Tracking');
-            if (ctx.hasHaptic) caps.push('Haptic Feedback');
-            if (ctx.hasHolographic) caps.push('Holographic Output');
-            setVisionData(caps.length > 0 ? caps : ['No active sensors']);
+            if (ctx.hasAudio) caps.push(ui('音频输入', 'Audio Input'));
+            if (ctx.hasVideo) caps.push(ui('摄像头', 'Camera'));
+            if (ctx.hasSpatial) caps.push(ui('空间追踪', 'Spatial Tracking'));
+            if (ctx.hasHaptic) caps.push(ui('触觉反馈', 'Haptic Feedback'));
+            if (ctx.hasHolographic) caps.push(ui('全息输出', 'Holographic Output'));
+            setVisionData(caps.length > 0 ? caps : [ui('没有活跃传感器', 'No active sensors')]);
           } else {
-            setVisionData(['No devices connected']);
+            setVisionData([ui('没有连接设备', 'No devices connected')]);
           }
         })
-        .catch(() => setVisionData(['Sensor API unavailable']));
+        .catch(() => setVisionData([ui('传感器 API 不可用', 'Sensor API unavailable')]));
     } else {
       setVisionData([]);
     }
@@ -220,7 +220,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
     const userMsg = {
       id: Date.now().toString(),
       text: messageText,
-      userName: user.displayName || user.username || 'Anonymous',
+      userName: user.displayName || user.username || ui('匿名用户', 'Anonymous'),
       timestamp: new Date().toISOString(),
       type: 'user'
     };
@@ -249,7 +249,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold tracking-tighter flex items-center gap-2">
               <Cpu size={20} className={isPrivateMode ? "text-celestial-saturn" : "text-celestial-glow animate-pulse"} />
-              {isPrivateMode ? 'Physical Isolation' : 'Neural Carrier'}
+              {isPrivateMode ? ui('物理隔离', 'Physical Isolation') : ui('神经载体', 'Neural Carrier')}
             </h3>
             <div className="flex gap-2">
               <Button 
@@ -258,7 +258,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
                   isVisionActive ? 'bg-celestial-saturn text-black' : 'bg-white/5 text-white/40'
                 }`}
               >
-                Sensors
+                {ui('传感器', 'Sensors')}
               </Button>
               <Button 
                 onClick={() => setIsPrivateMode(!isPrivateMode)}
@@ -266,7 +266,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
                   isPrivateMode ? 'bg-celestial-saturn text-black' : 'bg-white/5 text-white/40'
                 }`}
               >
-                {isPrivateMode ? 'Online' : 'Kill-Switch'}
+                {isPrivateMode ? ui('上线', 'Online') : ui('断开开关', 'Kill-Switch')}
               </Button>
             </div>
           </div>
@@ -276,7 +276,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full status-pulse ${isPrivateMode ? 'bg-celestial-saturn' : 'bg-celestial-glow'}`} />
                 <span className="text-xs font-bold uppercase tracking-widest text-white/60">
-                  {isPrivateMode ? 'Local NPU Active' : 'Mesh Synced'}
+                  {isPrivateMode ? ui('本地 NPU 活跃', 'Local NPU Active') : ui('网络已同步', 'Mesh Synced')}
                 </span>
               </div>
               <span className="text-[12px] font-mono text-white/45">v2.0-Alpha</span>
@@ -296,7 +296,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
                   </motion.div>
                 ))
               ) : (
-                <p className="text-xs text-white/45 italic">Edge sensors on standby...</p>
+                <p className="text-xs text-white/45 italic">{ui('边缘传感器待命中...', 'Edge sensors on standby...')}</p>
               )}
             </div>
           </div>
@@ -307,14 +307,14 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold tracking-tighter flex items-center gap-2">
               <Zap size={20} className="text-celestial-mars" />
-              {t.founderVision || "Founder's Vision"}
+              {t.founderVision || ui('创始愿景', "Founder's Vision")}
             </h3>
             {user?.role === 'admin' && (
               <Button 
                 onClick={() => isFounderEditing ? updateFounderVision() : setIsFounderEditing(true)}
                 className="rounded-full px-4 h-8 text-xs font-bold uppercase tracking-widest bg-white/5 text-white/40 hover:bg-white/10"
               >
-                {isFounderEditing ? t.updateVision : 'Edit Vision'}
+                {isFounderEditing ? (t.updateVision || ui('更新愿景', 'Update Vision')) : ui('编辑愿景', 'Edit Vision')}
               </Button>
             )}
           </div>
@@ -335,7 +335,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
                 className="w-full py-6 rounded-2xl bg-celestial-saturn/10 border border-celestial-saturn/30 text-celestial-saturn font-bold hover:bg-celestial-saturn hover:text-black transition-all flex items-center justify-center gap-2 group"
               >
                 <Sparkles size={18} className="group-hover:animate-spin" />
-                {t.enterSanctuary || 'Enter Founder Sanctuary'}
+                {t.enterSanctuary || ui('进入创始人圣所', 'Enter Founder Sanctuary')}
               </Button>
             </div>
           )}
@@ -346,7 +346,7 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
       <section className="relative">
         <div className="text-center space-y-4 mb-8">
           <h2 className="text-4xl font-bold tracking-tighter glow-text">
-Lumi Core Agent
+            {ui('Lumi 核心智能体', 'Lumi Core Agent')}
           </h2>
           <p className="text-white/40 max-w-xl mx-auto italic">
             "{t.holographicEntranceDesc}"
@@ -383,19 +383,19 @@ Lumi Core Agent
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-celestial-mars animate-ping' : 'bg-celestial-saturn animate-pulse'}`} />
-                <span className="text-xs font-bold uppercase tracking-widest text-white/60">{t.realTimeNode || 'Real-time Node'}</span>
+                <span className="text-xs font-bold uppercase tracking-widest text-white/60">{t.realTimeNode || ui('实时节点', 'Real-time Node')}</span>
                 {isSpeaking && (
                   <Button 
                     onClick={stop}
                     className="h-6 px-2 text-xs bg-red-500/20 text-red-500 hover:bg-red-500/40 rounded-full border border-red-500/20"
                   >
-                    {t.stopSpeaking || 'STOP'}
+                    {t.stopSpeaking || ui('停止', 'STOP')}
                   </Button>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-xs text-white/40 font-mono uppercase">
-                  {t.founderMode || 'Founder Mode'}
+                  {t.founderMode || ui('创始人模式', 'Founder Mode')}
                 </div>
               </div>
             </div>
@@ -434,7 +434,7 @@ Lumi Core Agent
               {isTyping && (
                 <div className="flex gap-1 items-center text-celestial-saturn/40 text-xs">
                   <Loader2 size={12} className="animate-spin" />
-                  Agent is thinking...
+                  {ui('智能体正在思考...', 'Agent is thinking...')}
                 </div>
               )}
             </div>
@@ -482,6 +482,8 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label:
 
 function StatsRow({ socket, t }: { socket: any; t: any }) {
   const [latency, setLatency] = useState<number | null>(null);
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   useEffect(() => {
     if (!socket) return;
@@ -505,19 +507,19 @@ function StatsRow({ socket, t }: { socket: any; t: any }) {
     <div className="grid md:grid-cols-3 gap-6">
       <StatCard
         icon={<Cpu size={24} />}
-        label={t.computePower || 'Compute Power'}
-        value={`${cpuCores} Cores`}
+        label={t.computePower || ui('计算能力', 'Compute Power')}
+        value={ui(`${cpuCores} 核`, `${cpuCores} Cores`)}
         color="text-celestial-saturn"
       />
       <StatCard
         icon={<Globe size={24} />}
-        label={t.nodeSync || 'Node Sync'}
-        value={connected ? (t.meshActiveLabel || 'Mesh Connected') : (t.disconnected || 'Disconnected')}
+        label={t.nodeSync || ui('节点同步', 'Node Sync')}
+        value={connected ? (t.meshActiveLabel || ui('网络已连接', 'Mesh Connected')) : (t.disconnected || ui('未连接', 'Disconnected'))}
         color={connected ? 'text-celestial-mars' : 'text-white/40'}
       />
       <StatCard
         icon={<Zap size={24} />}
-        label={t.responseLatency || 'Response Latency'}
+        label={t.responseLatency || ui('响应延迟', 'Response Latency')}
         value={latency ? `${latency}ms` : '--'}
         color="text-celestial-glow"
       />

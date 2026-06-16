@@ -19,8 +19,7 @@ import {
   Loader2,
   LogOut,
   Cloud,
-  Volume2,
-  Monitor
+  Volume2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
@@ -32,32 +31,31 @@ import { VoiceForge } from './VoiceForge';
 import { VoiceProviderSwitch } from './VoiceProviderSwitch';
 import { MCPSettings } from './MCPSettings';
 import { MessagingHub } from './MessagingHub';
-import { SystemExplorer } from './SystemExplorer';
 
-function buildSidebarGroups(t: any) {
+function buildSidebarGroups(t: any, isZh: boolean) {
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   return [
     {
-      label: t.sidebarCore || 'Core',
+      label: t.sidebarCore || ui('核心', 'Core'),
       items: [
-        { id: 'general', label: t.sidebarGeneral || 'General', icon: <Globe size={16} /> },
+        { id: 'general', label: t.sidebarGeneral || ui('通用', 'General'), icon: <Globe size={16} /> },
       ],
     },
     {
-      label: t.sidebarAiNeural || 'AI & Neural',
+      label: t.sidebarAiNeural || ui('AI 与人格', 'AI & Neural'),
       items: [
-        { id: 'neural', label: t.neuralEngine || 'Neural Engine', icon: <BrainCircuit size={16} /> },
-        { id: 'llm-providers', label: t.llmProviders || 'LLM Providers', icon: <BrainCircuit size={16} /> },
-        { id: 'voice-services', label: t.voiceServices || 'Voice Services', icon: <Mic size={16} /> },
+        { id: 'neural', label: t.neuralEngine || ui('智能体框架', 'Neural Engine'), icon: <BrainCircuit size={16} /> },
+        { id: 'llm-providers', label: t.llmProviders || ui('LLM 服务商', 'LLM Providers'), icon: <BrainCircuit size={16} /> },
+        { id: 'voice-services', label: t.voiceServices || ui('语音服务', 'Voice Services'), icon: <Mic size={16} /> },
       ],
     },
     {
-      label: t.sidebarSystem || 'System',
+      label: t.sidebarSystem || ui('系统', 'System'),
       items: [
-        { id: 'computer', label: t.computerAdaptation || 'Computer', icon: <Monitor size={16} /> },
-        { id: 'security', label: t.settings || 'Security', icon: <Shield size={16} /> },
-        { id: 'hardware', label: t.settingsHardware || 'Hardware', icon: <Camera size={16} /> },
+        { id: 'security', label: t.privacySecurity || ui('隐私与安全', 'Security'), icon: <Shield size={16} /> },
+        { id: 'hardware', label: t.settingsHardware || ui('硬件权限', 'Hardware'), icon: <Camera size={16} /> },
         { id: 'mcp', label: t.settingsMCP || 'MCP', icon: <Cpu size={16} /> },
-        { id: 'messaging', label: t.messaging || 'Messaging', icon: <MessagesSquare size={16} /> },
+        { id: 'messaging', label: t.messaging || ui('消息连接', 'Messaging'), icon: <MessagesSquare size={16} /> },
       ],
     },
   ];
@@ -70,7 +68,7 @@ export function Settings({
   theme,
   setTheme,
   activeSection = 'general',
-  onSectionChange
+  onSectionChange,
 }: {
   t: any;
   lang: 'en' | 'zh';
@@ -81,15 +79,18 @@ export function Settings({
   onSectionChange?: (section: string) => void;
 }) {
   const { platform, isElectron } = usePlatform();
-  const { aiConfig, updateAIConfig, logout, operationMode, setOperationMode } = useApp();
+  const { operationMode, setOperationMode } = useApp();
   const [providerStatus, setProviderStatus] = useState<Record<string, { available: boolean; model: string }>>({});
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const visibleSection = activeSection === 'computer' ? 'general' : activeSection;
+  const isZh = lang !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   useEffect(() => {
     fetch('/api/llm/providers')
       .then(r => r.json())
       .then(d => setProviderStatus(d.providers || {}))
-      .catch(() => toast.error(t.failedToLoadProviderStatus || 'Failed to load provider status'));
+      .catch(() => toast.error(t.failedToLoadProviderStatus || ui('服务商状态加载失败', 'Failed to load provider status')));
   }, []);
 
   const handleSectionChange = (section: string) => {
@@ -109,14 +110,14 @@ export function Settings({
       case 'general':
         return (
           <div className="space-y-8">
-            <SettingsSection title={t.language || 'Language'} icon={<Globe size={18} className="text-blue-400" />}>
+            <SettingsSection title={t.language || ui('语言', 'Language')} icon={<Globe size={18} className="text-blue-400" />}>
               <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 space-y-6">
                 <div>
                   <label className="text-xs font-black uppercase tracking-widest text-white/50 block mb-4">{t.selectLanguage}</label>
                   <div className="grid grid-cols-2 gap-4">
                     <button onClick={() => setLang('en')}
                       className={`p-6 rounded-2xl border text-sm font-bold transition-all flex items-center justify-center gap-3 ${lang === 'en' ? 'bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.2)]' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'}`}>
-                      {t.englishUS || 'English (US)'}
+                      {t.englishUS || ui('英文（美国）', 'English (US)')}
                     </button>
                     <button onClick={() => setLang('zh')}
                       className={`p-6 rounded-2xl border text-sm font-bold transition-all flex items-center justify-center gap-3 ${lang === 'zh' ? 'bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.2)]' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'}`}>
@@ -127,15 +128,15 @@ export function Settings({
               </div>
             </SettingsSection>
 
-            <SettingsSection title={t.appearanceThemes || "Appearance & Themes"} icon={<Sparkle size={18} className="text-celestial-saturn" />}>
+            <SettingsSection title={t.appearanceThemes || ui('外观与主题', 'Appearance & Themes')} icon={<Sparkle size={18} className="text-celestial-saturn" />}>
               <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 space-y-8">
                 <div>
-                  <label className="text-xs font-black uppercase tracking-widest text-white/50 block mb-4">{t.selectMatrixVariant || "Select Global Matrix Variant"}</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-white/50 block mb-4">{t.selectMatrixVariant || ui('选择全局主题变体', 'Select Global Matrix Variant')}</label>
                   <div className="grid grid-cols-3 gap-4">
                     {[
-                      { id: 'celestial', label: t.celestial || 'Celestial', color: 'from-orange-400 to-red-500' },
-                      { id: 'nebula', label: t.nebula || 'Nebula', color: 'from-indigo-500 to-purple-600' },
-                      { id: 'cyber', label: t.cyber || 'Cyber', color: 'from-emerald-400 to-teal-600' }
+                      { id: 'celestial', label: t.celestial || ui('星辉', 'Celestial'), color: 'from-orange-400 to-red-500' },
+                      { id: 'nebula', label: t.nebula || ui('星云', 'Nebula'), color: 'from-indigo-500 to-purple-600' },
+                      { id: 'cyber', label: t.cyber || ui('赛博', 'Cyber'), color: 'from-emerald-400 to-teal-600' }
                     ].map(themeItem => (
                       <button key={themeItem.id} onClick={() => setTheme && setTheme(themeItem.id)}
                         className={`flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all text-center ${theme === themeItem.id ? 'bg-white/10 border-white/20 shadow-lg' : 'border-white/5 hover:bg-white/5'}`}>
@@ -152,29 +153,9 @@ export function Settings({
       case 'neural':
         return (
           <div className="space-y-8">
-            <SettingsSection title={t.agentFramework || "Agent Framework (Lumi Protocol)"} icon={<BrainCircuit size={18} className="text-celestial-saturn" />}>
+            <SettingsSection title={t.agentFramework || ui('智能体框架（Lumi 协议）', 'Agent Framework (Lumi Protocol)')} icon={<BrainCircuit size={18} className="text-celestial-saturn" />}>
               <div className="space-y-6">
                 <AutonomousSettingsPanel t={t} operationMode={operationMode} setOperationMode={setOperationMode} />
-                <div className="space-y-1">
-                  <label className="text-xs font-black uppercase text-white/55 ml-2">{t.primaryReasoningBrain || "Primary Reasoning Brain"}</label>
-                  <div className="relative">
-                    <select value={aiConfig.provider} onChange={(e) => updateAIConfig({ provider: e.target.value })}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:border-celestial-saturn/50 outline-none">
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="qwen">Qwen (DashScope)</option>
-                      <option value="gemini">Google Gemini</option>
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic Claude</option>
-                      <option value="ark">Doubao / 豆包 (Ark)</option>
-                      <option value="xiaomi">Xiaomi / 小米</option>
-                      <option value="kimi">Kimi / 月之暗面</option>
-                      <option value="glm">GLM / 智谱</option>
-                      <option value="relay">中转站 (API Relay)</option>
-                    </select>
-                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/45" />
-                  </div>
-                  <p className="text-[12px] text-white/45 px-2">{t?.activeModel || 'Active model'}: <span className="text-white/40 font-mono">{aiConfig.model}</span> — {t?.changePerProvider || 'change per provider in API Matrix.'}</p>
-                </div>
               </div>
             </SettingsSection>
           </div>
@@ -185,24 +166,22 @@ export function Settings({
         return <LLMProvidersPage t={t} providerStatus={providerStatus} />;
       case 'voice-services':
         return <VoiceServicesPage t={t} />;
-      case 'computer':
-        return <SystemExplorer t={t} onSectionChange={handleSectionChange} />;
       case 'security':
         return (
           <div className="space-y-8">
-            <SettingsSection title={t.privacySecurity || "Privacy & Security"} icon={<Shield size={18} className="text-celestial-mars" />}>
-              <SettingsItem label={t.localEncryption || "Local Encryption"} desc={t.localEncryptionDesc || "Encrypt all Agent data stored on your local disk."} storageKey="lumi_sec_local_encryption" t={t} />
-              <SettingsItem label={t.anonymousMode || "Anonymous Mode"} desc={t.anonymousModeDesc || "Hide your node ID from the collaborative network."} storageKey="lumi_sec_anonymous_mode" t={t} />
-              <SettingsItem label={t.biometricLock || "Biometric Lock"} desc={t.biometricLockDesc || "Require fingerprint or face ID for Agent generation."} storageKey="lumi_sec_biometric_lock" t={t} />
+            <SettingsSection title={t.privacySecurity || ui('隐私与安全', 'Privacy & Security')} icon={<Shield size={18} className="text-celestial-mars" />}>
+              <SettingsItem label={t.localEncryption || ui('本地加密', 'Local Encryption')} desc={t.localEncryptionDesc || ui('加密存储在本地磁盘上的所有智能体数据。', 'Encrypt all Agent data stored on your local disk.')} storageKey="lumi_sec_local_encryption" t={t} />
+              <SettingsItem label={t.anonymousMode || ui('匿名模式', 'Anonymous Mode')} desc={t.anonymousModeDesc || ui('在协作网络中隐藏你的节点 ID。', 'Hide your node ID from the collaborative network.')} storageKey="lumi_sec_anonymous_mode" t={t} />
+              <SettingsItem label={t.biometricLock || ui('生物识别锁', 'Biometric Lock')} desc={t.biometricLockDesc || ui('生成智能体时要求指纹或人脸验证。', 'Require fingerprint or face ID for Agent generation.')} storageKey="lumi_sec_biometric_lock" t={t} />
             </SettingsSection>
             {isElectron && (
-              <SettingsSection title={t.desktopNodeRuntime || "Desktop Node Runtime"} icon={<Database size={18} className="text-celestial-jupiter" />}>
+              <SettingsSection title={t.desktopNodeRuntime || ui('桌面节点运行时', 'Desktop Node Runtime')} icon={<Database size={18} className="text-celestial-jupiter" />}>
                 <div className="p-4 bg-celestial-jupiter/10 rounded-2xl border border-celestial-jupiter/20 space-y-2 mb-4">
-                  <div className="flex justify-between items-center text-sm"><span className="text-white/60">{t.platform || "Platform"}:</span><span className="font-mono text-celestial-jupiter uppercase">{platform}</span></div>
-                  <div className="flex justify-between items-center text-sm"><span className="text-white/60">{t.nodeStatus || "Node Status"}:</span><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /><span className="font-bold text-green-500 underline decoration-green-500/20 underline-offset-4">{t.nodeActive || "ACTIVE"}</span></div></div>
+                  <div className="flex justify-between items-center text-sm"><span className="text-white/60">{t.platform || ui('平台', 'Platform')}:</span><span className="font-mono text-celestial-jupiter uppercase">{platform}</span></div>
+                  <div className="flex justify-between items-center text-sm"><span className="text-white/60">{t.nodeStatus || ui('节点状态', 'Node Status')}:</span><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /><span className="font-bold text-green-500 underline decoration-green-500/20 underline-offset-4">{t.nodeActive || ui('运行中', 'ACTIVE')}</span></div></div>
                 </div>
-                <SettingsItem label={t.hardwareAcceleration || "Hardware Acceleration"} desc={t.hardwareAccelerationDesc || "Use GPU for neural core inference."} storageKey="lumi_sec_hw_accel" t={t} />
-                <SettingsItem label={t.systemTrayMode || "System Tray Mode"} desc={t.systemTrayModeDesc || "Keep Lumi running in the background."} storageKey="lumi_sec_system_tray" t={t} />
+                <SettingsItem label={t.hardwareAcceleration || ui('硬件加速', 'Hardware Acceleration')} desc={t.hardwareAccelerationDesc || ui('使用 GPU 加速核心推理。', 'Use GPU for neural core inference.')} storageKey="lumi_sec_hw_accel" t={t} />
+                <SettingsItem label={t.systemTrayMode || ui('系统托盘模式', 'System Tray Mode')} desc={t.systemTrayModeDesc || ui('让 Lumi 在后台保持运行。', 'Keep Lumi running in the background.')} storageKey="lumi_sec_system_tray" t={t} />
               </SettingsSection>
             )}
 
@@ -229,12 +208,12 @@ export function Settings({
       {/* Sidebar — fixed height, scrollable */}
       <div className="w-56 flex-shrink-0 bg-white/[0.03] border-r border-white/5 flex flex-col min-h-0">
         <div className="px-4 pt-5 pb-3">
-          <h2 className="text-xs font-black uppercase tracking-widest text-white/60">{t.settings || 'Settings'}</h2>
+          <h2 className="text-xs font-black uppercase tracking-widest text-white/60">{t.settings || ui('设置', 'Settings')}</h2>
         </div>
         <div className="flex-1 px-2 pb-3 space-y-0.5 overflow-y-auto custom-scrollbar min-h-0">
-          {buildSidebarGroups(t).map(group => {
+          {buildSidebarGroups(t, isZh).map(group => {
             const isCollapsed = collapsedGroups.has(group.label);
-            const hasActiveItem = group.items.some(item => item.id === activeSection);
+            const hasActiveItem = group.items.some(item => item.id === visibleSection);
             return (
               <div key={group.label} className="mb-1">
                 <button
@@ -249,7 +228,7 @@ export function Settings({
                     {group.items.map(item => (
                       <SidebarItem
                         key={item.id}
-                        active={activeSection === item.id}
+                        active={visibleSection === item.id}
                         onClick={() => handleSectionChange(item.id)}
                         icon={item.icon}
                         label={item.label}
@@ -277,7 +256,7 @@ export function Settings({
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400/60 hover:text-red-300 hover:bg-red-500/10 transition-all"
           >
             <LogOut size={14} />
-            {t?.signOut || 'Sign Out'}
+            {t?.signOut || ui('退出登录', 'Sign Out')}
           </button>
         </div>
       </div>
@@ -287,13 +266,13 @@ export function Settings({
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
           <AnimatePresence mode="popLayout">
             <motion.div
-              key={activeSection}
+              key={visibleSection}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.1 }}
             >
-              {renderContent(activeSection)}
+              {renderContent(visibleSection)}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -303,6 +282,8 @@ export function Settings({
 }
 
 function HardwareSettings({ t }: { t: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [micStatus, setMicStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [camStatus, setCamStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [isRequesting, setIsRequesting] = useState(false);
@@ -320,11 +301,11 @@ function HardwareSettings({ t }: { t: any }) {
       if (type === 'mic') setMicStatus('granted');
       if (type === 'camera') setCamStatus('granted');
       
-      toast.success(type === 'mic' ? (t.micAccessSynced || 'Microphone access synchronized.') : (t.camAccessSynced || 'Camera access synchronized.'));
+      toast.success(type === 'mic' ? (t.micAccessSynced || ui('麦克风权限已同步。', 'Microphone access synchronized.')) : (t.camAccessSynced || ui('摄像头权限已同步。', 'Camera access synchronized.')));
     } catch (err: any) {
       if (type === 'mic') setMicStatus('denied');
       if (type === 'camera') setCamStatus('denied');
-      toast.error(`${t.sensorLinkFailed || 'Sensor link failed'}: ${err.message}`);
+      toast.error(`${t.sensorLinkFailed || ui('传感器连接失败', 'Sensor link failed')}: ${err.message}`);
     } finally {
       setIsRequesting(false);
     }
@@ -332,16 +313,16 @@ function HardwareSettings({ t }: { t: any }) {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <SettingsSection title={t.hardwareSensorNetwork || "Hardware Sensor Network"} icon={<Camera size={18} className="text-celestial-saturn" />}>
+      <SettingsSection title={t.hardwareSensorNetwork || ui('硬件传感器网络', 'Hardware Sensor Network')} icon={<Camera size={18} className="text-celestial-saturn" />}>
         <p className="text-sm text-white/40 mb-8 max-w-xl">
-          {t.hardwareSensorNetworkDesc || "LumiAI requires access to your physical sensors for real-world contextual awareness and biometric verification. All data is processed locally on your node."}
+          {t.hardwareSensorNetworkDesc || ui('LumiAI 需要访问物理传感器来进行现实上下文感知和生物识别验证。所有数据都会在你的本地节点处理。', 'LumiAI requires access to your physical sensors for real-world contextual awareness and biometric verification. All data is processed locally on your node.')}
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <HardwareCapCard
             icon={<Mic size={24} />}
-            label={t.audioReceptors || "Audio Receptors"}
-            desc={t.audioReceptorsDesc || "Enable neural speech recognition and voice cloning."}
+            label={t.audioReceptors || ui('音频输入', 'Audio Receptors')}
+            desc={t.audioReceptorsDesc || ui('启用语音识别和声音克隆相关能力。', 'Enable neural speech recognition and voice cloning.')}
             status={micStatus}
             onEnable={() => requestPermissions('mic')}
             disabled={isRequesting}
@@ -349,8 +330,8 @@ function HardwareSettings({ t }: { t: any }) {
           />
           <HardwareCapCard
             icon={<Camera size={24} />}
-            label={t.visualCortex || "Visual Cortex"}
-            desc={t.visualCortexDesc || "Enable multimodal vision and gesture control."}
+            label={t.visualCortex || ui('视觉感知', 'Visual Cortex')}
+            desc={t.visualCortexDesc || ui('启用多模态视觉和手势控制。', 'Enable multimodal vision and gesture control.')}
             status={camStatus}
             onEnable={() => requestPermissions('camera')}
             disabled={isRequesting}
@@ -361,10 +342,10 @@ function HardwareSettings({ t }: { t: any }) {
         <div className="mt-12 p-6 glass-dark rounded-[2rem] border border-white/5 space-y-4">
            <div className="flex items-center gap-3">
               <Shield className="text-celestial-saturn" size={20} />
-              <h4 className="text-sm font-bold uppercase tracking-tight text-white">{t.privacyAssurance || "Privacy Assurance"}</h4>
+              <h4 className="text-sm font-bold uppercase tracking-tight text-white">{t.privacyAssurance || ui('隐私保证', 'Privacy Assurance')}</h4>
            </div>
            <p className="text-xs text-white/55 leading-relaxed italic">
-             {t.privacyAssuranceText || "Our protocol strictly enforces local-only processing. Your visual and auditory data streams are never transmitted outside your sovereign mesh node without direct user-signed override."}
+             {t.privacyAssuranceText || ui('协议默认强制本地处理。没有你的明确确认，视觉和听觉数据流不会离开你的本地主权节点。', 'Our protocol strictly enforces local-only processing. Your visual and auditory data streams are never transmitted outside your sovereign mesh node without direct user-signed override.')}
            </p>
         </div>
       </SettingsSection>
@@ -381,6 +362,8 @@ function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
   disabled: boolean,
   t: any
 }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   return (
     <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 flex flex-col justify-between gap-6 group hover:border-white/10 transition-all">
       <div className="space-y-4">
@@ -400,15 +383,15 @@ function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
            {status === 'granted' ? (
              <div className="flex items-center gap-1.5 text-celestial-saturn text-xs font-black uppercase tracking-widest">
                <CheckCircle size={12} />
-               {t.linked || "Linked"}
+                {t.linked || ui('已连接', 'Linked')}
              </div>
            ) : status === 'denied' ? (
              <div className="flex items-center gap-1.5 text-red-500 text-xs font-black uppercase tracking-widest">
                <AlertCircle size={12} />
-               {t.blocked || "Blocked"}
+                {t.blocked || ui('已阻止', 'Blocked')}
              </div>
            ) : (
-             <div className="text-xs font-black uppercase tracking-widest text-white/45">{t.awaitingAccess || "Awaiting Access"}</div>
+              <div className="text-xs font-black uppercase tracking-widest text-white/45">{t.awaitingAccess || ui('等待授权', 'Awaiting Access')}</div>
            )}
         </div>
 
@@ -418,7 +401,7 @@ function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
             disabled={disabled}
             className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-black uppercase tracking-widest px-4 h-9 rounded-xl"
           >
-            {status === 'denied' ? (t.retryLink || 'Retry Link') : (t.authorize || 'Authorize')}
+            {status === 'denied' ? (t.retryLink || ui('重新连接', 'Retry Link')) : (t.authorize || ui('授权', 'Authorize'))}
           </Button>
         )}
       </div>
@@ -443,7 +426,9 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
   icon: React.ReactNode; label: string; providerId: string; models: string[];
   placeholder: string; disabled?: boolean; serverKey: string; t?: any;
 }) {
-  const { aiConfig, updateAIConfig, logout } = useApp();
+  const { aiConfig, updateAIConfig } = useApp();
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [keyValue, setKeyValue] = useState(() => {
     try { return localStorage.getItem(`lumi_${providerId}_key`) || ''; } catch { return ''; }
   });
@@ -472,12 +457,12 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys: { [serverKey]: '' } }),
     }).then(r => {
-      if (!r.ok) throw new Error('Remove failed');
+      if (!r.ok) throw new Error(ui('移除失败', 'Remove failed'));
       setServerConfigured(false);
       setKeyValue('');
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    }).catch(() => toast.error(t?.failedToRemoveKey || 'Failed to remove key'));
+    }).catch(() => toast.error(t?.failedToRemoveKey || ui('密钥移除失败', 'Failed to remove key')));
   };
 
   const handleSaveKey = () => {
@@ -488,9 +473,9 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys: { [serverKey]: keyValue.trim() } }),
     }).then(r => {
-      if (!r.ok) throw new Error('Save failed');
+      if (!r.ok) throw new Error(ui('保存失败', 'Save failed'));
       setServerConfigured(true);
-    }).catch(() => toast.error(t?.failedToSaveKey || 'Failed to save key'));
+    }).catch(() => toast.error(t?.failedToSaveKey || ui('密钥保存失败', 'Failed to save key')));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -522,7 +507,7 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
       <div className="flex items-center gap-2">
         <div className="p-2 bg-white/5 rounded-lg">{icon}</div>
         <label className="text-xs font-black uppercase tracking-widest text-white/50">{label}</label>
-        {serverConfigured && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">{t?.configured || 'CONFIGURED'}</span>}
+        {serverConfigured && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">{t?.configured || ui('已配置', 'CONFIGURED')}</span>}
         {saved && <CheckCircle size={14} className="text-green-400 ml-auto" />}
       </div>
       <div className="flex gap-3">
@@ -533,13 +518,13 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
             value={keyValue}
             onChange={e => setKeyValue(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSaveKey()}
-            placeholder={serverConfigured && !keyValue ? (t?.keySavedOnServer || 'Key saved on server') : placeholder}
+            placeholder={serverConfigured && !keyValue ? (t?.keySavedOnServer || ui('密钥已保存在服务器', 'Key saved on server')) : placeholder}
             className="w-full bg-black/40 border border-white/10 rounded-xl p-4 pr-16 text-white font-mono text-sm outline-none focus:border-celestial-saturn/50 transition-colors disabled:opacity-50"
           />
           <div className="absolute right-2 top-2 flex gap-1">
             <button type="button" onClick={() => setShowKey(!showKey)}
               className="h-10 px-2 bg-white/5 hover:bg-white/10 text-xs font-bold uppercase border border-white/5 rounded-lg">
-              {showKey ? (t?.hide || 'Hide') : (t?.show || 'Show')}
+              {showKey ? (t?.hide || ui('隐藏', 'Hide')) : (t?.show || ui('显示', 'Show'))}
             </button>
           </div>
         </div>
@@ -548,18 +533,18 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
           disabled={disabled || !keyValue.trim()}
           className="h-[56px] px-4 bg-celestial-saturn text-black rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed hover:bg-celestial-saturn/90 transition-all"
         >
-          {t?.save || 'Save'}
+          {t?.save || ui('保存', 'Save')}
         </Button>
         <Button
           onClick={handleRemoveKey}
           disabled={disabled || (!keyValue && !serverConfigured)}
           className="h-[56px] px-4 bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-500/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
         >
-          {t?.remove || 'Remove'}
+          {t?.remove || ui('移除', 'Remove')}
         </Button>
       </div>
       <div className="flex items-center gap-3">
-        <label className="text-[12px] font-black uppercase text-white/55 tracking-wider whitespace-nowrap">{t?.model || 'Model'}</label>
+        <label className="text-[12px] font-black uppercase text-white/55 tracking-wider whitespace-nowrap">{t?.model || ui('模型', 'Model')}</label>
         <input
           type="text"
           value={model}
@@ -572,7 +557,7 @@ function LLMProviderRow({ icon, label, providerId, models, placeholder, disabled
           {models.map(m => <option key={m} value={m} />)}
         </datalist>
         {aiConfig.provider === providerId && (
-          <span className="text-xs px-2 py-0.5 bg-celestial-saturn/10 border border-celestial-saturn/20 text-celestial-saturn rounded-full font-bold whitespace-nowrap">{t?.activeBadge || 'ACTIVE'}</span>
+          <span className="text-xs px-2 py-0.5 bg-celestial-saturn/10 border border-celestial-saturn/20 text-celestial-saturn rounded-full font-bold whitespace-nowrap">{t?.activeBadge || ui('当前', 'ACTIVE')}</span>
         )}
       </div>
     </div>
@@ -658,20 +643,43 @@ function AlwaysOnVoiceToggle() {
 }
 
 function LLMProvidersPage({ t, providerStatus }: { t: any; providerStatus: Record<string, { available: boolean; model: string }> }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const { aiConfig, updateAIConfig } = useApp();
   return (
     <div className="space-y-8">
-      <SettingsSection title={t.llmProviders || "LLM Providers"} icon={<BrainCircuit size={18} className="text-celestial-saturn" />}>
+      <SettingsSection title={t.llmProviders || ui('LLM 服务商', 'LLM Providers')} icon={<BrainCircuit size={18} className="text-celestial-saturn" />}>
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-2">
+          <label className="text-xs font-black uppercase text-white/55 ml-1">{t.primaryReasoningBrain || ui('主推理大脑', 'Primary Reasoning Brain')}</label>
+          <div className="relative">
+            <select value={aiConfig.provider} onChange={(e) => updateAIConfig({ provider: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:border-celestial-saturn/50 outline-none">
+              <option value="deepseek">DeepSeek</option>
+              <option value="qwen">Qwen (DashScope)</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="ark">Doubao / 豆包 (Ark)</option>
+              <option value="xiaomi">Xiaomi / 小米</option>
+              <option value="kimi">Kimi / 月之暗面</option>
+              <option value="glm">GLM / 智谱</option>
+              <option value="relay">中转站 (API Relay)</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/45" />
+          </div>
+          <p className="text-[12px] text-white/45 px-1">{t?.activeModel || ui('当前模型', 'Active model')}: <span className="text-white/40 font-mono">{aiConfig.model}</span> - {t?.changePerProvider || ui('可在下方服务商卡片中调整模型。', 'Adjust the model in the provider cards below.')}</p>
+        </div>
         <p className="text-sm text-white/40 max-w-xl mb-6">
-          {t.apiMatrixLLMDesc || 'Configure API keys and preferred models for each LLM provider.'}
+          {t.apiMatrixLLMDesc || ui('为每个 LLM 服务商配置 API Key 和偏好模型。', 'Configure API keys and preferred models for each LLM provider.')}
         </p>
         <div className="grid grid-cols-1 gap-6">
           <LLMProviderRow icon={<BrainCircuit size={18} className="text-blue-400" />} label="DeepSeek" providerId="deepseek" models={['deepseek-chat', 'deepseek-reasoner']} placeholder="sk-..." serverKey="DEEPSEEK_API_KEY" t={t} />
           <LLMProviderRow icon={<Zap size={18} className="text-violet-400" />} label="Qwen / DashScope (Alibaba Cloud)" providerId="qwen" models={['qwen-plus', 'qwen-max', 'qwen-turbo']} placeholder="sk-..." serverKey="DASHSCOPE_API_KEY" t={t} />
-          <LLMProviderRow icon={<Cloud size={18} className="text-cyan-400" />} label="Doubao / 豆包 (Ark)" providerId="ark" models={['doubao-1-5-pro-32k', 'doubao-1-5-lite-32k', 'doubao-1-5-vision-pro-32k']} placeholder="Enter Ark API key..." serverKey="ARK_API_KEY" t={t} />
-          <LLMProviderRow icon={<Cpu size={18} className="text-orange-400" />} label="Xiaomi / 小米" providerId="xiaomi" models={['xiaomi-chat']} placeholder="Enter Xiaomi API key..." serverKey="XIAOMI_API_KEY" t={t} />
+          <LLMProviderRow icon={<Cloud size={18} className="text-cyan-400" />} label="Doubao / 豆包 (Ark)" providerId="ark" models={['doubao-1-5-pro-32k', 'doubao-1-5-lite-32k', 'doubao-1-5-vision-pro-32k']} placeholder={ui('输入 Ark API Key...', 'Enter Ark API key...')} serverKey="ARK_API_KEY" t={t} />
+          <LLMProviderRow icon={<Cpu size={18} className="text-orange-400" />} label="Xiaomi / 小米" providerId="xiaomi" models={['xiaomi-chat']} placeholder={ui('输入小米 API Key...', 'Enter Xiaomi API key...')} serverKey="XIAOMI_API_KEY" t={t} />
           <LLMProviderRow icon={<Sparkle size={18} className="text-rose-400" />} label="Kimi / 月之暗面 (Moonshot)" providerId="kimi" models={['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']} placeholder="sk-..." serverKey="KIMI_API_KEY" t={t} />
-          <LLMProviderRow icon={<Sparkle size={18} className="text-cyan-400" />} label="GLM / 智谱 (Zhipu AI)" providerId="glm" models={['glm-4-plus', 'glm-4-flash', 'glm-4-air']} placeholder="Enter GLM API key..." serverKey="GLM_API_KEY" t={t} />
-          <LLMProviderRow icon={<BrainCircuit size={18} className="text-blue-400" />} label={`Google Gemini${providerStatus.gemini?.available ? ` (${providerStatus.gemini.model})` : ''}`} providerId="gemini" models={['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']} placeholder={providerStatus.gemini?.available ? (t.connectedViaEnv || 'Connected via environment') : (t.noKeyConfigured || 'No key configured')} serverKey="GEMINI_API_KEY" t={t} />
+          <LLMProviderRow icon={<Sparkle size={18} className="text-cyan-400" />} label="GLM / 智谱 (Zhipu AI)" providerId="glm" models={['glm-4-plus', 'glm-4-flash', 'glm-4-air']} placeholder={ui('输入 GLM API Key...', 'Enter GLM API key...')} serverKey="GLM_API_KEY" t={t} />
+          <LLMProviderRow icon={<BrainCircuit size={18} className="text-blue-400" />} label={`Google Gemini${providerStatus.gemini?.available ? ` (${providerStatus.gemini.model})` : ''}`} providerId="gemini" models={['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']} placeholder={providerStatus.gemini?.available ? (t.connectedViaEnv || ui('已通过环境变量连接', 'Connected via environment')) : (t.noKeyConfigured || ui('未配置密钥', 'No key configured'))} serverKey="GEMINI_API_KEY" t={t} />
           <LLMProviderRow icon={<MessagesSquare size={18} className="text-green-400" />} label="OpenAI" providerId="openai" models={['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']} placeholder="sk-..." serverKey="OPENAI_API_KEY" t={t} />
           <LLMProviderRow icon={<Sparkle size={18} className="text-purple-400" />} label="Anthropic Claude" providerId="anthropic" models={['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5']} placeholder="sk-ant-..." serverKey="ANTHROPIC_API_KEY" t={t} />
           <OllamaProviderRow t={t} />
@@ -841,32 +849,34 @@ function LmStudioProviderRow({ t }: { t?: any }) {
 }
 
 function VoiceServicesPage({ t }: { t: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   return (
     <div className="space-y-8">
-      <SettingsSection title={t.audioOutput || "Audio & Voice Output"} icon={<Music size={18} className="text-celestial-saturn" />}>
+      <SettingsSection title={t.audioOutput || ui('音频与语音输出', 'Audio & Voice Output')} icon={<Music size={18} className="text-celestial-saturn" />}>
         <div className="space-y-4 mb-6">
           <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-2">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-white/80">{t.ttsEngine || 'TTS Engine'}</span>
+              <span className="text-xs font-bold text-white/80">{t.ttsEngine || ui('TTS 引擎', 'TTS Engine')}</span>
             </div>
-            <p className="text-xs text-white/40">{t.ttsEngineDesc || 'GPT-SoVITS + DashScope CosyVoice configured.'}</p>
+            <p className="text-xs text-white/40">{t.ttsEngineDesc || ui('已配置 GPT-SoVITS + DashScope CosyVoice。', 'GPT-SoVITS + DashScope CosyVoice configured.')}</p>
           </div>
           <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-2">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-white/80">{t.sttEngine || 'STT Engine'}</span>
+              <span className="text-xs font-bold text-white/80">{t.sttEngine || ui('STT 引擎', 'STT Engine')}</span>
             </div>
-            <p className="text-xs text-white/40">{t.sttEngineDesc || 'Deepgram speech recognition active.'}</p>
+            <p className="text-xs text-white/40">{t.sttEngineDesc || ui('Deepgram 语音识别已启用。', 'Deepgram speech recognition active.')}</p>
           </div>
           <VoiceProviderSwitch t={t} />
         </div>
         <p className="text-sm text-white/40 max-w-xl mb-6">
-          {t.voiceServicesDesc || 'Speech recognition (ASR) and speech synthesis (TTS). Doubao Speech is auto-prioritized when configured.'}
+          {t.voiceServicesDesc || ui('语音识别（ASR）和语音合成（TTS）。配置豆包语音后会自动优先使用。', 'Speech recognition (ASR) and speech synthesis (TTS). Doubao Speech is auto-prioritized when configured.')}
         </p>
         <div className="grid grid-cols-1 gap-6">
-          <ApiKeyField icon={<Volume2 size={18} className="text-emerald-400" />} label={t.doubaoSpeechLabel || 'Doubao Speech (STT + TTS)'} placeholder="AppID:AccessToken" storageKey="lumi_doubao_speech" serverKey="DOUBAO_SPEECH_KEY" hint={t.doubaoSpeechHint || 'Format: AppID:AccessToken. Get both from console.volcengine.com/speech → App Management'} t={t} />
-          <ApiKeyField icon={<Zap size={18} className="text-violet-400" />} label={t.dashscopeLabel || 'DashScope (STT + TTS)'} placeholder="sk-..." storageKey="lumi_dashscope_key" serverKey="DASHSCOPE_API_KEY" hint={t.dashscopeHint || 'Powers Qwen ASR and CosyVoice TTS. Get your key at dashscope.aliyun.com'} t={t} />
+          <ApiKeyField icon={<Volume2 size={18} className="text-emerald-400" />} label={t.doubaoSpeechLabel || 'Doubao Speech (STT + TTS)'} placeholder="AppID:AccessToken" storageKey="lumi_doubao_speech" serverKey="DOUBAO_SPEECH_KEY" hint={t.doubaoSpeechHint || ui('格式：AppID:AccessToken。可在 console.volcengine.com/speech 的应用管理中获取。', 'Format: AppID:AccessToken. Get both from console.volcengine.com/speech → App Management')} t={t} />
+          <ApiKeyField icon={<Zap size={18} className="text-violet-400" />} label={t.dashscopeLabel || 'DashScope (STT + TTS)'} placeholder="sk-..." storageKey="lumi_dashscope_key" serverKey="DASHSCOPE_API_KEY" hint={t.dashscopeHint || ui('用于 Qwen ASR 和 CosyVoice TTS。可在 dashscope.aliyun.com 获取密钥。', 'Powers Qwen ASR and CosyVoice TTS. Get your key at dashscope.aliyun.com')} t={t} />
         </div>
         <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
           <div className="flex items-center justify-between">
@@ -897,6 +907,8 @@ function VoiceServicesPage({ t }: { t: any }) {
 }
 
 function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, serverKey, hint, t }: { icon: React.ReactNode, label: string, placeholder: string, disabled?: boolean, storageKey: string, serverKey?: string, hint?: string, t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [value, setValue] = useState(() => {
     try { return localStorage.getItem(storageKey) || ''; } catch { return ''; }
   });
@@ -919,14 +931,14 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys: { [serverKey]: '' } }),
       }).then(r => {
-        if (!r.ok) throw new Error('Remove failed');
+        if (!r.ok) throw new Error(ui('移除失败', 'Remove failed'));
         setServerConfigured(false);
         setValue('');
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
-      }).catch(() => toast.error(t?.failedToRemoveKey || 'Failed to remove key'));
+      }).catch(() => toast.error(t?.failedToRemoveKey || ui('密钥移除失败', 'Failed to remove key')));
     }
-    toast.success(t?.apiKeyRemoved || 'API key removed');
+    toast.success(t?.apiKeyRemoved || ui('API Key 已移除', 'API key removed'));
   };
 
   const handleSave = () => {
@@ -938,12 +950,12 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys: { [serverKey]: value.trim() } }),
       }).then(r => {
-        if (!r.ok) throw new Error('Save failed');
+        if (!r.ok) throw new Error(ui('保存失败', 'Save failed'));
         return r.json();
       }).then(() => setServerConfigured(true))
-        .catch(() => toast.error(t?.failedToSaveKey || 'Failed to save key to server'));
+        .catch(() => toast.error(t?.failedToSaveKey || ui('密钥保存到服务器失败', 'Failed to save key to server')));
     }
-    toast.success(t?.apiKeySaved || 'API key saved');
+    toast.success(t?.apiKeySaved || ui('API Key 已保存', 'API key saved'));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -953,7 +965,7 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
       <div className="flex items-center gap-2">
         <div className="p-2 bg-white/5 rounded-lg">{icon}</div>
         <label className="text-xs font-black uppercase tracking-widest text-white/50">{label}</label>
-        {serverConfigured && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">{t?.configured || 'CONFIGURED'}</span>}
+        {serverConfigured && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">{t?.configured || ui('已配置', 'CONFIGURED')}</span>}
         {saved && <CheckCircle size={14} className="text-green-400 ml-auto" />}
       </div>
       <div className="flex gap-2">
@@ -964,7 +976,7 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSave()}
-            placeholder={serverConfigured && !value ? (t?.keySavedOnServer || 'Key saved on server (type to replace)') : placeholder}
+            placeholder={serverConfigured && !value ? (t?.keySavedOnServer || ui('密钥已保存在服务器（输入可替换）', 'Key saved on server (type to replace)')) : placeholder}
             className="w-full bg-black/40 border border-white/10 rounded-xl p-4 pr-16 text-white font-mono text-sm outline-none focus:border-celestial-saturn/50 transition-colors disabled:opacity-50"
           />
           <button
@@ -973,7 +985,7 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
             disabled={disabled || (!value && !serverConfigured)}
             className="absolute right-2 top-2 h-10 px-3 bg-red-500/10 border border-red-500/20 rounded-lg text-[12px] font-bold uppercase tracking-tight text-red-400 hover:bg-red-500/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
           >
-            {t?.remove || 'Remove'}
+            {t?.remove || ui('移除', 'Remove')}
           </button>
         </div>
         <Button
@@ -981,7 +993,7 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
           disabled={disabled || !value.trim()}
           className="h-[56px] px-6 bg-celestial-saturn text-black rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed hover:bg-celestial-saturn/90 transition-all"
         >
-          {t?.save || 'Save'}
+          {t?.save || ui('保存', 'Save')}
         </Button>
       </div>
       {hint && <p className="text-[12px] text-white/45 leading-relaxed">{hint}</p>}
@@ -991,6 +1003,8 @@ function ApiKeyField({ icon, label, placeholder, disabled = false, storageKey, s
 
 
 function RelayProviderRow({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [apiKey, setApiKey] = useState(() => {
     try { return localStorage.getItem('lumi_relay_key') || ''; } catch { return ''; }
   });
@@ -1021,7 +1035,7 @@ function RelayProviderRow({ t }: { t?: any }) {
       body: JSON.stringify({ keys: { RELAY_API_KEY: apiKey.trim(), RELAY_BASE_URL: baseUrl.trim() } }),
     }).then(r => {
       if (r.ok) { setServerKeyOk(true); setServerUrlOk(true); }
-    }).catch(() => toast.error(t?.failedToSaveKey || 'Failed to save'));
+    }).catch(() => toast.error(t?.failedToSaveKey || ui('保存失败', 'Failed to save')));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1043,7 +1057,7 @@ function RelayProviderRow({ t }: { t?: any }) {
       <div className="flex items-center gap-2">
         <div className="p-2 bg-white/5 rounded-lg"><Globe size={18} className="text-cyan-400" /></div>
         <label className="text-xs font-black uppercase tracking-widest text-white/50">中转站 (API Relay)</label>
-        {(serverKeyOk || serverUrlOk) && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">CONFIGURED</span>}
+        {(serverKeyOk || serverUrlOk) && <span className="text-xs px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">{ui('已配置', 'CONFIGURED')}</span>}
         {saved && <CheckCircle size={14} className="text-green-400 ml-auto" />}
       </div>
       <div className="space-y-3">
@@ -1074,17 +1088,17 @@ function RelayProviderRow({ t }: { t?: any }) {
           disabled={!apiKey.trim() || !baseUrl.trim()}
           className="h-[48px] px-6 bg-cyan-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500 transition-all"
         >
-          {t?.save || 'Save'}
+          {t?.save || ui('保存', 'Save')}
         </Button>
         <Button
           onClick={handleRemove}
           disabled={!apiKey && !serverKeyOk && !serverUrlOk}
           className="h-[48px] px-4 bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-500/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
         >
-          {t?.remove || 'Remove'}
+          {t?.remove || ui('移除', 'Remove')}
         </Button>
       </div>
-      <p className="text-[12px] text-white/45 leading-relaxed">OpenAI-compatible API relay. Enter the base URL and API key of your proxy/relay service.</p>
+      <p className="text-[12px] text-white/45 leading-relaxed">{ui('兼容 OpenAI 的 API 中转服务。请输入代理/中转服务的 Base URL 和 API Key。', 'OpenAI-compatible API relay. Enter the base URL and API key of your proxy/relay service.')}</p>
     </div>
   );
 }
@@ -1137,6 +1151,8 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
   const [nativeRuntimeError, setNativeRuntimeError] = useState('');
   const [taskList, setTaskList] = useState<any[]>([]);
   const [tasksExpanded, setTasksExpanded] = useState(false);
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   useEffect(() => {
     fetch('/api/autonomy/gate_config')
@@ -1163,7 +1179,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       } catch (err: any) {
         if (!cancelled) {
           setNativeRuntime(null);
-          setNativeRuntimeError(err?.message || 'Native runtime controls are only available in the desktop client.');
+          setNativeRuntimeError(err?.message || ui('原生常驻运行控制仅在桌面客户端可用。', 'Native runtime controls are only available in the desktop client.'));
         }
       }
     };
@@ -1184,12 +1200,12 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
     })
       .then(async r => {
         const data = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(data?.error || 'Failed to update autonomy settings');
+        if (!r.ok) throw new Error(data?.error || ui('自主执行设置更新失败', 'Failed to update autonomy settings'));
         if (data) setGateConfig({ ...DEFAULT_AUTONOMY_GATE, ...data });
       })
       .catch((err: any) => {
         setGateConfig(gateConfig);
-        toast.error(err?.message || 'Failed to update autonomy settings');
+        toast.error(err?.message || ui('自主执行设置更新失败', 'Failed to update autonomy settings'));
       });
   };
 
@@ -1211,9 +1227,9 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
         await invoke('set_close_to_background', { enabled });
       }
       await refreshNativeRuntime();
-      toast.success(enabled ? 'Enabled' : 'Disabled');
+      toast.success(enabled ? ui('已开启', 'Enabled') : ui('已关闭', 'Disabled'));
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to update native runtime setting');
+      toast.error(err?.message || ui('原生运行设置更新失败', 'Failed to update native runtime setting'));
     }
   };
 
@@ -1222,7 +1238,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke(action === 'hide' ? 'hide_to_background' : 'quit_app');
     } catch (err: any) {
-      toast.error(err?.message || 'Runtime action failed');
+      toast.error(err?.message || ui('运行时操作失败', 'Runtime action failed'));
     }
   };
 
@@ -1269,8 +1285,8 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-widest text-white/60">Auto Execute Mode</div>
-            <p className="text-xs text-white/40 mt-1">Allow Lumi to handle multi-step work with tools, canvas, desktop control, and team agents.</p>
+            <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('自动执行模式', 'Auto Execute Mode')}</div>
+            <p className="text-xs text-white/40 mt-1">{ui('允许 Lumi 用工具、画布、桌面控制和团队智能体处理多步工作。', 'Allow Lumi to handle multi-step work with tools, canvas, desktop control, and team agents.')}</p>
           </div>
           <button
             onClick={() => setOperationMode(isAutonomous ? 'assistant' : 'autonomous')}
@@ -1282,7 +1298,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
         {isAutonomous && (
           <div className="flex items-center gap-2 text-xs text-cyan-400/70">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            Auto execute active — Lumi can turn complex tasks into visible canvas work
+            {ui('自动执行已开启：Lumi 可以把复杂任务拆成可见的画布工作路径。', 'Auto execute active: Lumi can turn complex tasks into visible canvas work.')}
           </div>
         )}
       </div>
@@ -1290,81 +1306,81 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       {/* Always Online */}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div>
-          <div className="text-xs font-black uppercase tracking-widest text-white/60">Always Online</div>
-          <p className="text-xs text-white/40 mt-1">Lumi can stay ready while the desktop client or background server is running. Automatic processing is controlled separately.</p>
+          <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('常驻在线', 'Always Online')}</div>
+          <p className="text-xs text-white/40 mt-1">{ui('桌面客户端或后台服务运行时，Lumi 可以保持待命。自动处理由下面的安全门单独控制。', 'Lumi can stay ready while the desktop client or background server is running. Automatic processing is controlled separately.')}</p>
         </div>
         <ToggleRow
-          label="Keep Lumi ready"
-          desc="Allows background scans, state relay, schedulers, and pending workflow checks while the app is online."
+          label={ui('保持 Lumi 待命', 'Keep Lumi ready')}
+          desc={ui('应用在线时允许后台扫描、状态中继、计划任务和待处理工作流检查。', 'Allows background scans, state relay, schedulers, and pending workflow checks while the app is online.')}
           checked={gateConfig.alwaysOnline}
           onClick={() => updateGate({ alwaysOnline: !gateConfig.alwaysOnline })}
         />
         <ToggleRow
-          label="Auto-process confirmed workflows"
-          desc="Lets Lumi execute queued background work only after the user has agreed to that workflow."
+          label={ui('自动处理已确认工作流', 'Auto-process confirmed workflows')}
+          desc={ui('只有用户已经同意该工作流后，Lumi 才会执行排队的后台工作。', 'Lets Lumi execute queued background work only after the user has agreed to that workflow.')}
           checked={gateConfig.autoProcessEnabled}
           onClick={() => updateGate({ autoProcessEnabled: !gateConfig.autoProcessEnabled })}
           danger
         />
         <ToggleRow
-          label="24-hour work window"
-          desc="When enabled, the safety gate permits automatic work at any hour; idle, budget, and confirmation gates still apply."
+          label={ui('24 小时工作窗口', '24-hour work window')}
+          desc={ui('开启后安全门允许任意时间自动工作；空闲、预算和确认限制仍然生效。', 'When enabled, the safety gate permits automatic work at any hour; idle, budget, and confirmation gates still apply.')}
           checked={isAllDay}
           onClick={() => updateGate({ allowedHours: isAllDay ? [{ start: 8, end: 22 }] : [{ start: 0, end: 24 }] })}
         />
         <div className="rounded-xl border border-white/8 bg-black/18 p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-bold text-white/72">Native resident runtime</div>
+              <div className="text-xs font-bold text-white/72">{ui('原生常驻运行', 'Native resident runtime')}</div>
               <div className="mt-1 text-[11px] leading-relaxed text-white/36">
-                Controls whether the installed desktop client starts with Windows and stays alive when the window is closed.
+                {ui('控制已安装的桌面客户端是否随 Windows 启动，以及关闭窗口后是否继续保持后台运行。', 'Controls whether the installed desktop client starts with Windows and stays alive when the window is closed.')}
               </div>
             </div>
             <button
-              onClick={() => refreshNativeRuntime().catch((err: any) => toast.error(err?.message || 'Runtime refresh failed'))}
+              onClick={() => refreshNativeRuntime().catch((err: any) => toast.error(err?.message || ui('运行时状态刷新失败', 'Runtime refresh failed')))}
               className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/45 hover:bg-white/[0.08] hover:text-white"
             >
-              Refresh
+              {ui('刷新', 'Refresh')}
             </button>
           </div>
           {nativeRuntime ? (
             <div className="space-y-2">
               <ToggleRow
-                label="Launch at login"
-                desc={nativeRuntime.autostart_supported ? 'Starts Lumi with --background for current Windows user installs.' : 'Launch at login is not supported on this platform yet.'}
+                label={ui('开机登录后启动', 'Launch at login')}
+                desc={nativeRuntime.autostart_supported ? ui('为当前 Windows 用户安装项以 --background 模式启动 Lumi。', 'Starts Lumi with --background for current Windows user installs.') : ui('当前平台暂不支持登录后启动。', 'Launch at login is not supported on this platform yet.')}
                 checked={nativeRuntime.autostart_enabled}
                 onClick={() => nativeRuntime.autostart_supported && updateNativeRuntime('autostart', !nativeRuntime.autostart_enabled)}
               />
               <ToggleRow
-                label="Close button hides to background"
-                desc="The top close button and Alt+F4 hide Lumi instead of stopping the backend. Use tray Quit to fully exit."
+                label={ui('关闭按钮转入后台', 'Close button hides to background')}
+                desc={ui('顶部关闭按钮和 Alt+F4 会隐藏 Lumi，而不是停止后端。需要完全退出时使用托盘退出。', 'The top close button and Alt+F4 hide Lumi instead of stopping the backend. Use tray Quit to fully exit.')}
                 checked={nativeRuntime.close_to_background}
                 onClick={() => updateNativeRuntime('closeToBackground', !nativeRuntime.close_to_background)}
               />
               <div className="grid grid-cols-2 gap-2 text-[11px] text-white/42">
-                <div className="rounded-lg bg-white/[0.03] px-3 py-2">Platform: {nativeRuntime.platform}</div>
-                <div className="rounded-lg bg-white/[0.03] px-3 py-2">Shortcut: {nativeRuntime.global_shortcut}</div>
-                <div className="rounded-lg bg-white/[0.03] px-3 py-2">Backend: {nativeRuntime.backend_node_running ? 'Running' : 'Dev / not spawned'}</div>
-                <div className="rounded-lg bg-white/[0.03] px-3 py-2">Restarts: {nativeRuntime.node_restarts}</div>
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">{ui('平台', 'Platform')}: {nativeRuntime.platform}</div>
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">{ui('快捷键', 'Shortcut')}: {nativeRuntime.global_shortcut}</div>
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">{ui('后端', 'Backend')}: {nativeRuntime.backend_node_running ? ui('运行中', 'Running') : ui('开发模式 / 未拉起', 'Dev / not spawned')}</div>
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2">{ui('重启次数', 'Restarts')}: {nativeRuntime.node_restarts}</div>
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   onClick={() => invokeRuntimeAction('hide')}
                   className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/50 hover:bg-white/[0.08] hover:text-white"
                 >
-                  Hide Now
+                  {ui('隐藏到后台', 'Hide Now')}
                 </button>
                 <button
                   onClick={() => invokeRuntimeAction('quit')}
                   className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200/70 hover:bg-red-400/15 hover:text-red-100"
                 >
-                  Quit Lumi
+                  {ui('退出 Lumi', 'Quit Lumi')}
                 </button>
               </div>
             </div>
           ) : (
             <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-xs text-white/38">
-              {nativeRuntimeError || 'Native runtime status is loading...'}
+              {nativeRuntimeError || ui('正在加载原生运行状态...', 'Native runtime status is loading...')}
             </div>
           )}
         </div>
@@ -1373,19 +1389,19 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       {/* External Apps */}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div>
-          <div className="text-xs font-black uppercase tracking-widest text-white/60">External Apps</div>
-          <p className="text-xs text-white/40 mt-1">Browser, WeChat, CAD, and other AI apps are routed through adapters before Lumi uses visual control.</p>
+          <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('外部应用', 'External Apps')}</div>
+          <p className="text-xs text-white/40 mt-1">{ui('浏览器、微信、CAD 和其他 AI 应用会先经过适配器路由，再由 Lumi 使用视觉控制。', 'Browser, WeChat, CAD, and other AI apps are routed through adapters before Lumi uses visual control.')}</p>
         </div>
         <ToggleRow
-          label="Allow external app automation"
-          desc="Required before Lumi opens or controls external apps through adapters. Keep off for draft-only behavior."
+          label={ui('允许外部应用自动化', 'Allow external app automation')}
+          desc={ui('Lumi 通过适配器打开或控制外部应用前需要开启。关闭时只生成草稿和文件。', 'Required before Lumi opens or controls external apps through adapters. Keep off for draft-only behavior.')}
           checked={gateConfig.externalAppAutomationEnabled}
           onClick={() => updateGate({ externalAppAutomationEnabled: !gateConfig.externalAppAutomationEnabled })}
           danger
         />
         <ToggleRow
-          label="Confirm before message sending"
-          desc="Lumi may prepare and copy message drafts, but sending should remain user-confirmed."
+          label={ui('发送消息前确认', 'Confirm before message sending')}
+          desc={ui('Lumi 可以准备并复制消息草稿，但最终发送仍需要用户确认。', 'Lumi may prepare and copy message drafts, but sending should remain user-confirmed.')}
           checked={gateConfig.messagingSendRequiresConfirmation}
           onClick={() => updateGate({ messagingSendRequiresConfirmation: !gateConfig.messagingSendRequiresConfirmation })}
         />
@@ -1393,10 +1409,10 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
 
       {/* Safety Gates */}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-        <div className="text-xs font-black uppercase tracking-widest text-white/60">Safety Gates</div>
+        <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('安全门', 'Safety Gates')}</div>
 
         <div className="flex items-center justify-between">
-          <span className="text-xs text-white/50">Require user idle</span>
+          <span className="text-xs text-white/50">{ui('要求用户空闲', 'Require user idle')}</span>
           <button
             onClick={() => updateGate({ requireIdle: !gateConfig.requireIdle })}
             className={`w-10 h-5 rounded-full transition-all ${gateConfig.requireIdle ? 'bg-cyan-500' : 'bg-white/10'}`}
@@ -1407,7 +1423,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-white/50">Min idle time: {gateConfig.minIdleSeconds}s</span>
+            <span className="text-xs text-white/50">{ui(`最短空闲时间：${gateConfig.minIdleSeconds} 秒`, `Min idle time: ${gateConfig.minIdleSeconds}s`)}</span>
           </div>
           <input
             type="range" min={30} max={600} step={30} value={gateConfig.minIdleSeconds}
@@ -1418,7 +1434,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-white/50">Max consecutive tasks: {gateConfig.maxConsecutiveTasks}</span>
+            <span className="text-xs text-white/50">{ui(`最大连续任务数：${gateConfig.maxConsecutiveTasks}`, `Max consecutive tasks: ${gateConfig.maxConsecutiveTasks}`)}</span>
           </div>
           <input
             type="range" min={1} max={10} step={1} value={gateConfig.maxConsecutiveTasks}
@@ -1429,7 +1445,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-white/50">Max tokens/hour: {gateConfig.maxTokensPerHour}</span>
+            <span className="text-xs text-white/50">{ui(`每小时最大 Token：${gateConfig.maxTokensPerHour}`, `Max tokens/hour: ${gateConfig.maxTokensPerHour}`)}</span>
           </div>
           <input
             type="range" min={500} max={10000} step={500} value={gateConfig.maxTokensPerHour}
@@ -1442,7 +1458,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       {/* Scheduler Tasks */}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <button onClick={() => setTasksExpanded(!tasksExpanded)} className="w-full flex items-center justify-between">
-          <div className="text-xs font-black uppercase tracking-widest text-white/60">Background Tasks</div>
+          <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('后台任务', 'Background Tasks')}</div>
           <ChevronDown size={14} className={`text-white/40 transition-transform ${tasksExpanded ? 'rotate-180' : ''}`} />
         </button>
 
@@ -1452,7 +1468,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
               <div key={task.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-white/[0.02]">
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold text-white/60 truncate">{task.id}</div>
-                  <div className="text-[11px] text-white/30">{task.cron} {task.lastRun ? `· Last: ${new Date(task.lastRun).toLocaleTimeString()}` : ''}</div>
+                  <div className="text-[11px] text-white/30">{task.cron} {task.lastRun ? ui(`· 上次：${new Date(task.lastRun).toLocaleTimeString()}`, `· Last: ${new Date(task.lastRun).toLocaleTimeString()}`) : ''}</div>
                 </div>
                 <button
                   onClick={() => toggleTask(task.id)}
@@ -1484,6 +1500,8 @@ function SettingsSection({ title, icon, children }: { title: string; icon: React
 }
 
 function SettingsItem({ label, desc, active = false, storageKey, onChange, t }: { label: string; desc: string; active?: boolean; storageKey?: string; onChange?: (v: boolean) => void; t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [isActive, setIsActive] = useState(() => {
     if (storageKey) {
       try { return localStorage.getItem(storageKey) === 'true'; } catch { return active; }
@@ -1498,7 +1516,7 @@ function SettingsItem({ label, desc, active = false, storageKey, onChange, t }: 
       localStorage.setItem(storageKey, String(next));
     }
     onChange?.(next);
-    toast.info(`${label}: ${next ? (t?.enabled || 'Enabled') : (t?.disabled || 'Disabled')}`);
+    toast.info(`${label}: ${next ? (t?.enabled || ui('已开启', 'Enabled')) : (t?.disabled || ui('已关闭', 'Disabled'))}`);
   };
 
   return (

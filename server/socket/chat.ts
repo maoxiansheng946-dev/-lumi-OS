@@ -10,7 +10,7 @@ import { LLMUsage } from "../tools/types";
 import { toolRegistry } from "../tools/registry";
 import { runWithTools } from "../llm/adapter";
 import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
-import { shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
+import { hasClientActionIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { formatClientSelfPrompt } from "../client/self_model";
 import { queryMemories, queryMemoriesVector, addMemory, addReminder, extractMemories } from "../memory";
 import { loadEmotionalState, saveEmotionalState, updateEmotionalState, updateEmotionalStateWithHIM, loadHIMState, saveHIMState, generateContextualGreeting, vectorMemoryBias } from "../personality/state";
@@ -316,10 +316,16 @@ export function registerChatHandler(
       // Inject operation mode prompt overlay
       const opModeConfig = getOperationModeConfig(operationMode);
       const allowToolUseForTurn = shouldAllowToolUseForTurn(text, source, operationMode);
+      const clientActionOnlyTurn = hasClientActionIntent(text) && (operationMode === 'chat' || operationMode === 'meeting' || operationMode === 'music');
+      const clientActionToolPolicy = clientActionOnlyTurn
+        ? { allowedTools: ['client_get_state', 'client_action'], requireConfirmation: [], forbiddenTools: [], maxIterations: 4 }
+        : null;
       const exposeAgentWork = shouldExposeAgentWork(text);
       effectiveSystemPrompt += '\n\n' + formatClientSelfPrompt(uid);
-      console.log('[ChatHandler] tool gate:', allowToolUseForTurn ? 'enabled' : 'chat-only', 'operationMode:', operationMode);
-      if (opModeConfig && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting')) {
+      console.log('[ChatHandler] tool gate:', allowToolUseForTurn ? 'enabled' : 'chat-only', 'operationMode:', operationMode, 'clientActionOnly:', clientActionOnlyTurn);
+      if (clientActionOnlyTurn) {
+        effectiveSystemPrompt += '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. For music requests, switch to music mode before opening the music center or mood layer. For meeting/autonomous mode, use the client action confirmation flow when required.';
+      } else if (opModeConfig && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting')) {
         effectiveSystemPrompt += '\n\n' + opModeConfig.promptOverlay;
       } else {
         effectiveSystemPrompt += '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';
@@ -544,6 +550,9 @@ export function registerChatHandler(
       // Path A2: Music intent — detect and handle BEFORE orchestrator (so LLM doesn't use desktop_open)
       if (!responseText && /放.*歌|放.*音乐|来首歌|播放|听.*歌|来点音乐|给我放|随便放点|我想听|搜.*歌|换.*歌|切.*歌/.test(text)) {
         try {
+          void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
+            console.warn('[Music Intent] Failed to sync music client mode:', err.message);
+          });
           const { searchAndPlay } = await import('../music/search_play');
           const result = await searchAndPlay(uid, socket, text);
           if (result.success && result.text) {
@@ -555,7 +564,7 @@ export function registerChatHandler(
         }
       }
 
-      if (!responseText && allowToolUseForTurn && !isSanctuary && (cognition.intent.category === 'command' || cognition.intent.category === 'code' || cognition.intent.category === 'question')) {
+      if (!responseText && allowToolUseForTurn && !clientActionOnlyTurn && !isSanctuary && (cognition.intent.category === 'command' || cognition.intent.category === 'code' || cognition.intent.category === 'question')) {
         // Path B: Orchestrator — decompose tasks into sub-tasks for worker agents
         // (Skipped for sanctuary agents — they stay in their territory)
         try {
@@ -592,7 +601,7 @@ export function registerChatHandler(
       const allToolRecords: { name: string; args: string; result?: string; error?: string }[] = [];
 
       // Path B2: NL Task Chainer — for office workflows that chain tools (search→read→create etc.)
-      if (!responseText && allowToolUseForTurn && shouldChainTask(text)) {
+      if (!responseText && allowToolUseForTurn && !clientActionOnlyTurn && shouldChainTask(text)) {
         // Pre-flight: auto-install any matching uninstalled/outdated skills
         await autoInstallForTask(text, { emit: (event, data) => socket.emit(event, data) });
 
@@ -740,9 +749,11 @@ export function registerChatHandler(
                 ? { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } }
                 : source === 'canvas'
                   ? { toolPolicy: { allowedTools: ['*'], requireConfirmation: ['file_delete', 'delete_file', 'rm', 'unlink', 'format', 'rmdir', 'uninstall'], forbiddenTools: [], maxIterations: 25 } }
+                  : clientActionToolPolicy
+                    ? { toolPolicy: clientActionToolPolicy }
                   : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
               ),
-              ...(operationMode === 'assistant' || operationMode === 'autonomous' ? {
+              ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn ? {
                 requestConfirmation: async (toolName: string, args: Record<string, any>): Promise<boolean> => {
                   return new Promise((resolve) => {
                     const cid = crypto.randomUUID();
@@ -845,7 +856,23 @@ export function registerChatHandler(
                       arguments: call.arguments,
                     });
                   },
-                  ...(opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {}),
+                  ...(clientActionToolPolicy
+                    ? { toolPolicy: clientActionToolPolicy }
+                    : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
+                  ),
+                  ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn ? {
+                    requestConfirmation: async (toolName: string, args: Record<string, any>): Promise<boolean> => {
+                      return new Promise((resolve) => {
+                        const cid = crypto.randomUUID();
+                        const timeout = setTimeout(() => resolve(false), 30000);
+                        socket.once(`tool:confirm_result:${cid}`, (data: { allowed: boolean }) => {
+                          clearTimeout(timeout);
+                          resolve(data.allowed === true);
+                        });
+                        socket.emit('agent:confirm_tool', { correlationId: cid, name: toolName, arguments: args });
+                      });
+                    }
+                  } : {}),
                 },
               );
               responseText = fallback.text || '';

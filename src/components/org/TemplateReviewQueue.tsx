@@ -18,6 +18,8 @@ interface ReviewTemplate {
 
 export function TemplateReviewQueue() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const socket = useSocket();
   const [queue, setQueue] = useState<ReviewTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +54,7 @@ export function TemplateReviewQueue() {
     try {
       const res = await fetch('/api/org/templates?status=pending_review', { credentials: 'include' });
       const data = await res.json().catch(() => []);
-      if (!res.ok) throw new Error(data.error || `Failed to load review queue (${res.status})`);
+      if (!res.ok) throw new Error(data.error || ui(`审核队列加载失败（${res.status}）`, `Failed to load review queue (${res.status})`));
       setQueue(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
@@ -82,7 +84,7 @@ export function TemplateReviewQueue() {
         });
         const publishData = await publishRes.json().catch(() => ({}));
         if (!publishRes.ok) {
-          throw new Error(publishData.error || `Approved, but publish failed (${publishRes.status})`);
+          throw new Error(publishData.error || ui(`已通过审核，但发布失败（${publishRes.status}）`, `Approved, but publish failed (${publishRes.status})`));
         }
       }
 
@@ -92,8 +94,8 @@ export function TemplateReviewQueue() {
       setFeedback({
         type: 'success',
         text: action === 'approve'
-          ? (t.templateApprovedPublished || 'Template approved and published to Marketplace')
-          : (t.templateRejected || 'Template rejected'),
+          ? (t.templateApprovedPublished || ui('模板已通过并发布到市场', 'Template approved and published to Marketplace'))
+          : (t.templateRejected || ui('模板已拒绝', 'Template rejected')),
       });
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
@@ -105,9 +107,9 @@ export function TemplateReviewQueue() {
       <div>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <ClipboardCheck size={24} className="text-amber-400" />
-          {t.templateReviewQueue || 'Template Review Queue'}
+          {t.templateReviewQueue || ui('模板审核队列', 'Template Review Queue')}
         </h2>
-        <p className="text-white/40 text-sm">{queue.length} {t.templatesPendingReview || 'template(s) pending review'}</p>
+        <p className="text-white/40 text-sm">{ui(`${queue.length} 个模板等待审核`, `${queue.length} ${t.templatesPendingReview || 'template(s) pending review'}`)}</p>
       </div>
 
       {feedback && (
@@ -126,7 +128,7 @@ export function TemplateReviewQueue() {
       ) : queue.length === 0 ? (
         <div className="text-center py-12 text-white/55">
           <CheckCircle size={32} className="mx-auto mb-2 text-green-400/50" />
-          {t.allTemplatesReviewed || 'All templates have been reviewed!'}
+          {t.allTemplatesReviewed || ui('所有模板都已审核完成', 'All templates have been reviewed!')}
         </div>
       ) : (
         <div className="space-y-3">
@@ -146,7 +148,7 @@ export function TemplateReviewQueue() {
                   <div className="flex items-center gap-2 mt-2">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">{template.category}</span>
                     <span className="text-xs text-white/55">v{template.version}</span>
-                    <span className="text-xs text-white/45">{new Date(template.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-white/45">{new Date(template.createdAt).toLocaleDateString(isZh ? 'zh-CN' : undefined)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 ml-4">
@@ -155,7 +157,7 @@ export function TemplateReviewQueue() {
                       <input
                         value={comment}
                         onChange={e => setComment(e.target.value)}
-                        placeholder={t.reviewComment || 'Review comment...'}
+                        placeholder={t.reviewComment || ui('审核备注...', 'Review comment...')}
                         className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder:text-white/45 focus:outline-none"
                       />
                       <Button
@@ -164,14 +166,14 @@ export function TemplateReviewQueue() {
                         className="bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg px-3 py-1.5 flex items-center gap-1"
                       >
                         {actionLoading === template.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
-                        {t.approveAndPublish || 'Approve & Publish'}
+                        {t.approveAndPublish || ui('通过并发布', 'Approve & Publish')}
                       </Button>
                       <Button
                         onClick={() => handleAction(template.id, 'reject')}
                         disabled={actionLoading === template.id || !comment.trim()}
                         className="bg-red-600 hover:bg-red-500 text-white text-xs rounded-lg px-3 py-1.5 flex items-center gap-1"
                       >
-                        <XCircle size={12} /> {t.reject || 'Reject'}
+                        <XCircle size={12} /> {t.reject || ui('拒绝', 'Reject')}
                       </Button>
                     </>
                   ) : (
@@ -179,7 +181,7 @@ export function TemplateReviewQueue() {
                       onClick={() => setSelected(template)}
                       className="bg-white/10 hover:bg-white/20 text-white/70 text-xs rounded-lg flex items-center gap-1"
                     >
-                      <Eye size={12} /> {t.review || 'Review'}
+                      <Eye size={12} /> {t.review || ui('审核', 'Review')}
                     </Button>
                   )}
                 </div>

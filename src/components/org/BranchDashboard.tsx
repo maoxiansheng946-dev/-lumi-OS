@@ -18,6 +18,8 @@ interface DashboardStats {
 
 export function BranchDashboard() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const { orgConnection } = useApp();
   const [stats, setStats] = useState<DashboardStats>({
     memberCount: 0,
@@ -55,7 +57,7 @@ export function BranchDashboard() {
         memberCount: Array.isArray(membersRes) ? membersRes.length : 0,
         kbArticleCount: Array.isArray(kbRes) ? kbRes.length : 0,
         templateCount: Array.isArray(templatesRes) ? templatesRes.length : 0,
-        recentActivity: 'Connected',
+        recentActivity: ui('已连接', 'Connected'),
         syncStatus: status.connected ? 'connected' : 'offline',
         lastSync: new Date().toISOString(),
       });
@@ -79,9 +81,9 @@ export function BranchDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Building2 size={28} className="text-blue-400" />
-            Organization Dashboard
+            {ui('组织仪表盘', 'Organization Dashboard')}
           </h1>
-          <p className="text-white/40 text-sm mt-1">Your work domain overview</p>
+          <p className="text-white/40 text-sm mt-1">{ui('你的工作域概览', 'Your work domain overview')}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`flex items-center gap-1 text-xs px-3 py-1 rounded-full ${
@@ -129,29 +131,29 @@ export function BranchDashboard() {
       <div className="grid grid-cols-2 gap-4">
         <QuickAction
           icon={<BookOpen size={18} />}
-          label="Browse Knowledge Base"
-          desc="Search company policies, SOPs, and documentation"
+          label={ui('浏览知识库', 'Browse Knowledge Base')}
+          desc={ui('搜索公司制度、SOP 和文档', 'Search company policies, SOPs, and documentation')}
           color="blue"
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb' } }))}
         />
         <QuickAction
           icon={<Package size={18} />}
-          label="Template Marketplace"
-          desc="Discover agent templates from your team"
+          label={ui('模板市场', 'Template Marketplace')}
+          desc={ui('发现团队共享的智能体模板', 'Discover agent templates from your team')}
           color="purple"
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'templates' } }))}
         />
         <QuickAction
           icon={<Activity size={18} />}
-          label="Talk to Company Lumi"
-          desc="Ask about culture, policies, and organizational knowledge"
+          label={ui('和公司 Lumi 对话', 'Talk to Company Lumi')}
+          desc={ui('询问文化、制度和组织知识', 'Ask about culture, policies, and organizational knowledge')}
           color="green"
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'chat' } }))}
         />
         <QuickAction
           icon={<Users size={18} />}
-          label="Team Directory"
-          desc="View members and departments"
+          label={ui('团队目录', 'Team Directory')}
+          desc={ui('查看成员和部门', 'View members and departments')}
           color="amber"
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'members' } }))}
         />
@@ -160,7 +162,7 @@ export function BranchDashboard() {
       {stats.lastSync && (
         <div className="flex items-center gap-2 text-white/45 text-xs">
           <Clock size={12} />
-          <span>Last synced: {new Date(stats.lastSync).toLocaleString()}</span>
+          <span>{ui(`最近同步：${new Date(stats.lastSync).toLocaleString('zh-CN')}`, `Last synced: ${new Date(stats.lastSync).toLocaleString()}`)}</span>
         </div>
       )}
     </div>
