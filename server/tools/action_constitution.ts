@@ -43,6 +43,11 @@ export function evaluateActionConstitution(
   const domain = classifyAction(toolName, args);
   const argText = JSON.stringify(args || {});
 
+  const sensitiveClientAction = getSensitiveClientAction(args);
+  if (toolName === 'client_action' && sensitiveClientAction) {
+    return confirm('desktop_control', `Sensitive client action "${sensitiveClientAction}" requires user confirmation`);
+  }
+
   if (domain === 'destructive' || DESTRUCTIVE_ARG_PATTERN.test(argText)) {
     return {
       level: 'forbidden',
@@ -95,6 +100,7 @@ export function classifyAction(toolName: string, args: Record<string, any> = {})
   const name = toolName.toLowerCase();
   const argText = JSON.stringify(args || {}).toLowerCase();
 
+  if (name === 'client_action') return getSensitiveClientAction(args) ? 'desktop_control' : 'observe';
   if (DESTRUCTIVE_ARG_PATTERN.test(argText) || /\b(delete|remove|wipe|format|kill|shutdown|reboot)\b/.test(name)) return 'destructive';
   if (name.includes('wechat') || name.includes('feishu') || name.includes('wecom') || name.includes('message')) return 'messaging';
   if (name === 'computer_use' || name.startsWith('desktop_') || name.includes('mouse') || name.includes('keyboard') || name.includes('screenshot')) return 'desktop_control';
@@ -113,4 +119,15 @@ function confirm(domain: ActionDomain, reason: string): ActionConstitutionDecisi
     reason,
     requiresUserConfirmation: true,
   };
+}
+
+function getSensitiveClientAction(args: Record<string, any> = {}): string {
+  const action = String(args.action || '').trim();
+  const mode = String(args.mode || '').trim();
+  if (!action) return '';
+  if (action === 'start_meeting_mode' || action === 'end_meeting_mode' || action === 'set_wallpaper_mode') return action;
+  if ((action === 'set_mode' || action === 'set_client_mode') && (mode === 'meeting' || mode === 'autonomous')) {
+    return `${action}:${mode}`;
+  }
+  return '';
 }

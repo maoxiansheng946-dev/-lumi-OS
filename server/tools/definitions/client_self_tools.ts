@@ -97,6 +97,7 @@ export function registerClientSelfTools(registry: ToolRegistry): void {
       if (!context?.desktopRelay) {
         throw new Error('Client actions require the Lumi desktop client relay.');
       }
+      const userConfirmed = Boolean(context.userConfirmed || args.confirmed);
       return context.desktopRelay('client_action', {
         action: args.action,
         target: args.target || '',
@@ -104,7 +105,7 @@ export function registerClientSelfTools(registry: ToolRegistry): void {
         task: args.task || '',
         enabled: Boolean(args.enabled),
         section: args.section || '',
-        confirmed: Boolean(args.confirmed),
+        confirmed: userConfirmed,
       });
     },
     permission: 'user',

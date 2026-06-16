@@ -137,12 +137,15 @@ export class ToolRegistry {
       throw new Error(`Tool "${name}" is forbidden: ${constitutional.reason}.`);
     }
 
+    let userConfirmed = false;
+
     if (constitutional.level === 'confirm') {
       if (context?.requestConfirmation) {
         const allowed = await context.requestConfirmation(name, args);
         if (!allowed) {
           return `Tool "${name}" execution was declined by the user.`;
         }
+        userConfirmed = true;
       } else if (effective.level === 'safe' && constitutional.requiresUserConfirmation) {
         throw new Error(`Tool "${name}" requires user confirmation: ${constitutional.reason}.`);
       }
@@ -155,6 +158,7 @@ export class ToolRegistry {
     const executionContext = context
       ? {
           ...context,
+          userConfirmed: context.userConfirmed === true || userConfirmed,
           isCancelled: () => timedOut || context.isCancelled?.() === true,
         }
       : context;

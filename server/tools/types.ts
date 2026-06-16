@@ -11,6 +11,8 @@ export interface ToolContext {
   desktopRelay?: (toolName: string, args: Record<string, any>) => Promise<string>;
   /** Called when a tool requires confirmation. Returns true to proceed, false to abort. */
   requestConfirmation?: (toolName: string, args: Record<string, any>) => Promise<boolean>;
+  /** True only after the registry's confirmation callback approved this tool call. */
+  userConfirmed?: boolean;
   /** Personality's tool policy for security level resolution */
   toolPolicy?: import('../personality/types').ToolPolicy;
   /** Returns true if the task has been cancelled — checked between tool iterations */

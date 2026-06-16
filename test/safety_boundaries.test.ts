@@ -74,4 +74,41 @@ describe('Action Constitution', () => {
 
     await expect(registry.execute('write_file', { path: 'x.txt' })).rejects.toThrow(/requires user confirmation/);
   });
+
+  it('does not trust model-provided confirmation for sensitive client actions', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'client_action',
+      description: 'Client action',
+      parameters: {},
+      permission: 'user',
+      securityLevel: 'safe',
+      handler: async () => 'opened',
+    });
+
+    await expect(registry.execute('client_action', {
+      action: 'start_meeting_mode',
+      confirmed: true,
+    })).rejects.toThrow(/requires user confirmation/);
+  });
+
+  it('passes real registry confirmation to confirmed tools', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'client_action',
+      description: 'Client action',
+      parameters: {},
+      permission: 'user',
+      securityLevel: 'safe',
+      handler: async (_args, context) => context?.userConfirmed ? 'confirmed' : 'unconfirmed',
+    });
+
+    await expect(registry.execute('client_action', {
+      action: 'set_wallpaper_mode',
+      enabled: true,
+      confirmed: false,
+    }, {
+      requestConfirmation: async () => true,
+    })).resolves.toBe('confirmed');
+  });
 });

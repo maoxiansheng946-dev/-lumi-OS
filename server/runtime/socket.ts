@@ -18,6 +18,7 @@ import { deviceRegistry } from "../devices";
 import { personalityRegistry } from "../personality";
 import { setOnAgentPromoted } from "../agents/orchestrator";
 import { initMemorySync, initMemoryAssociations } from "../memory";
+import { handleAutonomousDesktopResult } from "../autonomy/task_executor";
 
 interface SocketContext {
   io: Server;
@@ -78,6 +79,10 @@ export function initSocketRuntime({ io, jwtSecret, llm }: SocketContext) {
 
     // DEBUG: log all incoming events
     socket.onAny((event, ...args) => {
+      if (event.startsWith('tool:desktop_result:')) {
+        const correlationId = event.slice('tool:desktop_result:'.length);
+        handleAutonomousDesktopResult(correlationId, args[0] || {});
+      }
       if (event !== 'device:register') {
         console.log(`[Socket:${socket.id}] event: ${event} args:`, JSON.stringify(args).slice(0, 200));
       }

@@ -39,16 +39,38 @@ const ALLOWED_DESKTOP_TOOLS = [
   'desktop_system_info',
   'desktop_list_files',
   'desktop_open',
-  'desktop_capture_screen',
+  'capture_screen',
   'get_active_window_info',
   'get_running_processes',
   'read_clipboard',
   'mouse_move',
   'mouse_click',
+  'mouse_drag',
   'keyboard_type',
   'keyboard_press',
   'ocr_screen',
+  'ocr_region',
 ];
+
+const pendingDesktopResults = new Map<string, {
+  resolve: (output: string) => void;
+  reject: (err: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
+
+export function handleAutonomousDesktopResult(
+  correlationId: string,
+  data: { output?: string; error?: string },
+): boolean {
+  const pending = pendingDesktopResults.get(correlationId);
+  if (!pending) return false;
+
+  pendingDesktopResults.delete(correlationId);
+  clearTimeout(pending.timeout);
+  if (data?.error) pending.reject(new Error(data.error));
+  else pending.resolve(data?.output || '');
+  return true;
+}
 
 function isDesktopTool(name: string): boolean {
   return /^(desktop_|mouse_|keyboard_|computer_|get_|capture_|read_|ocr_)/.test(name);
@@ -100,19 +122,13 @@ export async function executeNextAutonomousTask(
       }
       return new Promise((resolve, reject) => {
         const cid = `autonomous_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const timeout = setTimeout(() => reject(new Error(`Desktop tool "${toolName}" timed out (30s)`)), 30000);
+        const timeout = setTimeout(() => {
+          pendingDesktopResults.delete(cid);
+          reject(new Error(`Desktop tool "${toolName}" timed out (30s)`));
+        }, 30000);
 
-        // Listen for result from any client
-        const handler = (data: { correlationId: string; output?: string; error?: string }) => {
-          if (data.correlationId !== cid) return;
-          io.off('tool:desktop_result', handler);
-          clearTimeout(timeout);
-          if (data.error) reject(new Error(data.error));
-          else resolve(data.output || '');
-        };
-
-        io.on('tool:desktop_result', handler);
-        io.emit('tool:desktop_exec', { correlationId: cid, name: toolName, arguments: args });
+        pendingDesktopResults.set(cid, { resolve, reject, timeout });
+        io.to(`user:${task.userId}`).emit('tool:desktop_exec', { correlationId: cid, name: toolName, arguments: args });
       });
     };
 
@@ -124,6 +140,8 @@ export async function executeNextAutonomousTask(
       requestConfirmation: async () => true, // Auto-approve in autonomous mode
       toolPolicy: AUTONOMOUS_POLICY,
       isCancelled: () => cancelled,
+      autonomous: true,
+      source: 'autonomous',
     };
 
     const messages = [
