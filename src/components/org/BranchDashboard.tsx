@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Building2, Users, BookOpen, Package, Activity,
-  Clock, Wifi, WifiOff, RefreshCw, ArrowRight,
+  Clock, Wifi, WifiOff, RefreshCw, ArrowRight, AlertTriangle,
 } from 'lucide-react';
 import { useT } from '../../lib/useT';
 import { useApp } from '../../contexts/AppContext';
@@ -30,28 +30,44 @@ export function BranchDashboard() {
     lastSync: null,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadStats();
   }, []);
 
   const loadStats = async () => {
+    setLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/org/status', { credentials: 'include' });
-      if (!res.ok) return;
-      const status = await res.json();
+      const status = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(status.error || ui('组织状态加载失败', 'Failed to load organization status'));
       let orgId = orgConnection?.orgId || status.orgId || '';
       if (!orgId) {
-        const orgs = await fetch('/api/org/org', { credentials: 'include' }).then(r => r.ok ? r.json() : []);
+        const orgs = await fetch('/api/org/org', { credentials: 'include' }).then(async r => r.ok ? r.json() : []);
         orgId = Array.isArray(orgs) ? (orgs[0]?.id || orgs[0]?.orgId || '') : '';
       }
 
+      const readArray = async (url: string) => {
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `${url} failed (${response.status})`);
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data.articles)) return data.articles;
+        if (Array.isArray(data.templates)) return data.templates;
+        if (Array.isArray(data.members)) return data.members;
+        return [];
+      };
+
       // Load org-specific stats
+      const statErrors: string[] = [];
       const [membersRes, kbRes, templatesRes] = await Promise.all([
-        orgId ? fetch(`/api/org/org/${orgId}/members`, { credentials: 'include' }).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-        fetch('/api/org/kb/articles?status=published', { credentials: 'include' }).then(r => r.json()),
-        fetch('/api/org/templates?status=published', { credentials: 'include' }).then(r => r.json()),
+        orgId ? readArray(`/api/org/org/${orgId}/members`).catch(err => { statErrors.push(err.message); return []; }) : Promise.resolve([]),
+        readArray('/api/org/kb/articles?status=published').catch(err => { statErrors.push(err.message); return []; }),
+        readArray('/api/org/templates?status=published').catch(err => { statErrors.push(err.message); return []; }),
       ]);
+      if (statErrors.length > 0) setError(ui('部分组织统计加载失败，请刷新重试。', 'Some organization stats failed to load. Try refreshing.'));
 
       setStats({
         memberCount: Array.isArray(membersRes) ? membersRes.length : 0,
@@ -61,7 +77,8 @@ export function BranchDashboard() {
         syncStatus: status.connected ? 'connected' : 'offline',
         lastSync: new Date().toISOString(),
       });
-    } catch {
+    } catch (err: any) {
+      setError(err?.message || ui('组织仪表盘加载失败', 'Failed to load organization dashboard'));
       setStats(s => ({ ...s, syncStatus: 'offline' }));
     } finally {
       setLoading(false);
@@ -100,6 +117,13 @@ export function BranchDashboard() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-500/8 px-3 py-2 text-xs text-amber-100/75">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-300" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Stats cards */}
       {loading ? (
