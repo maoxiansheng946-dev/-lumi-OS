@@ -16,6 +16,8 @@ interface TraceResult {
 
 export function LegalAssetTrace() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [name, setName] = useState('');
   const [result, setResult] = useState<TraceResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,8 +37,9 @@ export function LegalAssetTrace() {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      const text = data.text || data.response || data.reply || data.message || data.error || '';
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('财产线索追踪失败', 'Asset trace failed'));
+      const text = data.text || data.response || data.reply || data.message || '';
 
       const traceResult: TraceResult = { raw: text };
 
@@ -75,7 +78,7 @@ export function LegalAssetTrace() {
 
       setResult(traceResult);
     } catch (e: any) {
-      setResult({ raw: 'Error: ' + e.message });
+      setResult({ raw: ui('错误：', 'Error: ') + e.message });
     } finally {
       setLoading(false);
     }

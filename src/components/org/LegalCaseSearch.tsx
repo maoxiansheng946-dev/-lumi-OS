@@ -14,6 +14,8 @@ interface CaseResult {
 
 export function LegalCaseSearch() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CaseResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,8 +37,9 @@ export function LegalCaseSearch() {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      const text = data.text || data.response || data.reply || data.message || data.error || '';
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('类案检索失败', 'Case search failed'));
+      const text = data.text || data.response || data.reply || data.message || '';
 
       // Parse structured results from LLM output
       const lines = text.split('\n');
@@ -63,7 +66,7 @@ export function LegalCaseSearch() {
         setResults([{ articleId: 'raw', title: t.legalCaseSearchResults, chunk: text, score: 0 }]);
       }
     } catch (e: any) {
-      setResults([{ articleId: 'error', title: 'Error', chunk: e.message, score: 0 }]);
+      setResults([{ articleId: 'error', title: ui('检索失败', 'Error'), chunk: e.message, score: 0 }]);
     } finally {
       setLoading(false);
     }

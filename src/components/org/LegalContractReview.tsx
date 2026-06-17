@@ -12,6 +12,8 @@ interface RiskItem {
 
 export function LegalContractReview() {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [contract, setContract] = useState('');
   const [result, setResult] = useState('');
   const [risks, setRisks] = useState<RiskItem[]>([]);
@@ -43,12 +45,13 @@ export function LegalContractReview() {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      const text = data.text || data.response || data.reply || data.message || data.error || '';
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('合同审查失败', 'Contract review failed'));
+      const text = data.text || data.response || data.reply || data.message || '';
       setResult(text);
       setRisks(parseRisks(text));
     } catch (e: any) {
-      setResult('Error: ' + e.message);
+      setResult(ui('错误：', 'Error: ') + e.message);
     } finally {
       setLoading(false);
     }

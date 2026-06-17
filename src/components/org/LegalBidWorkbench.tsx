@@ -37,10 +37,11 @@ export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchVie
         body: JSON.stringify({ message: msg, stream: false }),
         credentials: 'include',
       });
-      const data = await res.json();
-      setResult(data.text || data.response || data.reply || data.message || data.error || JSON.stringify(data));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('标书生成失败', 'Bid generation failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
     } catch (e: any) {
-      setResult(`Error: ${e.message}`);
+      setResult(`${ui('错误', 'Error')}: ${e.message}`);
     } finally {
       setLoading(false);
     }
