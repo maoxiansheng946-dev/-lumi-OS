@@ -227,7 +227,7 @@ function sanitizeFileName(name: string): string {
 function isParseableAttachment(fileName: string, attachmentType: string): boolean {
   const ext = path.extname(fileName).toLowerCase();
   if (attachmentType === 'image' || attachmentType === 'audio' || attachmentType === 'media') return false;
-  return ['.pdf', '.docx', '.doc', '.txt', '.md'].includes(ext);
+  return ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md'].includes(ext);
 }
 
 function getRequestText(msg: IncomingMessage): string {

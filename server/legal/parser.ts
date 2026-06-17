@@ -55,11 +55,36 @@ export function parseText(filePath: string): string {
   return fs.readFileSync(filePath, 'utf-8');
 }
 
+export async function parseSpreadsheet(filePath: string): Promise<string | null> {
+  try {
+    const mod = await import('xlsx');
+    const XLSX = (mod as any).default || mod;
+    const workbook = XLSX.readFile(filePath, { cellDates: true });
+    const sections = workbook.SheetNames.map((sheetName: string) => {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+      return [`# Sheet: ${sheetName}`, csv].filter(Boolean).join('\n');
+    }).filter((section: string) => section.trim().length > 0);
+    return sections.join('\n\n');
+  } catch {
+    return null;
+  }
+}
+
 // ── Unified parse ───────────────────────────────────────────────────────
 
 export async function parseDocument(filePath: string): Promise<{ text: string; format: string } | null> {
   const ext = filePath.split('.').pop()?.toLowerCase();
-  const mimeMap: Record<string, string> = { pdf: 'pdf', docx: 'docx', doc: 'docx', txt: 'text', md: 'text' };
+  const mimeMap: Record<string, string> = {
+    pdf: 'pdf',
+    docx: 'docx',
+    doc: 'docx',
+    xlsx: 'spreadsheet',
+    xls: 'spreadsheet',
+    csv: 'csv',
+    txt: 'text',
+    md: 'text',
+  };
   const format = mimeMap[ext || ''] || 'text';
 
   try {
@@ -70,6 +95,13 @@ export async function parseDocument(filePath: string): Promise<{ text: string; f
     if (format === 'docx') {
       const text = await parseDocx(filePath);
       return text ? { text, format } : null;
+    }
+    if (format === 'spreadsheet') {
+      const text = await parseSpreadsheet(filePath);
+      return text ? { text, format } : null;
+    }
+    if (format === 'csv') {
+      return { text: parseText(filePath), format };
     }
     return { text: parseText(filePath), format: 'text' };
   } catch {
