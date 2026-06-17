@@ -403,6 +403,8 @@ function LegalCaseWorkspace({
 }) {
   const [noticeText, setNoticeText] = useState('');
   const [noticeStatus, setNoticeStatus] = useState('');
+  const [documentStatus, setDocumentStatus] = useState('');
+  const [documentLoading, setDocumentLoading] = useState<'engagement' | ''>('');
   const [selectedMaterialId, setSelectedMaterialId] = useState('');
   const [caseFilter, setCaseFilter] = useState('');
 
@@ -478,6 +480,45 @@ function LegalCaseWorkspace({
     onUpdateCase(activeCase.id, patch);
     onAddMaterial('note', ui('开庭通知/短信', 'Hearing notice/SMS'), noticeText, 'notice');
     setNoticeStatus(ui('已提取通知信息，请复核案号、法院和日期。', 'Notice extracted. Review case number, court, and date.'));
+  };
+
+  const generateEngagementLetter = async () => {
+    if (!activeCase || documentLoading) return;
+    setDocumentLoading('engagement');
+    setDocumentStatus('');
+    const caseProfile = [
+      activeCase.title && `案件名称：${activeCase.title}`,
+      activeCase.caseNumber && `案号：${activeCase.caseNumber}`,
+      activeCase.party && `当事人：${activeCase.party}`,
+      activeCase.cause && `案由：${activeCase.cause}`,
+      activeCase.court && `法院：${activeCase.court}`,
+      activeCase.judge && `承办法官：${activeCase.judge}`,
+      activeCase.stage && `阶段：${stageLabels[activeCase.stage] || activeCase.stage}`,
+      activeCase.notes && `事实摘要/待补材料：\n${activeCase.notes}`,
+      (activeCase.materials || []).length > 0 && `已归档材料：\n${(activeCase.materials || []).slice(0, 8).map(item => `- ${item.title}（${item.type}）`).join('\n')}`,
+    ].filter(Boolean).join('\n');
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          message: `请基于下面案件档案生成一份律师委托/代理手续草稿，供律师复核后使用。\n\n要求：\n1. 使用正式法律文书结构，保留需要人工补充的字段并标注【待填写】。\n2. 不要声称已经完成正式签署或出具最终法律意见。\n3. 输出包含：委托事项、授权范围、费用/风险提示占位、双方信息、签署栏、附件清单。\n4. 如案件信息不足，仍生成可编辑草稿，并列出待补信息。\n\n## 案件档案\n${caseProfile || '当前案件档案信息较少，请生成通用委托书草稿。'}`,
+          stream: false,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('委托书草稿生成失败', 'Failed to draft engagement letter'));
+      const draft = data.text || data.response || data.reply || data.message || '';
+      if (!draft.trim()) throw new Error(ui('委托书草稿为空', 'Engagement letter draft is empty'));
+      onAddMaterial('pleading', ui('委托书草稿', 'Engagement letter draft'), draft, 'tool');
+      setDocumentStatus(ui('委托书草稿已生成并归档到当前案件材料。', 'Engagement letter draft generated and archived to current case materials.'));
+    } catch (err: any) {
+      setDocumentStatus(err?.message || ui('委托书草稿生成失败', 'Failed to draft engagement letter'));
+    } finally {
+      setDocumentLoading('');
+    }
   };
 
   if (!activeCase) {
@@ -685,10 +726,20 @@ function LegalCaseWorkspace({
                 <h3 className="text-sm font-bold">{ui('材料与文书', 'Materials and Documents')}</h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => { onAddMaterial('pleading', ui('委托书草稿', 'Engagement letter draft')); onSetView('strategy'); }} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]">
-                  {ui('生成委托书入口', 'Engagement letter')}
+                <button
+                  onClick={generateEngagementLetter}
+                  disabled={documentLoading === 'engagement'}
+                  className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12] disabled:opacity-45"
+                >
+                  {documentLoading === 'engagement' ? ui('生成中...', 'Drafting...') : ui('生成委托书', 'Engagement letter')}
                 </button>
-                <button onClick={() => { onAddMaterial('pleading', ui('庭审笔录草稿', 'Trial transcript draft')); onStartConsultation(); }} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]">
+                <button
+                  onClick={() => {
+                    setDocumentStatus(ui('已启动庭审/会谈转写，结束后会把纪要归档到当前案件。', 'Trial/consultation transcription started; notes will archive to this case when finished.'));
+                    onStartConsultation();
+                  }}
+                  className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]"
+                >
                   {ui('庭审笔录', 'Trial notes')}
                 </button>
                 <button onClick={() => onSetView('contract-review')} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]">
@@ -698,6 +749,15 @@ function LegalCaseWorkspace({
                   {ui('财产线索', 'Asset trace')}
                 </button>
               </div>
+              {documentStatus && (
+                <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                  /失败|错误|empty|failed|Error/i.test(documentStatus)
+                    ? 'border-red-400/20 bg-red-500/8 text-red-200/80'
+                    : 'border-emerald-400/18 bg-emerald-500/8 text-emerald-200/78'
+                }`}>
+                  {documentStatus}
+                </div>
+              )}
               <div className="mt-4 space-y-2">
                 {(activeCase.materials || []).length === 0 ? (
                   <p className="text-sm text-white/28">{ui('暂无归档材料。会谈、短信、文书草稿会出现在这里。', 'No materials yet. Consultations, notices, and drafts appear here.')}</p>
