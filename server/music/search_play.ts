@@ -13,41 +13,41 @@ import { getNeteaseLyricText, searchNeteaseSongs } from './netease_public';
 export type MusicPlayResult = { success: boolean; text?: string; reason?: string };
 
 const moodSearchMap: Record<string, string> = {
-  happy: '\u6b22\u5feb \u6d41\u884c',
-  playful: '\u8f7b\u677e \u6cbb\u6108',
-  warm: '\u6e29\u6696 \u6c11\u8c23',
-  sad: '\u4f24\u611f \u5b89\u9759',
-  melancholic: '\u6000\u65e7 \u8001\u6b4c',
-  tired: '\u8f7b\u97f3\u4e50 \u7eaf\u97f3\u4e50',
-  curious: '\u65b0\u6b4c \u63a8\u8350',
-  focused: '\u4e13\u6ce8 \u7eaf\u97f3\u4e50',
-  contemplative: '\u5b89\u9759 \u94a2\u7434',
-  excited: '\u70ed\u6b4c \u55e8',
-  peaceful: '\u6cbb\u6108 \u8f7b\u677e',
+  happy: '欢快 流行',
+  playful: '轻松 治愈',
+  warm: '温暖 民谣',
+  sad: '伤感 安静',
+  melancholic: '怀旧 老歌',
+  tired: '轻音乐 纯音乐',
+  curious: '新歌 推荐',
+  focused: '专注 纯音乐',
+  contemplative: '安静 钢琴',
+  excited: '热歌 嗨',
+  peaceful: '治愈 轻松',
 };
 
 const moodReasonMap: Record<string, string> = {
-  tired: '\u611f\u89c9\u4f60\u6709\u70b9\u7d2f\u4e86',
-  sad: '\u611f\u89c9\u4f60\u5fc3\u60c5\u4e0d\u592a\u597d',
-  happy: '\u611f\u89c9\u4f60\u4eca\u5929\u5fc3\u60c5\u4e0d\u9519',
-  excited: '\u611f\u89c9\u4f60\u5f88\u5174\u594b',
-  peaceful: '\u73b0\u5728\u633a\u5b89\u9759\u7684',
-  contemplative: '\u4f60\u597d\u50cf\u5728\u60f3\u4e8b\u60c5',
-  focused: '\u4f60\u5728\u4e13\u6ce8\u5de5\u4f5c',
-  melancholic: '\u6709\u70b9\u6000\u65e7\u7684\u611f\u89c9',
-  warm: '\u611f\u89c9\u633a\u6e29\u6696\u7684',
+  tired: '感觉你有点累了',
+  sad: '感觉你心情不太好',
+  happy: '感觉你今天心情不错',
+  excited: '感觉你很兴奋',
+  peaceful: '现在挺安静的',
+  contemplative: '你像是在想事情',
+  focused: '你在专注工作',
+  melancholic: '有点怀旧的感觉',
+  warm: '感觉挺温暖的',
 };
 
 const MUSIC_PLAYBACK_PATTERNS = [
   /\b(play|put\s+on|listen\s+to|start)\b.*\b(music|song|playlist|album|track)\b/i,
-  /(?:\u653e|\u64ad\u653e|\u542c|\u6765\u4e00\u9996|\u6765\u70b9|\u70b9\u4e00\u9996|\u64ad\u4e00\u9996).*(?:\u97f3\u4e50|\u6b4c|\u6b4c\u66f2|\u6b4c\u5355|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350|\u4e13\u8f91|\u7eaf\u97f3\u4e50)/u,
-  /(?:\u97f3\u4e50|\u6b4c|\u6b4c\u66f2|\u6b4c\u5355|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350).*(?:\u653e|\u64ad\u653e|\u542c|\u6765|\u5f00)/u,
+  /(?:放|播放|听|来一首|来点|点一首|播一首).*(?:音乐|歌|歌曲|歌单|日推|每日推荐|专辑|纯音乐)/u,
+  /(?:音乐|歌|歌曲|歌单|日推|每日推荐).*(?:放|播放|听|来|开)/u,
 ];
 
 const MUSIC_ADJUSTMENT_PATTERNS = [
-  /(?:\u5b89\u9759\u4e00\u70b9|\u66f4\u5b89\u9759|\u8f7b\u4e00\u70b9|\u5c0f\u58f0\u4e00\u70b9|\u522b\u592a\u5435|\u4e0d\u8981\u592a\u5435|\u592a\u5435|\u67d4\u548c\u4e00\u70b9|\u8212\u7f13\u4e00\u70b9|\u653e\u677e\u4e00\u70b9)/u,
-  /(?:\u66f4\u71c3|\u71c3\u4e00\u70b9|\u55e8\u4e00\u70b9|\u5e26\u52b2\u4e00\u70b9|\u63d0\u795e|\u4e0a\u5934\u4e00\u70b9|\u70ed\u8840\u4e00\u70b9)/u,
-  /(?:\u6362\u4e00\u9996|\u4e0b\u4e00\u9996|\u5207\u6b4c|\u8df3\u8fc7|\u4e0d\u559c\u6b22\u8fd9\u9996|\u8fd9\u9996\u4e0d\u884c)/u,
+  /(?:安静一点|更安静|轻一点|小声一点|别太吵|不要太吵|太吵|柔和一点|舒缓一点|放松一点)/u,
+  /(?:更燃|燃一点|嗨一点|带劲一点|提神|上头一点|热血一点)/u,
+  /(?:换一首|下一首|切歌|跳过|不喜欢这首|这首不行)/u,
   /\b(quieter|calmer|softer|too\s+loud|more\s+energetic|more\s+hype|next\s+song|skip\s+this)\b/i,
 ];
 
@@ -58,6 +58,31 @@ type MusicAdjustmentPlan = {
   reply: string;
   source: string;
 };
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function tryParse(text: string): any {
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+async function ncmExec(args: string[], timeout = 15000): Promise<string> {
+  const result = await runNcmCliAsync(args, timeout);
+  if (!result.ok) console.warn('[Music] ncm-cli error:', result.error || result.stderr || result.stdout);
+  return result.stdout;
+}
+
+async function waitForNcmPlayingState(attempts = 6, delayMs = 650): Promise<any | null> {
+  let lastState: any | null = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const state = await getNcmPlaybackStateAsync(8000);
+    if (state) lastState = state;
+    if (state?.status === 'playing' || state?.playing === true) return state;
+    await delay(delayMs);
+  }
+  return lastState;
+}
 
 async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: string }> {
   const { encryptedId, originalId } = getSongIds(song);
@@ -74,7 +99,12 @@ async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: s
     };
   }
 
-  const state = await waitForNcmPlayingState();
+  let state = await waitForNcmPlayingState();
+  if (state?.status !== 'playing' && state?.playing !== true) {
+    await runNcmCliAsync(['resume'], 8000);
+    state = await waitForNcmPlayingState(4, 700);
+  }
+
   if (state?.status !== 'playing' && state?.playing !== true) {
     const status = state?.status || 'unknown';
     return {
@@ -85,6 +115,7 @@ async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: s
 
   return { ok: true };
 }
+
 function queueNcmSongs(songs: any[]): void {
   const queueCandidates = songs
     .map(song => ({ song, ids: getSongIds(song) }))
@@ -106,31 +137,6 @@ function queueNcmSongs(songs: any[]): void {
   }, 0);
 }
 
-async function ncmExec(args: string[], timeout = 15000): Promise<string> {
-  const result = await runNcmCliAsync(args, timeout);
-  if (!result.ok) console.warn('[Music] ncm-cli error:', result.error || result.stderr || result.stdout);
-  return result.stdout;
-}
-
-function tryParse(text: string): any {
-  try { return JSON.parse(text); } catch { return null; }
-}
-
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function waitForNcmPlayingState(attempts = 6, delayMs = 650): Promise<any | null> {
-  let lastState: any | null = null;
-  for (let i = 0; i < attempts; i += 1) {
-    const state = await getNcmPlaybackStateAsync(8000);
-    if (state) lastState = state;
-    if (state?.status === 'playing' || state?.playing === true) return state;
-    await delay(delayMs);
-  }
-  return lastState;
-}
-
 export function isMusicPlaybackRequest(text?: string): boolean {
   const normalized = (text || '').trim();
   if (!normalized) return false;
@@ -145,7 +151,7 @@ export function isMusicAdjustmentRequest(text?: string): boolean {
 
 export function getMusicFailureMessage(reason?: string): string {
   const suffix = reason ? `\n\n${reason}` : '';
-  return `\u6211\u6536\u5230\u4f60\u7684\u97f3\u4e50\u8bf7\u6c42\u4e86\uff0c\u4f46\u7f51\u6613\u4e91\u4e3b\u64ad\u653e\u94fe\u8def\u6ca1\u6709\u5b8c\u6574\u542f\u52a8\u3002\u8bf7\u5148\u68c0\u67e5\u97f3\u4e50\u4e2d\u5fc3\u7684\u7f51\u6613\u4e91\u767b\u5f55\u3001\u5f00\u653e\u5e73\u53f0 API \u51ed\u636e\u548c mpv \u64ad\u653e\u5668\u3002${suffix}`;
+  return `我收到你的音乐请求了，但网易云主播放链路没有完整启动。请先检查音乐中心的网易云登录、开放平台 API 凭据和 mpv 播放器。${suffix}`;
 }
 
 function getSongIds(song: any): { encryptedId: string; originalId: string } {
@@ -183,42 +189,42 @@ function normalizeTrack(song: any) {
 }
 
 function isLikedSongsRequest(text: string): boolean {
-  return /(?:\u6211.*(?:\u559c\u6b22|\u7ea2\u5fc3|\u6536\u85cf)|\u7ea2\u5fc3|\u559c\u6b22\u7684\u6b4c|\u6536\u85cf\u7684\u6b4c)/u.test(text);
+  return /(?:我.*(?:喜欢|红心|收藏)|红心|喜欢的歌|收藏的歌)/u.test(text);
 }
 
 function isRecommendRequest(text: string): boolean {
-  return /(?:\u63a8\u8350|\u6bcf\u65e5|\u65e5\u63a8|\u4eca\u65e5\u63a8\u8350|\u4eca\u5929.*(?:\u542c|\u653e)|\u968f\u4fbf|\u6765\u70b9)/u.test(text);
+  return /(?:推荐|每日|日推|今日推荐|今天.*(?:听|放)|随便|来点)/u.test(text);
 }
 
 function getMusicAdjustmentPlan(text: string, fallbackMood: string): MusicAdjustmentPlan {
-  if (/(?:\u5b89\u9759\u4e00\u70b9|\u66f4\u5b89\u9759|\u8f7b\u4e00\u70b9|\u5c0f\u58f0\u4e00\u70b9|\u522b\u592a\u5435|\u4e0d\u8981\u592a\u5435|\u592a\u5435|\u67d4\u548c\u4e00\u70b9|\u8212\u7f13\u4e00\u70b9|\u653e\u677e\u4e00\u70b9|quieter|calmer|softer|too\s+loud)/iu.test(text)) {
+  if (/(?:安静一点|更安静|轻一点|小声一点|别太吵|不要太吵|太吵|柔和一点|舒缓一点|放松一点|quieter|calmer|softer|too\s+loud)/iu.test(text)) {
     return {
       mood: 'peaceful',
-      keyword: '\u5b89\u9759 \u6cbb\u6108 \u8f7b\u97f3\u4e50',
-      reply: '\u597d\uff0c\u6211\u628a\u97f3\u4e50\u8c03\u5f97\u66f4\u5b89\u9759\u4e00\u70b9\u3002',
+      keyword: '安静 治愈 轻音乐',
+      reply: '好，我把音乐调得更安静一点。',
       source: 'adjust-quiet',
     };
   }
-  if (/(?:\u66f4\u71c3|\u71c3\u4e00\u70b9|\u55e8\u4e00\u70b9|\u5e26\u52b2\u4e00\u70b9|\u63d0\u795e|\u4e0a\u5934\u4e00\u70b9|\u70ed\u8840\u4e00\u70b9|more\s+energetic|more\s+hype)/iu.test(text)) {
+  if (/(?:更燃|燃一点|嗨一点|带劲一点|提神|上头一点|热血一点|more\s+energetic|more\s+hype)/iu.test(text)) {
     return {
       mood: 'excited',
-      keyword: '\u70ed\u6b4c \u71c3 \u6447\u6eda \u6d41\u884c',
-      reply: '\u597d\uff0c\u4e0b\u4e00\u9996\u7ed9\u4f60\u6362\u5f97\u66f4\u71c3\u4e00\u70b9\u3002',
+      keyword: '热歌 燃 摇滚 流行',
+      reply: '好，下一首给你换得更燃一点。',
       source: 'adjust-hype',
     };
   }
-  if (/(?:\u6362\u4e00\u9996|\u4e0b\u4e00\u9996|\u5207\u6b4c|\u8df3\u8fc7|\u4e0d\u559c\u6b22\u8fd9\u9996|\u8fd9\u9996\u4e0d\u884c|next\s+song|skip\s+this)/iu.test(text)) {
+  if (/(?:换一首|下一首|切歌|跳过|不喜欢这首|这首不行|next\s+song|skip\s+this)/iu.test(text)) {
     return {
       mood: fallbackMood || 'peaceful',
       preferLiked: true,
-      reply: '\u597d\uff0c\u6211\u7ed9\u4f60\u6362\u4e00\u9996\u3002',
+      reply: '好，我给你换一首。',
       source: 'adjust-next',
     };
   }
   return {
     mood: fallbackMood || 'peaceful',
     preferLiked: true,
-    reply: '\u597d\uff0c\u6211\u6309\u4f60\u73b0\u5728\u7684\u611f\u89c9\u6362\u4e00\u9996\u3002',
+    reply: '好，我按你现在的感觉换一首。',
     source: 'adjust-mood',
   };
 }
@@ -241,17 +247,17 @@ async function searchSongsByKeyword(keyword: string, limit = 20): Promise<any[]>
 }
 
 function extractTarget(userText: string): string | null {
-  let text = userText.replace(/[\u3002\uff01\uff1f\uff0c,.!?\s]+/g, ' ').trim();
-  const prefixWords = /^(?:lumi|Lumi|\u9732\u7c73)?\s*(?:\u8bf7|\u5e2e\u6211|\u7ed9\u6211|\u5e2e\u5fd9|\u9ebb\u70e6|\u6211\u60f3|\u6211\u8981)?\s*(?:\u653e|\u64ad\u653e|\u542c|\u6765\u4e00\u9996|\u6765\u70b9|\u70b9\u4e00\u9996|\u64ad\u4e00\u9996|\u6253\u5f00\u97f3\u4e50|\u97f3\u4e50\u6a21\u5f0f)\s*/u;
-  const suffixWords = /\s*(?:\u7684?\u6b4c|\u6b4c\u66f2|\u97f3\u4e50|\u6b4c\u5355|\u4e13\u8f91|\u5427|\u5440|\u5462|\u554a)$/u;
+  let text = userText.replace(/[。！？,.!?\s]+/g, ' ').trim();
+  const prefixWords = /^(?:lumi|Lumi|露米)?\s*(?:请|帮我|给我|帮忙|麻烦|我想|我要)?\s*(?:放|播放|听|来一首|来点|点一首|播一首|打开音乐|音乐模式)\s*/u;
+  const suffixWords = /\s*(?:的?歌|歌曲|音乐|歌单|专辑|吧|呀|呢|啊)$/u;
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 4; i += 1) {
     const before = text;
     text = text.replace(prefixWords, '').replace(suffixWords, '').trim();
     if (text === before) break;
   }
 
-  if (!text || /^(?:\u9996|\u4e00\u9996|\u4e00\u4e9b|\u51e0\u9996|\u6b4c|\u97f3\u4e50|\u6b4c\u66f2|\u6765\u4e00\u9996|\u968f\u4fbf|\u968f\u4fbf\u4e00\u9996|\u63a8\u8350|\u70ed\u95e8|\u597d\u542c|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350)$/u.test(text)) return null;
+  if (!text || /^(?:首|一首|一些|几首|歌|音乐|歌曲|来一首|随便|随便一首|推荐|热门|好听|日推|每日推荐)$/u.test(text)) return null;
   return text.length > 0 && text.length <= 30 ? text : null;
 }
 
@@ -307,6 +313,7 @@ async function pickAndPlay(
 ): Promise<MusicPlayResult> {
   const playable = candidates.filter((s: any) => s.playFlag !== false);
   if (playable.length === 0) return { success: false, reason: '没有找到可播放的候选歌曲。' };
+
   const playableWithIds = await hydrateNcmPlayableSongs(playable, 20);
   if (playableWithIds.length === 0) return { success: false, reason: '没有找到带网易云播放 ID 的候选歌曲。' };
   console.log(`[Music] ${source}: ${playableWithIds.length} account-playable candidates from ${candidates.length} candidates`);
@@ -318,6 +325,7 @@ async function pickAndPlay(
   if (!nativePlay.ok) return { success: false, reason: nativePlay.reason };
 
   queueNcmSongs(playableWithIds.filter(song => song !== pick));
+
   const seenQueueItems = new Set<string>();
   const queue = [pick, ...playableWithIds.filter(song => song !== pick)].reduce((items, song) => {
     if (items.length >= 20) return items;
@@ -329,7 +337,6 @@ async function pickAndPlay(
     items.push({ track, encryptedId: ids.encryptedId, originalId: ids.originalId });
     return items;
   }, [] as Array<{ track: ReturnType<typeof normalizeTrack>; encryptedId: string; originalId: string }>);
-  const queueIndex = 0;
 
   console.log(`[Music] Selected and started through NetEase account playback: "${trackInfo.name}"`);
 
@@ -340,7 +347,7 @@ async function pickAndPlay(
     for (const line of lrcText.split('\n')) {
       const match = line.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/);
       if (!match) continue;
-      const time = parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / (match[3].length === 3 ? 1000 : 100);
+      const time = parseInt(match[1], 10) * 60 + parseInt(match[2], 10) + parseInt(match[3], 10) / (match[3].length === 3 ? 1000 : 100);
       const lyricText = match[4].trim();
       if (lyricText) lyricsData.push({ time, text: lyricText });
     }
@@ -353,10 +360,8 @@ async function pickAndPlay(
     if (llmScene) scene = llmScene;
   } catch {}
 
-  const reasonPhrase = moodReasonMap[mood] || '根据你现在的状态';
-  const lumiReason = `${reasonPhrase}，给你放一首《${trackInfo.name}》，希望你喜欢。`;
-
-  const safeLumiReason = `${moodReasonMap[mood] || '根据你现在的状态'}，给你放一首《${trackInfo.name}》，希望你喜欢。`;
+  const moodReason = moodReasonMap[mood] || '根据你现在的状态';
+  const lumiReason = `${moodReason}，给你放一首《${trackInfo.name}》，希望你喜欢。`;
 
   console.log(`[Music] Scene: ${scene.scene}, particles=${scene.particles}, nativePlayback=true`);
   emitMusicAtmosphere(socket, {
@@ -364,13 +369,13 @@ async function pickAndPlay(
     mood,
     nativePlayback: true,
     queue,
-    queueIndex,
+    queueIndex: 0,
     lyrics: lyricsData,
-    lumiReason: safeLumiReason,
+    lumiReason,
     scene,
   });
 
-  return { success: true, text: safeLumiReason };
+  return { success: true, text: lumiReason };
 }
 
 export async function adjustMusicPlayback(
@@ -383,28 +388,14 @@ export async function adjustMusicPlayback(
   const plan = getMusicAdjustmentPlan(userText, fallbackMood);
   let songs: any[] = [];
 
-  if (plan.preferLiked) {
-    songs = getCachedProfileSongs(userId, 80);
-  }
-
-  if (songs.length === 0 && plan.keyword) {
-    songs = await searchSongsByKeyword(plan.keyword, 20);
-  }
-
-  if (songs.length === 0 && !plan.preferLiked) {
-    songs = getCachedProfileSongs(userId, 80);
-  }
+  if (plan.preferLiked) songs = getCachedProfileSongs(userId, 80);
+  if (songs.length === 0 && plan.keyword) songs = await searchSongsByKeyword(plan.keyword, 20);
+  if (songs.length === 0 && !plan.preferLiked) songs = getCachedProfileSongs(userId, 80);
+  if (songs.length === 0) songs = await getDailySongs(30);
+  if (songs.length === 0) songs = getCachedProfileSongs(userId, 60);
 
   if (songs.length === 0) {
-    songs = await getDailySongs(30);
-  }
-
-  if (songs.length === 0) {
-    songs = getCachedProfileSongs(userId, 60);
-  }
-
-  if (songs.length === 0) {
-    return { success: false, reason: '\u6ca1\u6709\u627e\u5230\u53ef\u7528\u7684\u4e0b\u4e00\u9996\u5019\u9009\u6b4c\u66f2\u3002' };
+    return { success: false, reason: '没有找到可用的下一首候选歌曲。' };
   }
 
   const result = await pickAndPlay(socket, userId, plan.mood, songs, plan.source);
@@ -426,7 +417,6 @@ export async function searchAndPlay(
   if (userText && isLikedSongsRequest(userText)) {
     const cachedSongs = getCachedProfileSongs(userId, 80);
     if (cachedSongs.length > 0) return pickAndPlay(socket, userId, mood, cachedSongs, 'liked-profile');
-
     return { success: false, reason: '没有可用于播放的本地音乐画像，请先在音乐中心生成一次音乐画像。' };
   }
 
@@ -451,7 +441,7 @@ export async function searchAndPlay(
   const cachedSongs = getCachedProfileSongs(userId, 80);
   if (cachedSongs.length > 0) return pickAndPlay(socket, userId, mood, cachedSongs, 'liked-profile');
 
-  const keyword = moodSearchMap[mood] || '\u63a8\u8350 \u70ed\u95e8';
+  const keyword = moodSearchMap[mood] || '推荐 热门';
   const songs = await searchSongsByKeyword(keyword, 20);
   if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
 

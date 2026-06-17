@@ -49,6 +49,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => isZh ? zh : en;
+
   const defaultMusicPrompt = profile?.topArtists?.[0]?.name
     ? `播放我喜欢的歌，优先从 ${profile.topArtists[0].name} 或我的网易云喜欢歌单里挑一首`
     : '播放我喜欢的歌或每日推荐';
@@ -69,7 +70,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
       setLoginDone(Boolean(s.done));
       setQrImgSrc(s.qrUrl ? `https://quickchart.io/qr?text=${encodeURIComponent(s.qrUrl)}&size=220` : null);
     }).catch(() => {});
-    loadMusicProfile();
+    void loadMusicProfile();
     socket?.emit('music:get_state');
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [socket]);
@@ -132,7 +133,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
         toast.success(t?.musicConnected || ui('网易云音乐已连接', 'NetEase Cloud connected'));
         return;
       }
-      if (!res.ok || !data.qrUrl) throw new Error(data.error || ui('没有 QR 登录地址', 'No QR URL'));
+      if (!res.ok || !data.qrUrl) throw new Error(data.error || ui('没有二维码登录地址', 'No QR URL'));
 
       setQrImgSrc(`https://quickchart.io/qr?text=${encodeURIComponent(data.qrUrl)}&size=220`);
 
@@ -376,7 +377,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {profile.topArtists.slice(0, 6).map(item => (
                       <span key={item.name} className="px-2 py-1 rounded-lg bg-white/[0.05] text-[10px] text-white/60 border border-white/5">
-                        {item.name} · {item.count}
+                        {item.name} / {item.count}
                       </span>
                     ))}
                   </div>
@@ -419,7 +420,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
               {configured && <span className="text-[9px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">OK</span>}
             </div>
             <p className="text-[10px] text-white/35 leading-relaxed">
-              {ui('配置网易云音乐开发者 App ID 和 Private Key，用于授权播放。', 'Configure NetEase Cloud Music developer App ID and Private Key for authenticated playback.')}
+              {ui('配置网易云音乐开放平台 App ID 和 Private Key，用于授权播放。', 'Configure NetEase Cloud Music developer App ID and Private Key for authenticated playback.')}
             </p>
             <input
               type="text" placeholder={ui('App ID', 'App ID')}

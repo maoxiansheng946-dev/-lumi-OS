@@ -1,7 +1,7 @@
 /**
- * Music Socket Handler — real-time music playback events.
- * Legacy ncm-cli controls remain available, while desktop playback events can
- * hand public audio URLs and queues to the shared frontend audio engine.
+ * Music Socket Handler - real-time music playback events.
+ * NetEase controls use ncm-cli/mpv; the frontend mirrors playback state and
+ * renders the mood layer.
  */
 import { Socket } from 'socket.io';
 import { getNcmPlaybackStateAsync, runNcmCliAsync } from '../music/ncm_cli';
@@ -41,7 +41,7 @@ async function waitForNcmPlaying(attempts = 6, delayMs = 650): Promise<any | nul
   for (let i = 0; i < attempts; i += 1) {
     const state = await getNcmPlaybackStateAsync(8000);
     if (state) lastState = state;
-    if (state?.status === 'playing' || state?.playing === true) return state;
+    if (isNcmPlaying(state)) return state;
     await delay(delayMs);
   }
   return lastState;
@@ -49,6 +49,16 @@ async function waitForNcmPlaying(attempts = 6, delayMs = 650): Promise<any | nul
 
 function isNcmPlaying(state: any) {
   return state?.status === 'playing' || state?.playing === true;
+}
+
+async function recoverNcmPlaying(attempts = 8, delayMs = 700): Promise<any | null> {
+  let state = await waitForNcmPlaying(attempts, delayMs);
+  if (isNcmPlaying(state)) return state;
+  try {
+    await ncmExecArgs(['resume'], 8000);
+  } catch {}
+  state = await waitForNcmPlaying(4, delayMs);
+  return state;
 }
 
 function getSocketUserRoom(socket: Socket) {
@@ -99,8 +109,6 @@ export function registerMusicHandlers(
 ) {
   const uid = getUserId(socket);
 
-  // ── Playback ──────────────────────────────────────────────────────────
-
   socket.on('music:play', socketGuard(async (data: { encryptedId?: string; originalId?: string; playlist?: boolean; audioUrl?: string }) => {
     try {
       if (data.audioUrl) {
@@ -115,7 +123,8 @@ export function registerMusicHandlers(
       } else if (data.encryptedId && data.originalId) {
         await ncmExecArgs(['play', '--song', '--encrypted-id', data.encryptedId, '--original-id', data.originalId], 15000);
       }
-      const state = await waitForNcmPlaying();
+
+      const state = await recoverNcmPlaying();
       if (!isNcmPlaying(state)) {
         const status = state?.status || 'unknown';
         socket.emit('music:state', { playing: false, source: 'netease' });
@@ -123,7 +132,7 @@ export function registerMusicHandlers(
         return;
       }
       startStatePoller(socket, getSocketUserRoom(socket) || uid);
-      socket.emit('music:state', { playing: true, source: 'netease' });
+      await pollAndEmitState(socket);
     } catch (e: any) {
       socket.emit('music:error', { message: e.message });
     }
@@ -133,7 +142,7 @@ export function registerMusicHandlers(
     try {
       await ncmExecArgs(['pause']);
       await pollAndEmitState(socket);
-      socket.emit('music:state', { playing: false });
+      socket.emit('music:state', { playing: false, source: 'netease' });
     } catch (e: any) {
       socket.emit('music:error', { message: e.message || '网易云暂停失败' });
     }
@@ -142,8 +151,9 @@ export function registerMusicHandlers(
   socket.on('music:resume', socketGuard(async () => {
     try {
       await ncmExecArgs(['resume']);
-      const state = await waitForNcmPlaying();
+      const state = await recoverNcmPlaying();
       startStatePoller(socket, getSocketUserRoom(socket) || uid);
+      await pollAndEmitState(socket);
       socket.emit('music:state', { playing: isNcmPlaying(state), source: 'netease' });
       if (!isNcmPlaying(state)) {
         socket.emit('music:error', { message: `网易云恢复播放失败（当前状态：${state?.status || 'unknown'}）。` });
@@ -156,37 +166,38 @@ export function registerMusicHandlers(
 
   socket.on('music:next', socketGuard(async () => {
     await ncmExecArgs(['next']);
-    const state = await waitForNcmPlaying(8, 700);
+    const state = await recoverNcmPlaying(8, 700);
     if (!isNcmPlaying(state)) {
       socket.emit('music:error', { message: `已切到下一首，但播放器没有进入播放状态（当前状态：${state?.status || 'unknown'}）。` });
       socket.emit('music:state', { playing: false, source: 'netease' });
       return;
     }
+    startStatePoller(socket, getSocketUserRoom(socket) || uid);
     await pollAndEmitState(socket);
   }));
 
   socket.on('music:prev', socketGuard(async () => {
     await ncmExecArgs(['prev']);
-    const state = await waitForNcmPlaying(8, 700);
+    const state = await recoverNcmPlaying(8, 700);
     if (!isNcmPlaying(state)) {
       socket.emit('music:error', { message: `已切到上一首，但播放器没有进入播放状态（当前状态：${state?.status || 'unknown'}）。` });
       socket.emit('music:state', { playing: false, source: 'netease' });
       return;
     }
+    startStatePoller(socket, getSocketUserRoom(socket) || uid);
     await pollAndEmitState(socket);
   }));
 
   socket.on('music:seek', socketGuard(async (data: { seconds: number }) => {
     await ncmExecArgs(['seek', String(Math.max(0, data.seconds || 0))]);
+    await pollAndEmitState(socket);
   }));
 
   socket.on('music:volume', socketGuard(async (data: { level: number }) => {
-    const vol = Math.max(0, Math.min(100, data.level || 50));
+    const vol = Math.max(0, Math.min(100, Number(data.level ?? 50)));
     await ncmExecArgs(['volume', String(vol)]);
-    socket.emit('music:state', { volume: vol });
+    socket.emit('music:state', { volume: vol, source: 'netease' });
   }));
-
-  // ── Queue ─────────────────────────────────────────────────────────────
 
   socket.on('music:queue:list', socketGuard(async () => {
     const raw = await ncmExecArgs(['queue']);
@@ -205,8 +216,6 @@ export function registerMusicHandlers(
     socket.emit('music:queue:cleared', {});
   }));
 
-  // ── Like / Dislike ────────────────────────────────────────────────────
-
   socket.on('music:like', socketGuard(async (data: { encryptedId: string }) => {
     await ncmExecArgs(['song', 'like', '--songId', data.encryptedId]);
     socket.emit('music:liked', { encryptedId: data.encryptedId });
@@ -216,8 +225,6 @@ export function registerMusicHandlers(
     await ncmExecArgs(['song', 'dislike', '--songId', data.encryptedId]);
     socket.emit('music:disliked', { encryptedId: data.encryptedId });
   }));
-
-  // ── State ─────────────────────────────────────────────────────────────
 
   socket.on('music:get_state', socketGuard(async () => {
     const state = await pollAndEmitState(socket, { reportErrors: false });
@@ -229,8 +236,7 @@ export function registerMusicHandlers(
       ? `${data.track.name}${data.track.artists?.length ? ` - ${data.track.artists.join(' / ')}` : ''}`
       : 'current track';
     const message = data?.message || 'Music playback failed in the desktop audio engine';
-    const retrying = message.includes('trying another candidate');
-    if (retrying) return;
+    if (message.includes('trying another candidate')) return;
     socket.emit('music:error', { message: `${trackLabel}: ${message}` });
     socket.emit('agent:notification', {
       type: 'music',
@@ -262,8 +268,6 @@ export function registerMusicHandlers(
     }, 1500);
   });
 }
-
-// ── State polling ──────────────────────────────────────────────────────────
 
 async function pollAndEmitState(socket: Socket, options: { reportErrors?: boolean } = {}): Promise<any | null> {
   try {
@@ -309,9 +313,6 @@ function stopStatePoller(uid: string) {
   }
 }
 
-/**
- * Emit a music atmosphere event to trigger the MusicMoodLayer.
- */
 export function emitMusicAtmosphere(socket: Socket, atmosphere: MusicAtmosphere) {
   const rooms = Array.from(socket.rooms);
   const userRoom = rooms.find(r => r.startsWith('user:'));
