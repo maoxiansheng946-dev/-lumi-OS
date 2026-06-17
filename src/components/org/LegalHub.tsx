@@ -40,6 +40,13 @@ function addDays(dateValue: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function inferLegalMaterialTitle(content: string, fallback: string): string {
+  const caseNumber = content.match(/[（(]\d{4}[）)][^\n，。；;]{2,80}(?:号|字第?\d+号?)/)?.[0];
+  if (caseNumber) return `${fallback} ${caseNumber}`;
+  const firstLine = content.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+  return firstLine ? firstLine.slice(0, 80) : fallback;
+}
+
 export function LegalHub() {
   const [view, setView] = useState<LegalView>('workspace');
   const [cases, setCases] = useState<LegalCaseFile[]>(() => readLegalCaseFiles());
@@ -190,7 +197,18 @@ export function LegalHub() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(material),
-      }).catch((err: any) => toast.error(err?.message || ui('材料归档失败', 'Failed to archive material')));
+      }).then(async res => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || ui('材料归档失败', 'Failed to archive material'));
+        }
+      }).catch((err: any) => {
+        setCases(prev => prev.map(item => item.id === activeCase.id ? {
+          ...item,
+          materials: (item.materials || []).filter(existing => existing.id !== material.id),
+        } : item));
+        toast.error(err?.message || ui('材料归档失败', 'Failed to archive material'));
+      });
     } else {
       updateCase(activeCase.id, { materials: [material, ...(activeCase.materials || [])] });
     }
@@ -305,7 +323,7 @@ export function LegalHub() {
       case 'contract-review': return <LegalContractReview />;
       case 'strategy': return <LegalStrategyView caseFile={activeCase} />;
       case 'verify': return <LegalVerifyView />;
-      case 'import': return <LegalImportView />;
+      case 'import': return <LegalImportView caseFile={activeCase} onAddMaterial={addMaterial} />;
       default: return <LegalCaseSearch />;
     }
   };
@@ -803,8 +821,9 @@ function LegalStrategyView({ caseFile }: { caseFile?: LegalCaseFile | null }) {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      setResult(data.text || data.response || data.reply || data.message || data.error || JSON.stringify(data));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('案件策略分析失败', 'Case strategy analysis failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
     } catch (e: any) {
       setResult(`Error: ${e.message}`);
     } finally {
@@ -861,8 +880,9 @@ function LegalVerifyView() {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      setResults([{ content: data.text || data.response || data.reply || data.message || data.error || ui('校验完成', 'Verification complete') }]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('引用核验失败', 'Citation verification failed'));
+      setResults([{ content: data.text || data.response || data.reply || data.message || ui('校验完成', 'Verification complete') }]);
     } catch (e: any) {
       setResults([{ error: e.message }]);
     } finally {
@@ -900,7 +920,13 @@ function LegalVerifyView() {
   );
 }
 
-function LegalImportView() {
+function LegalImportView({
+  caseFile,
+  onAddMaterial,
+}: {
+  caseFile?: LegalCaseFile | null;
+  onAddMaterial?: (type: LegalCaseMaterial['type'], title: string, content?: string, source?: LegalCaseMaterial['source']) => void;
+}) {
   const t = useT();
   const isZh = t.langCode !== 'en';
   const ui = (zh: string, en: string) => (isZh ? zh : en);
@@ -922,8 +948,16 @@ function LegalImportView() {
         }),
         credentials: 'include',
       });
-      const data = await res.json();
-      setStatus(data.text || data.response || data.reply || data.message || data.error || ui('导入请求已发送', 'Import request sent'));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('裁判文书导入失败', 'Judgment import failed'));
+      const reply = data.text || data.response || data.reply || data.message || ui('导入请求已发送', 'Import request sent');
+      if (caseFile && onAddMaterial) {
+        const title = inferLegalMaterialTitle(content, ui('裁判文书', 'Judgment document'));
+        onAddMaterial('judgment', title, content, 'import');
+        setStatus(`${reply}\n\n${ui('已归档到当前案件材料。', 'Archived to the current case materials.')}`);
+      } else {
+        setStatus(reply);
+      }
     } catch (e: any) {
       setStatus(`Error: ${e.message}`);
     } finally {

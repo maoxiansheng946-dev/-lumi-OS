@@ -8,7 +8,7 @@ export interface LegalCaseMaterial {
   title: string;
   createdAt: string;
   content?: string;
-  source?: 'manual' | 'meeting' | 'notice' | 'tool';
+  source?: 'manual' | 'meeting' | 'notice' | 'tool' | 'import' | 'feishu';
 }
 
 export interface LegalCaseFile {
