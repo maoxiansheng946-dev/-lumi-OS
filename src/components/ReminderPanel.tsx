@@ -16,23 +16,29 @@ interface Reminder {
 
 export function ReminderPanel({ t }: { t?: any }) {
   const isZh = t?.langCode !== 'en';
-  const ui = (zh: string, en: string) => isZh ? zh : en;
+  const ui = useCallback((zh: string, en: string) => isZh ? zh : en, [isZh]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [newContent, setNewContent] = useState('');
   const [newDueAt, setNewDueAt] = useState('');
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchReminders = useCallback(async () => {
     try {
+      setError('');
       const res = await fetch('/api/reminders', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setReminders(data);
-      }
-    } catch {}
-    setLoading(false);
-  }, []);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('提醒加载失败', 'Failed to load reminders'));
+      setReminders(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      const message = err?.message || ui('提醒加载失败', 'Failed to load reminders');
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [ui]);
 
   useEffect(() => { fetchReminders(); }, [fetchReminders]);
 
@@ -46,34 +52,45 @@ export function ReminderPanel({ t }: { t?: any }) {
         body: JSON.stringify({ content: newContent.trim(), dueAt: newDueAt || null }),
         credentials: 'include',
       });
-      if (res.ok) {
-        setNewContent('');
-        setNewDueAt('');
-        toast.success(ui('提醒已创建', 'Reminder created'));
-        fetchReminders();
-      }
-    } catch {}
-    setAdding(false);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('提醒创建失败', 'Failed to create reminder'));
+      setNewContent('');
+      setNewDueAt('');
+      toast.success(ui('提醒已创建', 'Reminder created'));
+      fetchReminders();
+    } catch (err: any) {
+      toast.error(err?.message || ui('提醒创建失败', 'Failed to create reminder'));
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/reminders/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/reminders/${id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('提醒删除失败', 'Failed to delete reminder'));
       setReminders(prev => prev.filter(r => r.id !== id));
       toast.success(ui('已删除', 'Deleted'));
-    } catch {}
+    } catch (err: any) {
+      toast.error(err?.message || ui('提醒删除失败', 'Failed to delete reminder'));
+    }
   };
 
   const handleMarkFired = async (id: string) => {
     try {
-      await fetch(`/api/reminders/${id}`, {
+      const res = await fetch(`/api/reminders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'fired' }),
         credentials: 'include',
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('提醒更新失败', 'Failed to update reminder'));
       fetchReminders();
-    } catch {}
+    } catch (err: any) {
+      toast.error(err?.message || ui('提醒更新失败', 'Failed to update reminder'));
+    }
   };
 
   const pending = reminders.filter(r => r.status === 'pending');
@@ -90,6 +107,11 @@ export function ReminderPanel({ t }: { t?: any }) {
   return (
     <div className="space-y-6">
       {/* Add new reminder */}
+      {error && (
+        <div className="rounded-xl border border-red-400/20 bg-red-500/8 px-3 py-2 text-xs text-red-200/80">
+          {error}
+        </div>
+      )}
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-amber-400" />
