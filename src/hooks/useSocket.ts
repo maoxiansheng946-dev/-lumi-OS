@@ -55,6 +55,16 @@ async function handleDesktopExec(socket: Socket, data: {
 }) {
   const { correlationId, name, arguments: args } = data;
 
+  if (name === 'client_action') {
+    try {
+      const output = await dispatchClientAction(args);
+      socket.emit(`tool:desktop_result:${correlationId}`, { output });
+    } catch (err: any) {
+      socket.emit(`tool:desktop_result:${correlationId}`, { error: err.message || String(err) });
+    }
+    return;
+  }
+
   if (!isTauri) {
     socket.emit(`tool:desktop_result:${correlationId}`, {
       error: 'Desktop tools are only available in the Tauri desktop app',

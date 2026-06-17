@@ -432,32 +432,15 @@ export function registerChatHandler(
         console.log('[Chat] Hybrid mode enabled — local Ollama → cloud DeepSeek');
       }
 
-      // ── Subscription enforcement (with fallback) ──
+      // ── Subscription enforcement: never switch the user's selected brain silently ──
       const access = checkLLMAccess({ userId: uid, provider: activeProvider, model: activeModel });
       if (!access.allowed) {
-        // Try each other configured provider from prefs
-        const fallbackCandidates = Object.entries(userLLMPrefs.models || {})
-          .filter(([p]) => p !== activeProvider)
-          .map(([p, m]) => ({ provider: p, model: m as string }));
-        let found = false;
-        for (const { provider: fbProvider, model: fbModel } of fallbackCandidates) {
-          const fbAccess = checkLLMAccess({ userId: uid, provider: fbProvider, model: fbModel });
-          if (fbAccess.allowed) {
-            activeProvider = fbProvider;
-            activeModel = fbModel;
-            console.log(`[Chat] Subscription fallback: ${activeProvider} → ${fbProvider} for user ${uid}`);
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          emitAgent("agent:error", {
-            message: access.reason,
-            code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
-          });
-          emitAgent("agent:status", { status: "error" });
-          return;
-        }
+        emitAgent("agent:error", {
+          message: access.reason,
+          code: access.tokenLimitReached ? 'TOKEN_LIMIT' : 'PROVIDER_RESTRICTED',
+        });
+        emitAgent("agent:status", { status: "error" });
+        return;
       }
 
       // ── Named Workflow Quick-Path: "run my X" / "跑XX流程" ──

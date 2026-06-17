@@ -1,6 +1,7 @@
 import { ToolRegistry } from '../tools/registry';
 import { ToolExecutionRecord, ToolContext, LLMUsage } from '../tools/types';
 import { NormalizedMessage, makeLLMCall, makeLLMCallStreaming, StreamCallback } from './providers';
+import { recordTokenUsage } from './token_tracker';
 import { recordWorkflow, WorkflowStep } from '../skills/worklog';
 import { recordLatency } from '../monitor/latency_store';
 
@@ -261,7 +262,7 @@ export function parseScreenshotBase64(relayResult: string): { base64: string; mi
 export async function analyzeScreen(
   imageBase64: string,
   query: string,
-  config: { provider: string; model: string },
+  config: { provider: string; model: string; userId?: string },
   getDeepSeek?: () => any,
   getGemini?: () => any,
   getOpenAI?: () => any,
@@ -308,11 +309,14 @@ export async function analyzeScreen(
 
   const result = await makeLLMCall(
     messages, [],
-    { provider: provider as any, model, maxTokens: 1000 },
+    { provider: provider as any, model, maxTokens: 1000, userId: config.userId },
     getDeepSeek || (() => null), getGemini || (() => null),
     getOpenAI, getAnthropic, getQwen, getOllama, getLmStudio, getArk,
     getXiaomi, getKimi, getGlm, getRelay,
   );
+  if (config.userId) {
+    recordTokenUsage(config.userId, provider, model, result.usage, `vision_screen_${Date.now()}`, 'vision');
+  }
 
   return result.text || 'Vision analysis returned no text.';
 }

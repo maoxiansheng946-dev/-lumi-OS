@@ -1,6 +1,8 @@
 import { ParsedToolCall, NormalizedLLMResponse } from '../tools/types';
 import { withCloudResilience } from '../cloud/resilience';
 import { isStrictPrivacy, requireLocalProvider } from '../config/privacy';
+import { getUserPreferredLLM } from './user_preferences';
+import { getUserPreferredVision } from './vision_preferences';
 
 export type MessageContent =
   | string
@@ -46,6 +48,29 @@ function hasMeaningfulContent(content: MessageContent): boolean {
   if (typeof content === 'string') return content.trim().length > 0;
   if (!content) return false;
   return content.length > 0;
+}
+
+function isQwenVisionModel(model: string): boolean {
+  return /(?:qwen.*vl|vl-|vl_|vision)/i.test(model || '');
+}
+
+function assertQwenAllowedByUserPrefs(config: { provider: string; model: string; userId?: string }): void {
+  if (config.provider !== 'qwen') return;
+
+  if (!config.userId) {
+    throw new Error('Qwen model call blocked: missing user preference context. Pass userId so Lumi can respect the selected brain/vision provider.');
+  }
+
+  if (isQwenVisionModel(config.model)) {
+    const vision = getUserPreferredVision(config.userId);
+    if (vision.provider === 'qwen') return;
+    throw new Error(`Qwen-VL call blocked: current vision provider is ${vision.provider}/${vision.model}. Change Vision Model to Qwen-VL to use Alibaba vision.`);
+  }
+
+  const preferred = getUserPreferredLLM(config.userId);
+  if (preferred.provider !== 'qwen') {
+    throw new Error(`Qwen LLM call blocked: current primary reasoning brain is ${preferred.provider}/${preferred.model}. Change Primary Reasoning Brain to Qwen to use Alibaba LLM.`);
+  }
 }
 
 function toolResultAsUserMessage(m: NormalizedMessage): OpenAICompatibleMessage | null {
@@ -464,6 +489,8 @@ export async function makeLLMCall(
   getGlm?: () => any,
   getRelay?: () => any,
 ): Promise<NormalizedLLMResponse> {
+  assertQwenAllowedByUserPrefs(config);
+
   // ── Privacy gate: strict mode blocks cloud providers ──
   // Reasoning models need high token budget — their CoT eats into max_tokens
   const maxTokens = isReasoningModel(config.model)
@@ -630,6 +657,8 @@ export async function makeLLMCallStreaming(
   getGlm?: () => any,
   getRelay?: () => any,
 ): Promise<NormalizedLLMResponse> {
+  assertQwenAllowedByUserPrefs(config);
+
   // ── Privacy gate ──
   if (isStrictPrivacy() && config.provider !== 'auto') {
     requireLocalProvider(config.provider);

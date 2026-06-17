@@ -19,6 +19,7 @@
 import { NormalizedMessage, makeLLMCall } from '../llm/providers';
 import { parseScreenshotBase64 } from '../llm/adapter';
 import { getUserPreferredVision } from '../llm/vision_preferences';
+import { recordTokenUsage } from '../llm/token_tracker';
 
 interface ComputerUseAction {
   action: 'click' | 'double_click' | 'right_click' | 'type' | 'key_press' | 'wait' | 'done' | 'error';
@@ -154,7 +155,7 @@ async function callVisionModel(
 
   const result = await makeLLMCall(
     messages, [],
-    { provider, model, maxTokens: 400 },
+    { provider, model, maxTokens: 400, userId },
     g.getDeepSeek?.() || (() => null),
     g.getGemini?.() || (() => null),
     g.getOpenAI,
@@ -164,6 +165,9 @@ async function callVisionModel(
     g.getLmStudio,
     g.getArk,
   );
+  if (userId) {
+    recordTokenUsage(userId, provider, model, result.usage, `vision_computer_use_${Date.now()}`, 'vision');
+  }
 
   return result.text || '';
 }

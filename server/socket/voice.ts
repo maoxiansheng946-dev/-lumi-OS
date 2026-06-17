@@ -20,8 +20,8 @@ import { queryMemories, addMemory } from "../memory/store";
 import { matchQuickCommand } from "../cognition/quick_commands";
 import { recordTokenUsage } from "../llm/token_tracker";
 import { getUserPreferredLLMConfig } from "../llm/user_preferences";
-import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
-import { hasClientActionIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
+import { getOperationModeConfig, parseStoredOperationMode, OperationMode } from "../cognition/operation_modes";
+import { hasClientActionIntent, hasExplicitToolIntent, shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { updatePresence } from "../biometrics/presence";
 import { getVoiceprints } from "../biometrics/store";
 import { formatClientSelfPrompt } from "../client/self_model";
@@ -134,6 +134,47 @@ function isExplicitInterruptCommand(text: string): boolean {
 function isPureInterruptCommand(text: string): boolean {
   const normalized = normalizeSpeechText(text);
   return /^(停|停下|停止|打断|闭嘴|别说|不要说|先别说|别讲|不要讲|等下|等一下|暂停|好了|行了|够了|停一下|停一停|先停|先停一下|别说了|不要说了|先别说了|别讲了|不要讲了|打断一下|等我一下|暂停一下|可以了|不用说了|先这样|stop|wait|pause|interrupt|holdon|shutup)$/.test(normalized);
+}
+
+function detectVoiceClientModeSwitch(text: string): OperationMode | null {
+  const normalized = text.replace(/\s+/g, '');
+  const hasSwitchVerb = /切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到|已经.*切换到/.test(normalized);
+  if (!hasSwitchVerb) return null;
+  if (/聊天模式/.test(normalized)) return 'chat';
+  if (/助手模式/.test(normalized)) return 'assistant';
+  if (/音乐模式/.test(normalized)) return 'music';
+  if (/会议模式/.test(normalized)) return 'meeting';
+  if (/自动执行模式|自主执行模式/.test(normalized)) return 'autonomous';
+  return null;
+}
+
+function isPureModeSwitchRequest(text: string, mode: OperationMode | null): boolean {
+  if (!mode) return false;
+  const normalized = text.replace(/\s+/g, '');
+  return /^(露米|lumi)?(请|帮我|给我)?(切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到)(聊天|助手|音乐|会议|自动执行|自主执行)模式[。.!！]*$/i.test(normalized);
+}
+
+function shouldAutoPromoteVoiceWork(text: string, operationMode: OperationMode, requestedMode: OperationMode | null): boolean {
+  if (operationMode !== 'chat' || requestedMode) return false;
+  if (isMusicPlaybackRequest(text) || isMusicAdjustmentRequest(text)) return false;
+  if (/[?？]\s*$/.test(text) || /是不是|为什么|怎么回事|有没有|找到了吗|听见了吗/.test(text)) return false;
+  if (!hasExplicitToolIntent(text)) return false;
+  return /桌面|文件|文件夹|目录|草稿图|图纸|平面图|施工图|设计图|cad|CAD|DXF|画布|生成|创建|画一|画个|按照.*画|找|搜索|打开|执行|运行|去干活|开始干活|开始处理|继续处理|继续做|接着做/.test(text);
+}
+
+function saveOperationModePreference(userId: string, mode: OperationMode): void {
+  try {
+    const db = readDB();
+    if (!db.settings) db.settings = [];
+    const key = `op_mode_${userId}`;
+    const value = JSON.stringify({ mode });
+    const existing = db.settings.findIndex((s: any) => s.key === key);
+    if (existing >= 0) db.settings[existing].value = value;
+    else db.settings.push({ key, value });
+    writeDB(db);
+  } catch (err: any) {
+    logger.warn(`[Audio] Failed to persist operation mode: ${err?.message || err}`);
+  }
 }
 
 function cancelActiveVoiceTurn(session: AudioSession): void {
@@ -357,18 +398,21 @@ async function processVoiceInput(
     } catch {}
     return 'assistant';
   })();
+  const requestedMode = detectVoiceClientModeSwitch(userText);
+  const autoPromoteToAssistant = shouldAutoPromoteVoiceWork(userText, operationMode, requestedMode);
+  const effectiveOperationMode: OperationMode = requestedMode || (autoPromoteToAssistant ? 'assistant' : operationMode);
 
-  const opModeConfigV = getOperationModeConfig(operationMode);
-  const allowToolUseForTurn = shouldAllowToolUseForTurn(userText, undefined, operationMode);
-  const clientActionOnlyTurn = hasClientActionIntent(userText) && (operationMode === 'chat' || operationMode === 'meeting' || operationMode === 'music');
+  const effectiveOpModeConfig = getOperationModeConfig(effectiveOperationMode);
+  const allowToolUseForTurn = autoPromoteToAssistant || shouldAllowToolUseForTurn(userText, undefined, effectiveOperationMode);
+  const clientActionOnlyTurn = hasClientActionIntent(userText) && (effectiveOperationMode === 'chat' || effectiveOperationMode === 'meeting' || effectiveOperationMode === 'music');
   const clientActionToolPolicy = clientActionOnlyTurn
     ? { allowedTools: ['client_get_state', 'client_action'], requireConfirmation: [], forbiddenTools: [], maxIterations: 4 }
     : null;
   const exposeAgentWork = shouldExposeAgentWork(userText);
-  logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode} clientActionOnly=${clientActionOnlyTurn}`);
+  logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode} effective=${effectiveOperationMode} clientActionOnly=${clientActionOnlyTurn}`);
   const opModeOverlay = clientActionOnlyTurn
     ? '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. For music requests, switch to music mode before opening the music center or mood layer. For meeting/autonomous mode, use the client action confirmation flow when required.'
-    : (opModeConfigV && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting') ? '\n\n' + opModeConfigV.promptOverlay : '');
+    : (effectiveOpModeConfig && (allowToolUseForTurn || effectiveOperationMode === 'music' || effectiveOperationMode === 'meeting') ? '\n\n' + effectiveOpModeConfig.promptOverlay : '');
   const interactionOverlay = allowToolUseForTurn
     ? toolVoiceOverlay
     : baseVoiceOverlay + '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, assemble a team, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';
@@ -447,12 +491,12 @@ async function processVoiceInput(
   const toolContext = {
     desktopRelay,
     llmGetters,
-    ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn ? { requestConfirmation } : {}),
+    ...(effectiveOperationMode === 'assistant' || effectiveOperationMode === 'autonomous' || clientActionOnlyTurn ? { requestConfirmation } : {}),
     isCancelled: () => pipelineAbort?.signal.aborted ?? false,
     ...(clientActionToolPolicy
       ? { toolPolicy: clientActionToolPolicy }
-      : allowToolUseForTurn && opModeConfigV
-      ? { toolPolicy: opModeConfigV.toolPolicy }
+      : allowToolUseForTurn && effectiveOpModeConfig
+      ? { toolPolicy: effectiveOpModeConfig.toolPolicy }
       : { toolPolicy: { allowedTools: [], requireConfirmation: [], forbiddenTools: ['*'], maxIterations: 0 } }),
   };
   const ttsProvider = getTTSProvider();
@@ -519,6 +563,43 @@ async function processVoiceInput(
   };
 
   // ── Quick Command Fast-Path: deterministic commands skip LLM entirely ──
+  const directlyAppliedMode: OperationMode | null =
+    autoPromoteToAssistant ? 'assistant'
+    : requestedMode && ['chat', 'assistant', 'music'].includes(requestedMode) ? requestedMode
+    : null;
+  if (directlyAppliedMode) {
+    try {
+      await desktopRelay('client_action', { action: 'set_client_mode', mode: directlyAppliedMode });
+    } catch (err: any) {
+      socket.emit('agent:notification', {
+        type: 'client_action',
+        level: 'warning',
+        message: `Mode switch did not reach the client: ${err?.message || err}`,
+      });
+    }
+    saveOperationModePreference(session.userId, directlyAppliedMode);
+
+    if (isPureModeSwitchRequest(userText, requestedMode)) {
+      const modeLabel = directlyAppliedMode === 'chat' ? '聊天模式'
+        : directlyAppliedMode === 'music' ? '音乐模式'
+        : '助手模式';
+      responseText = `已切到${modeLabel}。`;
+      flushSentence(responseText);
+      await Promise.allSettled(ttsPromises);
+      const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+      session.isProcessing = false;
+      session.isSpeaking = false;
+      session.pipelineAbortController = null;
+      socket.emit('chat:conversation_updated', { conversationId: conv.id, agentId: session.agentId, source: 'voice' });
+      socket.emit("audio:status", { status: "listening" });
+      socket.emit("agent:status", { status: "idle" });
+      socket.emit("agent:response", { text: responseText, agentName: "Lumi", source: "voice_mode" });
+      return;
+    }
+  }
+
   try {
     const quickResult = await matchQuickCommand(userText, session.userId);
     if (quickResult?.matched) {
@@ -547,7 +628,7 @@ async function processVoiceInput(
       responseText = quickResult.responseText;
       const conv = getOrCreateActiveConversation(session.userId, session.agentId);
       addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: quickResult.toolCall ? [quickResult.toolCall] : undefined });
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
@@ -639,7 +720,7 @@ async function processVoiceInput(
     logger.info(`[Audio] Cognition: ${cognition.intent.category} (confidence: ${cognition.intent.confidence}), model: ${effectiveModel}`);
 
     // ── Music intent shortcut — intercept before LLM tool-call loop ──
-    const isMusicAdjustment = isMusicAdjustmentRequest(userText) && operationMode === 'music';
+    const isMusicAdjustment = isMusicAdjustmentRequest(userText) && effectiveOperationMode === 'music';
     if (isMusicPlaybackRequest(userText) || isMusicAdjustment) {
       logger.info('[Audio] Music intent matched, attempting shortcut...');
       try {
@@ -832,7 +913,7 @@ async function processVoiceInput(
     }
     addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
     if (responseText) {
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: toolResults.length ? toolResults : undefined });
     }
     // Topic tracking — extract and record topics for cross-session continuity
     try {
@@ -874,6 +955,7 @@ async function processVoiceInput(
     session.isProcessing = false;
     session.isBackgroundWork = false;
     session.ttsAbortController = null;
+    session.pipelineAbortController = null;
 
     if (session.isActive) {
       resetSilenceTimer(session, socket);

@@ -6,6 +6,8 @@ import { toolRegistry } from "../tools/registry";
 import { recordUsage, estimateTokens } from "../subscription/proxy";
 import { makeLLMCall, NormalizedMessage } from "../llm/providers";
 import { optionalAuth, requireAuth } from "../middleware/auth";
+import { getUserPreferredLLMConfig } from "../llm/user_preferences";
+import { recordTokenUsage } from "../llm/token_tracker";
 
 export function mountMiscRoutes(router: Router, _jwtSecret: string, llm: {
   getDeepSeek: any; getGemini: any; getOpenAI: any; getAnthropic: any; getQwen: any;
@@ -93,14 +95,18 @@ export function mountMiscRoutes(router: Router, _jwtSecret: string, llm: {
 
   // ── Org Chat (simpler version of /ai/chat, used by CentralLumiChat) ──
   router.post("/chat", optionalAuth, asyncHandler(async (req, res) => {
-    const { messages, provider: reqProvider, model: reqModel } = req.body || {};
+    const { messages, provider: reqProvider } = req.body || {};
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
     }
 
-    const provider = reqProvider || 'gemini';
-    const model = reqModel || 'gemini-2.0-flash';
     const userId = req.user?.uid || 'anonymous';
+    const preferred = getUserPreferredLLMConfig(userId);
+    const provider = preferred.provider;
+    const model = preferred.model;
+    if (reqProvider && reqProvider !== provider) {
+      console.warn(`[MiscChat] Ignoring request provider ${reqProvider}; using primary brain ${provider}/${model} for user ${userId}`);
+    }
 
     try {
       const result = await runWithTools(
@@ -113,6 +119,13 @@ export function mountMiscRoutes(router: Router, _jwtSecret: string, llm: {
 
       const responseText = result.text || '';
       const tokens = estimateTokens(messages.map((m: any) => m.content || '').join(' ') + ' ' + responseText);
+      for (const u of result.usageRecords || []) {
+        recordTokenUsage(userId, u.provider, u.model, {
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
+        }, `misc_chat_${Date.now()}`, 'chat');
+      }
       recordUsage(userId, tokens);
       res.json({ text: responseText, toolCalls: result.toolCalls.length });
     } catch (error: any) {

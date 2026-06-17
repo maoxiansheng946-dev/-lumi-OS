@@ -786,12 +786,9 @@ async function processWithPersonality(
   const activeProvider = userLLMPrefs.provider || 'deepseek';
   const activeModel = (userLLMPrefs.models || {})[activeProvider] || DEFAULT_MODELS[activeProvider] || 'deepseek-chat';
 
-  // Build fallback candidates from all user-configured models
-  const fallbackCandidates = Object.entries(userLLMPrefs.models || {})
-    .filter(([p]) => p !== activeProvider)
-    .map(([p, m]) => ({ provider: p, model: m as string }));
-
-  const modelProviders = resolveProviderOrder(activeProvider, activeModel, fallbackCandidates, llm);
+  // Respect the selected primary brain. Do not silently fall back to another
+  // configured provider from Feishu, because that can create unexpected billing.
+  const modelProviders = resolveProviderOrder(activeProvider, activeModel, [], llm);
 
   for (const { getter, model } of modelProviders) {
     try {

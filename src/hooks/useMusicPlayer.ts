@@ -31,6 +31,8 @@ export interface MusicLyricLine {
 export interface MusicQueueItem {
   track: MusicTrack;
   audioUrl?: string;
+  encryptedId?: string;
+  originalId?: string;
 }
 
 export interface MusicAtmosphere {
@@ -39,6 +41,7 @@ export interface MusicAtmosphere {
   weather?: string;
   lumiReason?: string;
   audioUrl?: string;
+  nativePlayback?: boolean;
   queue?: MusicQueueItem[];
   queueIndex?: number;
   lyrics?: MusicLyricLine[];
@@ -88,6 +91,8 @@ let _socketHandlers: Record<string, (...args: any[]) => void> | null = null;
 let _failedQueueIndexes = new Set<number>();
 let _duckingReasons = new Map<string, number>();
 let _duckingLevel = 1;
+let _playbackWatchdog: ReturnType<typeof setTimeout> | null = null;
+let _playAttempt = 0;
 
 function notifyMusicState() {
   _listeners.forEach(fn => fn());
@@ -112,6 +117,68 @@ function applyAudioVolume() {
   if (_audio) _audio.volume = getEffectiveVolume();
 }
 
+function syncNativePlaybackVolume(level = Math.round(_musicSnapshot.volume * _duckingLevel)) {
+  if (_musicSnapshot.source === 'netease') {
+    _boundSocket?.emit?.('music:volume', { level: Math.max(0, Math.min(100, level)) });
+  }
+}
+
+function stopLocalAudioForNativePlayback() {
+  clearPlaybackWatchdog();
+  if (!_audio) return;
+  _audio.pause();
+  _audio.removeAttribute('src');
+  try { _audio.load(); } catch {}
+}
+
+function clearPlaybackWatchdog() {
+  if (_playbackWatchdog) {
+    clearTimeout(_playbackWatchdog);
+    _playbackWatchdog = null;
+  }
+}
+
+function reportPlaybackError(message: string, audioUrl?: string) {
+  console.warn('[Music]', message);
+  _boundSocket?.emit?.('music:playback_error', {
+    message,
+    audioUrl,
+    track: _musicSnapshot.track,
+    queueIndex: _musicSnapshot.queueIndex,
+  });
+}
+
+function tryNextPlayableTrack(message: string, audioUrl?: string): boolean {
+  clearPlaybackWatchdog();
+  const queue = _musicSnapshot.queue || [];
+  if (_musicSnapshot.queueIndex >= 0) {
+    _failedQueueIndexes.add(_musicSnapshot.queueIndex);
+  }
+  if (!queue.length || _failedQueueIndexes.size >= queue.length) return false;
+
+  const baseIndex = _musicSnapshot.queueIndex >= 0 ? _musicSnapshot.queueIndex : 0;
+  for (let offset = 1; offset <= queue.length; offset += 1) {
+    const index = (baseIndex + offset) % queue.length;
+    if (!_failedQueueIndexes.has(index) && queue[index]?.audioUrl) {
+      setMusicState(prev => ({ ...prev, lastError: message }));
+      reportPlaybackError(`${message}; trying another candidate`, audioUrl);
+      playQueueAt(index);
+      return true;
+    }
+  }
+  return false;
+}
+
+function handlePlaybackFailure(message: string, audioUrl?: string) {
+  if (tryNextPlayableTrack(message, audioUrl)) return;
+  setMusicState(prev => ({
+    ...prev,
+    isPlaying: false,
+    lastError: message,
+  }));
+  reportPlaybackError(message, audioUrl);
+}
+
 function setMusicDucking(reason: string, active: boolean, level = 0.32) {
   if (active) {
     _duckingReasons.set(reason, Math.max(0.05, Math.min(1, level)));
@@ -120,6 +187,7 @@ function setMusicDucking(reason: string, active: boolean, level = 0.32) {
   }
   _duckingLevel = _duckingReasons.size ? Math.min(...Array.from(_duckingReasons.values())) : 1;
   applyAudioVolume();
+  syncNativePlaybackVolume();
 }
 
 function getQueueItem(offset: number): { item: MusicQueueItem; index: number } | null {
@@ -136,11 +204,15 @@ function ensureAudio() {
   audio.volume = getEffectiveVolume();
   audio.addEventListener('timeupdate', () => {
     setMusicState(prev => ({ ...prev, progress: audio.currentTime }));
+    if (_playbackWatchdog && !audio.paused && audio.currentTime > 0.25) {
+      clearPlaybackWatchdog();
+    }
   });
   audio.addEventListener('loadedmetadata', () => {
     setMusicState(prev => ({ ...prev, duration: Number.isFinite(audio.duration) ? audio.duration : prev.duration }));
   });
   audio.addEventListener('ended', () => {
+    clearPlaybackWatchdog();
     const nextItem = getQueueItem(1);
     if (nextItem) {
       playQueueAt(nextItem.index);
@@ -149,25 +221,7 @@ function ensureAudio() {
     setMusicState(prev => ({ ...prev, isPlaying: false, progress: prev.duration || prev.progress }));
   });
   audio.addEventListener('error', () => {
-    const queue = _musicSnapshot.queue || [];
-    if (_musicSnapshot.queueIndex >= 0) {
-      _failedQueueIndexes.add(_musicSnapshot.queueIndex);
-    }
-    if (queue.length && _failedQueueIndexes.size < queue.length) {
-      const baseIndex = _musicSnapshot.queueIndex >= 0 ? _musicSnapshot.queueIndex : 0;
-      for (let offset = 1; offset <= queue.length; offset += 1) {
-        const index = (baseIndex + offset) % queue.length;
-        if (!_failedQueueIndexes.has(index) && queue[index]?.audioUrl) {
-          playQueueAt(index);
-          return;
-        }
-      }
-    }
-    setMusicState(prev => ({
-      ...prev,
-      isPlaying: false,
-      lastError: 'Music audio failed to load or play',
-    }));
+    handlePlaybackFailure('Music audio failed to load or play', audio.currentSrc || audio.src);
   });
   _audio = audio;
   return _audio;
@@ -176,20 +230,34 @@ function ensureAudio() {
 function playAudioUrl(audioUrl: string, restart = false) {
   const audio = ensureAudio();
   if (!audio) return;
+  clearPlaybackWatchdog();
+  const attempt = ++_playAttempt;
   if (restart || audio.src !== audioUrl) {
     audio.pause();
     audio.currentTime = 0;
     audio.src = audioUrl;
+    audio.load();
   }
   applyAudioVolume();
+  const startTime = audio.currentTime || 0;
   audio.play()
-    .then(() => setMusicState(prev => ({ ...prev, isPlaying: true, lastError: undefined })))
+    .then(() => {
+      if (attempt !== _playAttempt) return;
+      setMusicState(prev => ({ ...prev, isPlaying: true, lastError: undefined }));
+      _playbackWatchdog = setTimeout(() => {
+        if (attempt !== _playAttempt) return;
+        const progressed = !audio.paused && audio.currentTime > startTime + 0.25;
+        if (!progressed) {
+          const reason = audio.readyState >= 2
+            ? 'Music audio started but no playback progress was detected'
+            : 'Music audio did not load enough data to play';
+          handlePlaybackFailure(reason, audioUrl);
+        }
+      }, 7000);
+    })
     .catch((err: any) => {
-      setMusicState(prev => ({
-        ...prev,
-        isPlaying: false,
-        lastError: err?.message || 'Music audio playback was blocked or failed',
-      }));
+      const message = err?.message || 'Music audio playback was blocked or failed';
+      handlePlaybackFailure(message, audioUrl);
     });
 }
 
@@ -223,7 +291,10 @@ function bindMusicSocket(socket: any) {
 
   _boundSocket = socket;
   const onAtmosphere = (data: MusicAtmosphere) => {
-    const queue = data.queue?.length
+    const nativePlayback = data.nativePlayback === true || (!data.audioUrl && data.queue?.some(item => item.encryptedId || item.originalId));
+    const queue = nativePlayback
+      ? (data.queue || [])
+      : data.queue?.length
       ? data.queue.filter(item => Boolean(item.audioUrl))
       : data.audioUrl
         ? [{ track: data.track, audioUrl: data.audioUrl }]
@@ -244,13 +315,19 @@ function bindMusicSocket(socket: any) {
       isPlaying: true,
       progress: 0,
       duration: data.track.duration ? data.track.duration / 1000 : prev.duration,
-      source: data.audioUrl ? 'url' : 'netease',
+      source: nativePlayback ? 'netease' : data.audioUrl ? 'url' : 'netease',
       lastError: undefined,
     }));
-    if (data.audioUrl) playAudioUrl(data.audioUrl, true);
+    if (nativePlayback) {
+      stopLocalAudioForNativePlayback();
+      syncNativePlaybackVolume();
+    } else if (data.audioUrl) {
+      playAudioUrl(data.audioUrl, true);
+    }
   };
 
   const onState = (data: any) => {
+    if (data.source === 'netease') stopLocalAudioForNativePlayback();
     setMusicState(prev => ({
       ...prev,
       track: data.trackName ? {
@@ -267,7 +344,7 @@ function bindMusicSocket(socket: any) {
       source: data.source ?? prev.source,
     }));
     if (data.volume != null) applyAudioVolume();
-    if (data.audioUrl) playAudioUrl(data.audioUrl);
+    if (data.audioUrl && data.source !== 'netease') playAudioUrl(data.audioUrl);
   };
 
   const onLyrics = (data: { lyrics: MusicLyricLine[] } | MusicLyricLine[]) => {
@@ -337,6 +414,11 @@ export function useMusicPlayer() {
   }, []);
 
   const play = useCallback(() => {
+    if (_musicSnapshot.source === 'netease') {
+      socket?.emit('music:resume');
+      setMusicState(prev => ({ ...prev, isPlaying: true, lastError: undefined }));
+      return;
+    }
     const audio = ensureAudio();
     if (audio?.src) {
       audio.play()
@@ -355,26 +437,38 @@ export function useMusicPlayer() {
   }, [socket]);
 
   const next = useCallback(() => {
+    if (_musicSnapshot.source === 'netease') {
+      socket?.emit('music:next');
+      setMusicState(prev => ({ ...prev, progress: 0, isPlaying: true, lastError: undefined }));
+      return;
+    }
     const nextItem = getQueueItem(1);
     if (nextItem) {
       playQueueAt(nextItem.index);
       return;
     }
     setMusicState(prev => ({ ...prev, lastError: 'No next song is available in the current queue' }));
-  }, []);
+  }, [socket]);
 
   const prev = useCallback(() => {
+    if (_musicSnapshot.source === 'netease') {
+      socket?.emit('music:prev');
+      setMusicState(prev => ({ ...prev, progress: 0, isPlaying: true, lastError: undefined }));
+      return;
+    }
     const prevItem = getQueueItem(-1);
     if (prevItem) {
       playQueueAt(prevItem.index);
       return;
     }
     setMusicState(prev => ({ ...prev, lastError: 'No previous song is available in the current queue' }));
-  }, []);
+  }, [socket]);
 
   const seek = useCallback((seconds: number) => {
-    const audio = ensureAudio();
-    if (audio) audio.currentTime = seconds;
+    if (_musicSnapshot.source !== 'netease') {
+      const audio = ensureAudio();
+      if (audio) audio.currentTime = seconds;
+    }
     socket?.emit('music:seek', { seconds });
     setMusicState(prev => ({ ...prev, progress: seconds }));
   }, [socket]);
@@ -382,7 +476,7 @@ export function useMusicPlayer() {
   const setVolume = useCallback((level: number) => {
     const volume = Math.max(0, Math.min(100, level));
     ensureAudio();
-    socket?.emit('music:volume', { level: volume });
+    socket?.emit('music:volume', { level: Math.round(volume * _duckingLevel) });
     setMusicState(prev => ({ ...prev, volume }));
     applyAudioVolume();
   }, [socket]);

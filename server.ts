@@ -58,12 +58,18 @@ let ncmLoginQrUrl: string | null = null;
 let ncmLoginDone = false;
 const execFileP = promisify(execFile);
 
+function quoteNcmArg(value: string): string {
+  const raw = String(value);
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '\\"').replace(/([&|<>^%])/g, '^$1')}"`;
+}
+
 async function runNcmCli(args: string[], timeout = 15000): Promise<{ stdout: string; stderr: string }> {
   if (process.platform === 'win32') {
     // MSYS2 bash PATH lacks .cmd entries — go through cmd.exe
-    const cmdline = `npx.cmd @music163/ncm-cli ${args.join(' ')}`;
+    const cmdline = ['npx.cmd', '@music163/ncm-cli', ...args].map(quoteNcmArg).join(' ');
     try {
-      const stdout = execFileSync('cmd.exe', ['/c', cmdline], { timeout, windowsHide: true, encoding: 'utf8' });
+      const stdout = execFileSync('cmd.exe', ['/d', '/c', cmdline], { timeout, windowsHide: true, encoding: 'utf8' });
       return { stdout, stderr: '' };
     } catch (e: any) {
       throw new Error(e.stderr || e.message || String(e));
@@ -124,14 +130,17 @@ apiRouter.post('/ncm/configure', async (req, res) => {
 });
 
 apiRouter.get('/ncm/configure/status', async (_req, res) => {
+  let hasStoredKeys = false;
   try {
+    const { getKey } = await import('./server/config/keys');
+    hasStoredKeys = Boolean(normalizeNcmAppId(getKey('NETEASE_APP_ID')) && normalizeNcmPrivateKey(getKey('NETEASE_PRIVATE_KEY')));
     const result = await runNcmCli(['config', 'list'], 8000);
     const stdout = result.stdout || '';
     const hasAppId = stdout.includes('appId:') && !stdout.includes('appId: (未配置)');
     const hasPrivateKey = stdout.includes('privateKey:') && !stdout.includes('privateKey: (未配置)');
-    res.json({ configured: hasAppId && hasPrivateKey });
+    res.json({ configured: (hasAppId && hasPrivateKey) || hasStoredKeys });
   } catch {
-    res.json({ configured: false });
+    res.json({ configured: hasStoredKeys });
   }
 });
 

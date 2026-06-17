@@ -1,7 +1,7 @@
 /**
  * Shared music search + play logic.
- * Search uses ncm-cli when available; desktop playback is owned by the
- * frontend audio engine so MusicCenter and the mood layer share one state.
+ * NetEase playback uses the authenticated ncm-cli/mpv player so account login
+ * and VIP access are respected. The frontend mood layer mirrors state/control.
  */
 import { execFileSync } from 'child_process';
 import { loadEmotionalState } from '../personality/state';
@@ -63,29 +63,83 @@ function quoteCmdArg(value: string): string {
   return `"${raw.replace(/"/g, '\\"').replace(/([&|<>^%])/g, '^$1')}"`;
 }
 
-function runNcmCli(args: string[], timeout = 15000): string {
+type NcmCliResult = { ok: boolean; stdout: string; error?: string };
+
+function looksLikeNcmFailure(text: string): boolean {
+  return /(api\s*key|未设置|未配置|登录|login|required|failed|failure|失败|错误|error|mpv|player|not\s+found|cannot|无法)/i.test(text);
+}
+
+function runNcmCliResult(args: string[], timeout = 15000): NcmCliResult {
   try {
     if (process.platform === 'win32') {
       const cmdline = ['npx.cmd', '@music163/ncm-cli', ...args, '--output', 'json']
         .map(quoteCmdArg)
         .join(' ');
-      return execFileSync('cmd.exe', ['/d', '/c', cmdline], {
+      const stdout = execFileSync('cmd.exe', ['/d', '/c', cmdline], {
         timeout,
         windowsHide: true,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024,
       });
+      return { ok: true, stdout };
     }
-    return execFileSync('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
+    const stdout = execFileSync('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
       timeout,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
     });
+    return { ok: true, stdout };
   } catch (e: any) {
-    if (e.stdout) return e.stdout;
-    console.warn('[Music] ncm-cli error:', e.stderr || e.message);
-    return '';
+    const stdout = String(e.stdout || '');
+    const stderr = String(e.stderr || e.message || '');
+    const combined = `${stdout}\n${stderr}`;
+    const ok = Boolean(stdout.trim()) && !looksLikeNcmFailure(combined);
+    if (!ok) console.warn('[Music] ncm-cli error:', stderr || stdout || e.message);
+    return { ok, stdout, error: stderr || stdout || e.message };
   }
+}
+
+function runNcmCli(args: string[], timeout = 15000): string {
+  const result = runNcmCliResult(args, timeout);
+  return result.stdout;
+}
+
+function playNcmSong(song: any): { ok: boolean; reason?: string } {
+  const { encryptedId, originalId } = getSongIds(song);
+  if (!encryptedId || !originalId) {
+    return { ok: false, reason: '这首歌缺少网易云播放 ID，无法启动登录态播放。' };
+  }
+  const result = runNcmCliResult(['play', '--song', '--encrypted-id', encryptedId, '--original-id', originalId], 22000);
+  const parsed = tryParse(result.stdout);
+  const failed = parsed?.success === false || parsed?.ok === false || !result.ok;
+  if (failed) {
+    return {
+      ok: false,
+      reason: result.error || parsed?.message || parsed?.error || '网易云登录态播放启动失败，请检查音乐中心登录、API 凭据和 mpv 播放器。',
+    };
+  }
+  return { ok: true };
+}
+
+function queueNcmSongs(songs: any[]): void {
+  const queueCandidates = songs
+    .map(song => ({ song, ids: getSongIds(song) }))
+    .filter(item => item.ids.encryptedId && item.ids.originalId)
+    .slice(0, 8);
+  if (!queueCandidates.length) return;
+
+  setTimeout(() => {
+    for (const item of queueCandidates) {
+      runNcmCli([
+        'queue',
+        'add',
+        '--encrypted-id',
+        item.ids.encryptedId,
+        '--original-id',
+        item.ids.originalId,
+      ], 8000);
+    }
+  }, 0);
 }
 
 function ncmExec(args: string[], timeout = 15000): string {
@@ -251,29 +305,34 @@ async function pickAndPlay(
 ): Promise<MusicPlayResult> {
   const playable = candidates.filter((s: any) => s.playFlag !== false);
   if (playable.length === 0) return { success: false, reason: '没有找到可播放的候选歌曲。' };
-  console.log(`[Music] ${source}: ${playable.length} playable from ${candidates.length} candidates`);
+  const playableWithIds = playable.filter((s: any) => {
+    const ids = getSongIds(s);
+    return Boolean(ids.encryptedId && ids.originalId);
+  });
+  if (playableWithIds.length === 0) return { success: false, reason: '没有找到带网易云播放 ID 的候选歌曲。' };
+  console.log(`[Music] ${source}: ${playableWithIds.length} account-playable candidates from ${candidates.length} candidates`);
 
-  const pick = playable[Math.floor(Math.random() * playable.length)];
+  const pick = playableWithIds[Math.floor(Math.random() * playableWithIds.length)];
   const { encryptedId, originalId } = getSongIds(pick);
   const trackInfo = normalizeTrack(pick);
+  const nativePlay = playNcmSong(pick);
+  if (!nativePlay.ok) return { success: false, reason: nativePlay.reason };
+
+  queueNcmSongs(playableWithIds.filter(song => song !== pick));
   const seenQueueItems = new Set<string>();
-  const queue = [pick, ...playable.filter(song => song !== pick)].reduce((items, song) => {
+  const queue = [pick, ...playableWithIds.filter(song => song !== pick)].reduce((items, song) => {
     if (items.length >= 20) return items;
     const ids = getSongIds(song);
     const track = normalizeTrack(song);
     const key = ids.originalId || ids.encryptedId || `${track.name}:${track.artists.join(',')}`;
-    const audioUrl = getPublicAudioUrl(song);
-    if (!audioUrl || seenQueueItems.has(key)) return items;
+    if (seenQueueItems.has(key)) return items;
     seenQueueItems.add(key);
-    items.push({ track, audioUrl });
+    items.push({ track, encryptedId: ids.encryptedId, originalId: ids.originalId });
     return items;
-  }, [] as Array<{ track: ReturnType<typeof normalizeTrack>; audioUrl: string }>);
+  }, [] as Array<{ track: ReturnType<typeof normalizeTrack>; encryptedId: string; originalId: string }>);
   const queueIndex = 0;
 
-  // The desktop client owns playback so MusicCenter and the mood layer control
-  // the same audio engine. Starting ncm-cli/mpv here as well causes duplicate
-  // playback when the frontend audio fallback is available.
-  console.log(`[Music] Selected: "${trackInfo.name}"`);
+  console.log(`[Music] Selected and started through NetEase account playback: "${trackInfo.name}"`);
 
   const emotionalState = loadEmotionalState(userId);
   let lyricsData: any[] = [];
@@ -299,13 +358,12 @@ async function pickAndPlay(
 
   const reasonPhrase = moodReasonMap[mood] || '根据你现在的状态';
   const lumiReason = `${reasonPhrase}，给你放一首《${trackInfo.name}》，希望你喜欢。`;
-  const audioUrl = getPublicAudioUrl(pick);
 
-  console.log(`[Music] Scene: ${scene.scene}, particles=${scene.particles}, audioFallback=${Boolean(audioUrl)}`);
+  console.log(`[Music] Scene: ${scene.scene}, particles=${scene.particles}, nativePlayback=true`);
   emitMusicAtmosphere(socket, {
     track: trackInfo,
     mood,
-    audioUrl,
+    nativePlayback: true,
     queue,
     queueIndex,
     lyrics: lyricsData,
@@ -383,7 +441,7 @@ export async function searchAndPlay(
     const target = extractTarget(userText);
     if (target) {
       console.log(`[Music] User target: "${target}"`);
-      const searchRaw = ncmExec(['search', 'song', '--keyword', target, '--limit', '5']);
+      const searchRaw = ncmExec(['search', 'song', '--keyword', target, '--limit', '20']);
       const searchData = tryParse(searchRaw);
       const songs = getSongs(searchData);
       if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
@@ -398,7 +456,7 @@ export async function searchAndPlay(
   }
 
   const keyword = moodSearchMap[mood] || '\u63a8\u8350 \u70ed\u95e8';
-  const searchRaw = ncmExec(['search', 'song', '--keyword', keyword, '--limit', '5']);
+  const searchRaw = ncmExec(['search', 'song', '--keyword', keyword, '--limit', '20']);
   const searchData = tryParse(searchRaw);
   const songs = getSongs(searchData);
   if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');

@@ -12,7 +12,13 @@ interface MusicAtmosphere {
   weather?: string;
   lumiReason?: string;
   audioUrl?: string;
-  queue?: Array<{ track: { name: string; artists: string[]; album?: string; coverUrl?: string; duration?: number }; audioUrl?: string }>;
+  nativePlayback?: boolean;
+  queue?: Array<{
+    track: { name: string; artists: string[]; album?: string; coverUrl?: string; duration?: number };
+    audioUrl?: string;
+    encryptedId?: string;
+    originalId?: string;
+  }>;
   queueIndex?: number;
   lyrics?: Array<{ time: number; text: string }>;
   scene?: import('../music/scene_generator').MusicScene;
@@ -137,6 +143,23 @@ export function registerMusicHandlers(
 
   socket.on('music:get_state', socketGuard(() => {
     pollAndEmitState(socket);
+  }));
+
+  socket.on('music:playback_error', socketGuard((data: { message?: string; track?: { name?: string; artists?: string[] }; queueIndex?: number }) => {
+    const trackLabel = data?.track?.name
+      ? `${data.track.name}${data.track.artists?.length ? ` - ${data.track.artists.join(' / ')}` : ''}`
+      : 'current track';
+    const message = data?.message || 'Music playback failed in the desktop audio engine';
+    const retrying = message.includes('trying another candidate');
+    if (retrying) return;
+    socket.emit('music:error', { message: `${trackLabel}: ${message}` });
+    socket.emit('agent:notification', {
+      type: 'music',
+      level: 'warning',
+      title: 'Music playback issue',
+      message: `${trackLabel}: ${message}`,
+    });
+    socket.emit('agent:status', { status: 'idle', source: 'music' });
   }));
 
   socket.on('disconnect', () => {

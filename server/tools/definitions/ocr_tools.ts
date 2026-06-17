@@ -37,7 +37,7 @@ async function ocrScreen(args: Record<string, any>, context?: any): Promise<stri
 
   const model = getUserPreferredVision(context?.userId || 'anonymous').model || visionModelFor(provider);
   try {
-    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
+    const description = await analyzeScreen(base64, query, { provider, model, userId: context?.userId || 'anonymous' }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
     return description;
   } catch (err: any) {
     return JSON.stringify({ format: 'screenshot_base64', data: base64, error: err.message });
@@ -60,7 +60,7 @@ async function ocrRegion(args: Record<string, any>, context?: any): Promise<stri
 
   const model = getUserPreferredVision(context?.userId || 'anonymous').model || visionModelFor(provider);
   try {
-    const description = await analyzeScreen(base64, query, { provider, model }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
+    const description = await analyzeScreen(base64, query, { provider, model, userId: context?.userId || 'anonymous' }, g.getDeepSeek, g.getGemini, g.getOpenAI, g.getAnthropic, g.getQwen, g.getOllama, g.getLmStudio, g.getArk);
     return description;
   } catch (err: any) {
     return JSON.stringify({ format: 'screenshot_base64', data: base64, error: err.message });

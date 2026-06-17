@@ -8,6 +8,8 @@ import { makeLLMCall } from "../llm/providers";
 import { toolRegistry } from "../tools/registry";
 import { recordLatency } from "../monitor/latency_store";
 import { optionalAuth } from "../middleware/auth";
+import { getUserPreferredLLMConfig } from "../llm/user_preferences";
+import { recordTokenUsage } from "../llm/token_tracker";
 
 export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
   getDeepSeek: any; getGemini: any; getOpenAI: any; getAnthropic: any; getQwen: any;
@@ -16,12 +18,18 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
     (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
 
   const handleChat = asyncHandler(async (req, res) => {
-    const { provider = "gemini", model, messages, prompt: rawPrompt, message } = req.body;
+    const { provider: reqProvider = "gemini", model: reqModel, messages, prompt: rawPrompt, message } = req.body;
     const prompt = rawPrompt ?? message;
     const userKey = req.headers["x-api-key"] as string;
     const userId = req.user?.uid || 'anonymous';
 
     const isBYOK = userKey && userKey.length > 5;
+    const preferred = getUserPreferredLLMConfig(userId);
+    const provider = isBYOK ? reqProvider : preferred.provider;
+    const model = isBYOK ? reqModel : preferred.model;
+    if (!isBYOK && reqProvider && reqProvider !== provider) {
+      console.warn(`[Chat] Ignoring request provider ${reqProvider}; using primary brain ${provider}/${model} for user ${userId}`);
+    }
 
     if (!isBYOK) {
       const access = checkLLMAccess({ userId, provider, model: model || '' });
@@ -80,7 +88,7 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
           const result = await runWithTools(
             normalizedMessages,
             toolRegistry,
-            { provider, model: model || 'gemini-2.0-flash', userId },
+            { provider, model, userId },
             undefined, 3,
             llm.getDeepSeek, llm.getGemini, llm.getOpenAI, llm.getAnthropic, llm.getQwen,
             (chunk) => {
@@ -92,6 +100,13 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
           const tokens = estimateTokens(
             normalizedMessages.map((m: any) => m.content || '').join(' ') + ' ' + responseText
           );
+          for (const u of result.usageRecords || []) {
+            recordTokenUsage(userId, u.provider, u.model, {
+              promptTokens: u.promptTokens,
+              completionTokens: u.completionTokens,
+              totalTokens: u.totalTokens,
+            }, `rest_chat_${Date.now()}`, 'chat');
+          }
           recordUsage(userId, tokens);
           res.write(`data: ${JSON.stringify({ done: true, text: responseText, toolCalls: result.toolCalls.length })}\n\n`);
           return res.end();
@@ -100,7 +115,7 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
         const result = await runWithTools(
           normalizedMessages,
           toolRegistry,
-          { provider, model: model || 'gemini-2.0-flash', userId },
+          { provider, model, userId },
           undefined, 3,
           llm.getDeepSeek, llm.getGemini, llm.getOpenAI, llm.getAnthropic, llm.getQwen,
         );
@@ -109,6 +124,13 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
         const tokens = estimateTokens(
           normalizedMessages.map((m: any) => m.content || '').join(' ') + ' ' + responseText
         );
+        for (const u of result.usageRecords || []) {
+          recordTokenUsage(userId, u.provider, u.model, {
+            promptTokens: u.promptTokens,
+            completionTokens: u.completionTokens,
+            totalTokens: u.totalTokens,
+          }, `rest_chat_${Date.now()}`, 'chat');
+        }
         const usage = recordUsage(userId, tokens);
         return res.json({ text: responseText, usage, toolCalls: result.toolCalls.length });
       }
@@ -124,8 +146,14 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
   router.post("/chat", optionalAuth, handleChat);
 
   router.post("/meeting/analyze", optionalAuth, asyncHandler(async (req, res) => {
-    const { provider = "gemini", model, notes, startedAt, endedAt, language = "zh", purpose = "meeting", legalCase } = req.body || {};
+    const { provider: reqProvider, notes, startedAt, endedAt, language = "zh", purpose = "meeting", legalCase } = req.body || {};
     const userId = req.user?.uid || 'anonymous';
+    const preferred = getUserPreferredLLMConfig(userId, { maxTokens: 1800 });
+    const provider = preferred.provider;
+    const model = preferred.model;
+    if (reqProvider && reqProvider !== provider) {
+      console.warn(`[Meeting] Ignoring request provider ${reqProvider}; using primary brain ${provider}/${model} for user ${userId}`);
+    }
     const noteItems = Array.isArray(notes) ? notes : [];
     const transcript = noteItems
       .map((note: any) => {
@@ -205,12 +233,13 @@ export function mountChatRoutes(router: Router, _jwtSecret: string, llm: {
     const result = await makeLLMCall(
       [{ role: 'user', content: prompt }],
       [],
-      { provider, model: model || (provider === 'deepseek' ? 'deepseek-chat' : provider === 'qwen' ? 'qwen-plus' : 'gemini-2.0-flash'), maxTokens: 1800, userId },
+      { provider, model, maxTokens: 1800, userId },
       llm.getDeepSeek, llm.getGemini, llm.getOpenAI, llm.getAnthropic, llm.getQwen,
     );
 
     const report = result.text || '';
     const tokens = estimateTokens(prompt + ' ' + report);
+    recordTokenUsage(userId, provider, model, result.usage, `meeting_analyze_${Date.now()}`, 'meeting');
     const usage = recordUsage(userId, tokens);
     res.json({ report, usage });
   }));
