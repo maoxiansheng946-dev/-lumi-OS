@@ -295,6 +295,12 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
               />
               <span className="w-9 text-right text-[10px] text-white/35 font-mono">{player.volume}%</span>
             </div>
+
+            {player.lastError && (
+              <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-100/85">
+                {player.lastError}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

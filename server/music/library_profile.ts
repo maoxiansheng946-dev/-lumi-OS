@@ -288,7 +288,7 @@ function buildProfile(userId: string, playlist: LikedPlaylistInfo, tracks: Music
     styleMix: topCounts(styles, total, 8),
     durationMix: topCounts(durations, total, 6),
     decadeMix: topCounts(decades, total, 8),
-    sampleTracks: tracks.slice(0, 12),
+    sampleTracks: tracks.slice(0, 200),
   };
 
   return { ...base, ...buildInsights(base) };

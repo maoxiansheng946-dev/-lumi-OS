@@ -1,6 +1,5 @@
 import { execFile, execFileSync } from 'child_process';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 
@@ -15,7 +14,7 @@ export type NcmCliResult = {
 
 export function normalizeNcmAppId(value: unknown): string | null {
   const appId = String(value ?? '').trim();
-  return /^\d{1,32}$/.test(appId) ? appId : null;
+  return /^[A-Za-z0-9_-]{4,64}$/.test(appId) ? appId : null;
 }
 
 export function normalizeNcmPrivateKey(value: unknown): string | null {
@@ -48,25 +47,40 @@ export function quoteNcmArg(value: string): string {
   return `"${raw.replace(/"/g, '\\"').replace(/([&|<>^%])/g, '^$1')}"`;
 }
 
+function shouldAppendJsonOutput(args: string[]): boolean {
+  if (args.includes('--output')) return false;
+  return args[0] !== 'config';
+}
+
+function withJsonOutput(args: string[]): string[] {
+  return shouldAppendJsonOutput(args) ? [...args, '--output', 'json'] : args;
+}
+
+function getLocalNcmCliPath(): string | null {
+  const cliPath = path.join(process.cwd(), 'node_modules', '@music163', 'ncm-cli', 'dist', 'index.js');
+  return fs.existsSync(cliPath) ? cliPath : null;
+}
+
+function getNcmCliExec(args: string[]): { file: string; args: string[] } {
+  const finalArgs = withJsonOutput(args);
+  const localCli = getLocalNcmCliPath();
+  if (localCli) return { file: process.execPath, args: [localCli, ...finalArgs] };
+  if (process.platform === 'win32') return { file: 'cmd.exe', args: ['/d', '/c', makeWinCmdline(args)] };
+  return { file: 'npx', args: ['@music163/ncm-cli', ...finalArgs] };
+}
+
 function makeWinCmdline(args: string[]): string {
-  return ['npx.cmd', '@music163/ncm-cli', ...args, '--output', 'json']
+  return ['npx.cmd', '@music163/ncm-cli', ...withJsonOutput(args)]
     .map(quoteNcmArg)
     .join(' ');
 }
 
 export function runNcmCliSync(args: string[], timeout = 15000): NcmCliResult {
   try {
-    if (process.platform === 'win32') {
-      const stdout = execFileSync('cmd.exe', ['/d', '/c', makeWinCmdline(args)], {
-        timeout,
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-      });
-      return { ok: true, stdout };
-    }
-    const stdout = execFileSync('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
+    const command = getNcmCliExec(args);
+    const stdout = execFileSync(command.file, command.args, {
       timeout,
+      windowsHide: true,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
     });
@@ -87,17 +101,10 @@ export function runNcmCliSync(args: string[], timeout = 15000): NcmCliResult {
 
 export async function runNcmCliAsync(args: string[], timeout = 15000): Promise<NcmCliResult> {
   try {
-    if (process.platform === 'win32') {
-      const result = await execFileP('cmd.exe', ['/d', '/c', makeWinCmdline(args)], {
-        timeout,
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-      } as any);
-      return { ok: true, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') };
-    }
-    const result = await execFileP('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
+    const command = getNcmCliExec(args);
+    const result = await execFileP(command.file, command.args, {
       timeout,
+      windowsHide: true,
       maxBuffer: 1024 * 1024,
       encoding: 'utf8',
     } as any);
@@ -116,19 +123,19 @@ export async function runNcmCliAsync(args: string[], timeout = 15000): Promise<N
   }
 }
 
-export async function configureNcmCredentials(appId: string, privateKeyPem: string, timeout = 10000): Promise<void> {
-  const appResult = await runNcmCliAsync(['config', 'set', 'appId', appId], timeout);
+export async function configureNcmCredentials(appId: string, privateKeyPem: string, _timeout = 10000): Promise<void> {
+  const safeAppId = normalizeNcmAppId(appId);
+  const safePrivateKey = normalizeNcmPrivateKey(privateKeyPem);
+  if (!safeAppId || !safePrivateKey) throw new Error('Invalid NetEase appId or privateKey');
+
+  process.env.NETEASE_APP_ID = safeAppId;
+  process.env.NETEASE_PRIVATE_KEY = safePrivateKey;
+
+  const appResult = await runNcmCliAsync(['config', 'set', 'appId', safeAppId], _timeout);
   if (!appResult.ok) throw new Error(appResult.error || 'Failed to configure NetEase appId');
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumi-ncm-'));
-  const tempKeyPath = path.join(tempDir, 'private-key.pem');
-  try {
-    fs.writeFileSync(tempKeyPath, privateKeyPem, { encoding: 'utf8', mode: 0o600 });
-    const keyResult = await runNcmCliAsync(['config', 'set', 'privateKey', tempKeyPath], timeout);
-    if (!keyResult.ok) throw new Error(keyResult.error || 'Failed to configure NetEase privateKey');
-  } finally {
-    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
-  }
+  const keyResult = await runNcmCliAsync(['config', 'set', 'privateKey', '--', safePrivateKey], _timeout);
+  if (!keyResult.ok) throw new Error(keyResult.error || 'Failed to configure NetEase privateKey');
 }
 
 function tryParse(text: string): any {

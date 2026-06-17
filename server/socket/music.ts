@@ -130,16 +130,28 @@ export function registerMusicHandlers(
   }));
 
   socket.on('music:pause', socketGuard(async () => {
-    await ncmExecArgs(['pause']);
-    await pollAndEmitState(socket);
-    socket.emit('music:state', { playing: false });
+    try {
+      await ncmExecArgs(['pause']);
+      await pollAndEmitState(socket);
+      socket.emit('music:state', { playing: false });
+    } catch (e: any) {
+      socket.emit('music:error', { message: e.message || '网易云暂停失败' });
+    }
   }));
 
   socket.on('music:resume', socketGuard(async () => {
-    await ncmExecArgs(['resume']);
-    const state = await waitForNcmPlaying();
-    startStatePoller(socket, getSocketUserRoom(socket) || uid);
-    socket.emit('music:state', { playing: isNcmPlaying(state), source: 'netease' });
+    try {
+      await ncmExecArgs(['resume']);
+      const state = await waitForNcmPlaying();
+      startStatePoller(socket, getSocketUserRoom(socket) || uid);
+      socket.emit('music:state', { playing: isNcmPlaying(state), source: 'netease' });
+      if (!isNcmPlaying(state)) {
+        socket.emit('music:error', { message: `网易云恢复播放失败（当前状态：${state?.status || 'unknown'}）。` });
+      }
+    } catch (e: any) {
+      socket.emit('music:error', { message: e.message || '网易云恢复播放失败' });
+      socket.emit('music:state', { playing: false, source: 'netease' });
+    }
   }));
 
   socket.on('music:next', socketGuard(async () => {

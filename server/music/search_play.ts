@@ -3,11 +3,12 @@
  * NetEase playback uses the authenticated ncm-cli/mpv player so account login
  * and VIP access are respected. The frontend mood layer mirrors state/control.
  */
-import { execFileSync } from 'child_process';
 import { loadEmotionalState } from '../personality/state';
 import { emitMusicAtmosphere } from '../socket/music';
 import { getFallbackScene, MusicScene } from './scene_generator';
 import { getNcmPlaybackStateAsync, runNcmCliAsync } from './ncm_cli';
+import { getCachedMusicProfile } from './library_profile';
+import { getNeteaseLyricText, searchNeteaseSongs } from './netease_public';
 
 export type MusicPlayResult = { success: boolean; text?: string; reason?: string };
 
@@ -58,74 +59,10 @@ type MusicAdjustmentPlan = {
   source: string;
 };
 
-function quoteCmdArg(value: string): string {
-  const raw = String(value);
-  if (/^[A-Za-z0-9_./:=@-]+$/.test(raw)) return raw;
-  return `"${raw.replace(/"/g, '\\"').replace(/([&|<>^%])/g, '^$1')}"`;
-}
-
-type NcmCliResult = { ok: boolean; stdout: string; error?: string };
-
-function looksLikeNcmFailure(text: string): boolean {
-  return /(api\s*key|未设置|未配置|登录|login|required|failed|failure|失败|错误|error|mpv|player|not\s+found|cannot|无法)/i.test(text);
-}
-
-function runNcmCliResult(args: string[], timeout = 15000): NcmCliResult {
-  try {
-    if (process.platform === 'win32') {
-      const cmdline = ['npx.cmd', '@music163/ncm-cli', ...args, '--output', 'json']
-        .map(quoteCmdArg)
-        .join(' ');
-      const stdout = execFileSync('cmd.exe', ['/d', '/c', cmdline], {
-        timeout,
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-      });
-      return { ok: true, stdout };
-    }
-    const stdout = execFileSync('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
-      timeout,
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024,
-    });
-    return { ok: true, stdout };
-  } catch (e: any) {
-    const stdout = String(e.stdout || '');
-    const stderr = String(e.stderr || e.message || '');
-    const combined = `${stdout}\n${stderr}`;
-    const ok = Boolean(stdout.trim()) && !looksLikeNcmFailure(combined);
-    if (!ok) console.warn('[Music] ncm-cli error:', stderr || stdout || e.message);
-    return { ok, stdout, error: stderr || stdout || e.message };
-  }
-}
-
-function runNcmCli(args: string[], timeout = 15000): string {
-  const result = runNcmCliResult(args, timeout);
-  return result.stdout;
-}
-
-function playNcmSong(song: any): { ok: boolean; reason?: string } {
-  const { encryptedId, originalId } = getSongIds(song);
-  if (!encryptedId || !originalId) {
-    return { ok: false, reason: '这首歌缺少网易云播放 ID，无法启动登录态播放。' };
-  }
-  const result = runNcmCliResult(['play', '--song', '--encrypted-id', encryptedId, '--original-id', originalId], 22000);
-  const parsed = tryParse(result.stdout);
-  const failed = parsed?.success === false || parsed?.ok === false || !result.ok;
-  if (failed) {
-    return {
-      ok: false,
-      reason: result.error || parsed?.message || parsed?.error || '网易云登录态播放启动失败，请检查音乐中心登录、API 凭据和 mpv 播放器。',
-    };
-  }
-  return { ok: true };
-}
-
 async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: string }> {
   const { encryptedId, originalId } = getSongIds(song);
   if (!encryptedId || !originalId) {
-    return { ok: false, reason: '这首歌缺少网易云播放 ID，无法启动账号态播放。' };
+    return { ok: false, reason: '这首歌缺少网易云播放 ID，无法启动账号播放。' };
   }
 
   const result = await runNcmCliAsync(['play', '--song', '--encrypted-id', encryptedId, '--original-id', originalId], 22000);
@@ -133,7 +70,7 @@ async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: s
   if (!result.ok || parsed?.success === false || parsed?.ok === false) {
     return {
       ok: false,
-      reason: result.error || parsed?.message || parsed?.error || '网易云账号态播放启动失败，请检查音乐中心登录、API 凭据和 mpv 播放器。',
+      reason: result.error || parsed?.message || parsed?.error || '网易云账号播放启动失败，请检查音乐中心登录、开放平台 API 凭据和 mpv 播放器。',
     };
   }
 
@@ -148,7 +85,6 @@ async function playNcmSongVerified(song: any): Promise<{ ok: boolean; reason?: s
 
   return { ok: true };
 }
-
 function queueNcmSongs(songs: any[]): void {
   const queueCandidates = songs
     .map(song => ({ song, ids: getSongIds(song) }))
@@ -218,10 +154,14 @@ function getSongIds(song: any): { encryptedId: string; originalId: string } {
   return { encryptedId, originalId };
 }
 
-function getPublicAudioUrl(song: any): string {
+function hasNcmEncryptedId(song: any): boolean {
   const { encryptedId, originalId } = getSongIds(song);
-  const id = originalId || (/^\d+$/.test(encryptedId) ? encryptedId : '');
-  return id ? `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(id)}.mp3` : '';
+  return Boolean(encryptedId && originalId && !/^\d+$/.test(encryptedId));
+}
+
+function extractNcmSearchRecords(data: any): any[] {
+  const records = data?.data?.records || data?.records || data?.songs || data?.data || [];
+  return Array.isArray(records) ? records : [];
 }
 
 function normalizeArtists(song: any): string[] {
@@ -240,32 +180,6 @@ function normalizeTrack(song: any) {
     duration: Number(song.duration || song.dt || 0),
     coverUrl: song.coverImgUrl || song.album?.picUrl || song.al?.picUrl,
   };
-}
-
-async function getLikedPlaylistInfo(): Promise<{ id: string; trackCount: number } | null> {
-  const raw = await ncmExec(['playlist', 'created']);
-  const data = tryParse(raw);
-  const records = data?.data?.records || data?.data || [];
-  const liked = records.find((r: any) => r.specialType === 5);
-  if (!liked?.id) return null;
-  return {
-    id: liked.id,
-    trackCount: Number(liked.trackCount || liked.songCount || liked.musicSize || liked.size || 0),
-  };
-}
-
-async function getPlaylistSongs(encId: string, limit = 50, totalTracks = 0): Promise<any[]> {
-  const maxOffset = Math.max(0, totalTracks - limit);
-  const offset = maxOffset > 0 ? Math.floor(Math.random() * (maxOffset + 1)) : 0;
-  const raw = await ncmExec(['playlist', 'tracks', '--playlistId', encId, '--limit', String(limit), '--offset', String(offset)]);
-  const data = tryParse(raw);
-  const tracks = data?.data?.records || data?.data || data?.songs || [];
-  const playable = tracks.filter((s: any) => s.playFlag !== false);
-  if (playable.length > 0 || offset === 0) return playable;
-  const fallbackRaw = await ncmExec(['playlist', 'tracks', '--playlistId', encId, '--limit', String(limit), '--offset', '0']);
-  const fallbackData = tryParse(fallbackRaw);
-  const fallbackTracks = fallbackData?.data?.records || fallbackData?.data || fallbackData?.songs || [];
-  return fallbackTracks.filter((s: any) => s.playFlag !== false);
 }
 
 function isLikedSongsRequest(text: string): boolean {
@@ -317,9 +231,13 @@ async function getDailySongs(limit = 30): Promise<any[]> {
 }
 
 async function searchSongsByKeyword(keyword: string, limit = 20): Promise<any[]> {
-  const searchRaw = await ncmExec(['search', 'song', '--keyword', keyword, '--limit', String(limit)]);
-  const searchData = tryParse(searchRaw);
-  return getSongs(searchData);
+  const raw = await ncmExec(['search', 'song', '--keyword', keyword, '--limit', String(limit)]);
+  const data = tryParse(raw);
+  const records = extractNcmSearchRecords(data).filter((s: any) => s.playFlag !== false);
+  if (records.length > 0) return records;
+
+  const publicSongs = await searchNeteaseSongs(keyword, limit);
+  return hydrateNcmPlayableSongs(publicSongs, Math.min(limit, 12));
 }
 
 function extractTarget(userText: string): string | null {
@@ -333,12 +251,51 @@ function extractTarget(userText: string): string | null {
     if (text === before) break;
   }
 
-  if (!text || /^(?:\u6b4c|\u97f3\u4e50|\u6b4c\u66f2|\u6765\u4e00\u9996|\u968f\u4fbf|\u63a8\u8350|\u70ed\u95e8|\u597d\u542c|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350)$/u.test(text)) return null;
+  if (!text || /^(?:\u9996|\u4e00\u9996|\u4e00\u4e9b|\u51e0\u9996|\u6b4c|\u97f3\u4e50|\u6b4c\u66f2|\u6765\u4e00\u9996|\u968f\u4fbf|\u968f\u4fbf\u4e00\u9996|\u63a8\u8350|\u70ed\u95e8|\u597d\u542c|\u65e5\u63a8|\u6bcf\u65e5\u63a8\u8350)$/u.test(text)) return null;
   return text.length > 0 && text.length <= 30 ? text : null;
 }
 
-function getSongs(data: any): any[] {
-  return data?.data?.records || data?.data?.songs || data?.result?.songs || data?.songs || [];
+function getCachedProfileSongs(userId: string, limit = 60): any[] {
+  const profile = getCachedMusicProfile(userId);
+  const sampleTracks = profile?.sampleTracks || [];
+  return sampleTracks.slice(0, limit).map(track => ({
+    id: track.id,
+    originalId: track.id,
+    name: track.name,
+    artists: track.artists,
+    album: track.album ? { name: track.album } : undefined,
+    duration: track.duration,
+    coverImgUrl: track.coverUrl,
+    playFlag: true,
+  }));
+}
+
+async function lookupNcmPlayableSong(song: any): Promise<any | null> {
+  if (hasNcmEncryptedId(song)) return song;
+  const ids = getSongIds(song);
+  const track = normalizeTrack(song);
+  const keyword = [track.name, track.artists[0]].filter(Boolean).join(' ').trim();
+  if (!keyword) return null;
+
+  const raw = await ncmExec(['search', 'song', '--keyword', keyword, '--limit', '10'], 15000);
+  const records = extractNcmSearchRecords(tryParse(raw)).filter((record: any) => record.playFlag !== false);
+  if (!records.length) return null;
+
+  const exactId = ids.originalId
+    ? records.find((record: any) => String(record.originalId || record.originId || '') === ids.originalId)
+    : null;
+  const exactName = records.find((record: any) => String(record.name || '').trim() === String(track.name || '').trim());
+  const match = exactId || exactName || records[0];
+  return match ? { ...song, ...match, encryptedId: match.id, originalId: String(match.originalId || match.originId || ids.originalId || '') } : null;
+}
+
+async function hydrateNcmPlayableSongs(candidates: any[], limit = 20): Promise<any[]> {
+  const hydrated: any[] = [];
+  for (const song of candidates.slice(0, limit)) {
+    const playable = await lookupNcmPlayableSong(song);
+    if (playable && hasNcmEncryptedId(playable)) hydrated.push(playable);
+  }
+  return hydrated;
 }
 
 async function pickAndPlay(
@@ -350,10 +307,7 @@ async function pickAndPlay(
 ): Promise<MusicPlayResult> {
   const playable = candidates.filter((s: any) => s.playFlag !== false);
   if (playable.length === 0) return { success: false, reason: '没有找到可播放的候选歌曲。' };
-  const playableWithIds = playable.filter((s: any) => {
-    const ids = getSongIds(s);
-    return Boolean(ids.encryptedId && ids.originalId);
-  });
+  const playableWithIds = await hydrateNcmPlayableSongs(playable, 20);
   if (playableWithIds.length === 0) return { success: false, reason: '没有找到带网易云播放 ID 的候选歌曲。' };
   console.log(`[Music] ${source}: ${playableWithIds.length} account-playable candidates from ${candidates.length} candidates`);
 
@@ -382,9 +336,7 @@ async function pickAndPlay(
   const emotionalState = loadEmotionalState(userId);
   let lyricsData: any[] = [];
   try {
-    const lyricRaw = await ncmExec(['song', 'lyric', '--songId', encryptedId || originalId], 10000);
-    const lyricJson = tryParse(lyricRaw);
-    const lrcText = lyricJson?.data?.lyric || '';
+    const lrcText = await getNeteaseLyricText(originalId || encryptedId);
     for (const line of lrcText.split('\n')) {
       const match = line.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/);
       if (!match) continue;
@@ -432,8 +384,7 @@ export async function adjustMusicPlayback(
   let songs: any[] = [];
 
   if (plan.preferLiked) {
-    const liked = await getLikedPlaylistInfo();
-    if (liked) songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
+    songs = getCachedProfileSongs(userId, 80);
   }
 
   if (songs.length === 0 && plan.keyword) {
@@ -441,12 +392,15 @@ export async function adjustMusicPlayback(
   }
 
   if (songs.length === 0 && !plan.preferLiked) {
-    const liked = await getLikedPlaylistInfo();
-    if (liked) songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
+    songs = getCachedProfileSongs(userId, 80);
   }
 
   if (songs.length === 0) {
     songs = await getDailySongs(30);
+  }
+
+  if (songs.length === 0) {
+    songs = getCachedProfileSongs(userId, 60);
   }
 
   if (songs.length === 0) {
@@ -470,17 +424,17 @@ export async function searchAndPlay(
   const mood = emotionalState.dominantMood || 'peaceful';
 
   if (userText && isLikedSongsRequest(userText)) {
-    const liked = await getLikedPlaylistInfo();
-    if (liked) {
-      const songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
-      if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
-    }
-    return { success: false, reason: '没有读取到喜欢/收藏歌单，可能还没有登录网易云音乐。' };
+    const cachedSongs = getCachedProfileSongs(userId, 80);
+    if (cachedSongs.length > 0) return pickAndPlay(socket, userId, mood, cachedSongs, 'liked-profile');
+
+    return { success: false, reason: '没有可用于播放的本地音乐画像，请先在音乐中心生成一次音乐画像。' };
   }
 
   if (userText && isRecommendRequest(userText)) {
     const songs = await getDailySongs(30);
     if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'daily');
+    const cachedSongs = getCachedProfileSongs(userId, 80);
+    if (cachedSongs.length > 0) return pickAndPlay(socket, userId, mood, cachedSongs, 'liked-profile');
     return { success: false, reason: '没有读取到每日推荐，可能还没有登录网易云音乐。' };
   }
 
@@ -488,24 +442,17 @@ export async function searchAndPlay(
     const target = extractTarget(userText);
     if (target) {
       console.log(`[Music] User target: "${target}"`);
-      const searchRaw = await ncmExec(['search', 'song', '--keyword', target, '--limit', '20']);
-      const searchData = tryParse(searchRaw);
-      const songs = getSongs(searchData);
+      const songs = await searchSongsByKeyword(target, 20);
       if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
       return { success: false, reason: `没有搜索到“${target}”的可播放结果。` };
     }
   }
 
-  const liked = await getLikedPlaylistInfo();
-  if (liked) {
-    const songs = await getPlaylistSongs(liked.id, 50, liked.trackCount);
-    if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'liked');
-  }
+  const cachedSongs = getCachedProfileSongs(userId, 80);
+  if (cachedSongs.length > 0) return pickAndPlay(socket, userId, mood, cachedSongs, 'liked-profile');
 
   const keyword = moodSearchMap[mood] || '\u63a8\u8350 \u70ed\u95e8';
-  const searchRaw = await ncmExec(['search', 'song', '--keyword', keyword, '--limit', '20']);
-  const searchData = tryParse(searchRaw);
-  const songs = getSongs(searchData);
+  const songs = await searchSongsByKeyword(keyword, 20);
   if (songs.length > 0) return pickAndPlay(socket, userId, mood, songs, 'search');
 
   return { success: false, reason: '网易云搜索没有返回可播放歌曲，可能是登录、网络或 ncm-cli 播放环境异常。' };

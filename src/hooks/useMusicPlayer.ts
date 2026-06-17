@@ -467,6 +467,21 @@ export function useMusicPlayer() {
     return () => window.removeEventListener('lumi:music-ducking', handler);
   }, []);
 
+  useEffect(() => {
+    const stopNativeOnLeave = () => {
+      if (_musicSnapshot.source === 'netease' && _musicSnapshot.isPlaying) {
+        socket?.emit('music:pause');
+      }
+      setMusicDucking('voice-call', false);
+    };
+    window.addEventListener('pagehide', stopNativeOnLeave);
+    window.addEventListener('beforeunload', stopNativeOnLeave);
+    return () => {
+      window.removeEventListener('pagehide', stopNativeOnLeave);
+      window.removeEventListener('beforeunload', stopNativeOnLeave);
+    };
+  }, [socket]);
+
   const play = useCallback(() => {
     if (_musicSnapshot.source === 'netease') {
       scheduleNativeVolumeRestore();
@@ -496,7 +511,7 @@ export function useMusicPlayer() {
     if (_musicSnapshot.source === 'netease') {
       scheduleNativeVolumeRestore();
       socket?.emit('music:next');
-      setMusicState(prev => ({ ...prev, progress: 0, isPlaying: true, lastError: undefined }));
+      setMusicState(prev => ({ ...prev, progress: 0, lastError: undefined }));
       return;
     }
     const nextItem = getQueueItem(1);
@@ -511,7 +526,7 @@ export function useMusicPlayer() {
     if (_musicSnapshot.source === 'netease') {
       scheduleNativeVolumeRestore();
       socket?.emit('music:prev');
-      setMusicState(prev => ({ ...prev, progress: 0, isPlaying: true, lastError: undefined }));
+      setMusicState(prev => ({ ...prev, progress: 0, lastError: undefined }));
       return;
     }
     const prevItem = getQueueItem(-1);
