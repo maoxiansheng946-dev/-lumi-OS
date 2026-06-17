@@ -388,7 +388,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (notifData.notifications?.length > 0) {
             setNotifications(prev => {
               const existingIds = new Set(prev.map(n => n.id));
-              const newNotifs = notifData.notifications.filter((n: any) => !existingIds.has(n.id));
+              const proactiveGreetingEnabled = localStorage.getItem('lumi_allow_proactive_voice') === 'true';
+              const newNotifs = notifData.notifications.filter((n: any) =>
+                !existingIds.has(n.id) &&
+                (proactiveGreetingEnabled || n.type !== 'greeting')
+              );
               return [...newNotifs, ...prev].slice(0, 50);
             });
           }

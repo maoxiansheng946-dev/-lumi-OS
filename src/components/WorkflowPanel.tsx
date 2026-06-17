@@ -102,8 +102,8 @@ export default function WorkflowPanel({ visible, agentStatus, steps, t, placemen
   const isCorner = placement === 'corner';
   const verticalOffset = isCorner ? 20 : -20;
   const positionClass = isCorner
-    ? 'fixed right-4 bottom-28 sm:right-6 z-[70] w-[360px] max-w-[calc(100vw-2rem)] pointer-events-auto'
-    : 'fixed top-24 left-1/2 -translate-x-1/2 z-[70] w-[380px] max-w-[calc(100vw-2rem)] pointer-events-auto';
+    ? 'fixed right-4 bottom-28 sm:right-6 z-[260] w-[360px] max-w-[calc(100vw-2rem)] pointer-events-auto'
+    : 'fixed top-24 left-1/2 -translate-x-1/2 z-[260] w-[380px] max-w-[calc(100vw-2rem)] pointer-events-auto';
 
   useEffect(() => {
     if (listRef.current) {

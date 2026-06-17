@@ -362,7 +362,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       return textChatActiveRef.current;
     };
 
-    const onProactive = (data: { message: string; timestamp: string; requestId?: string; source?: string }) => {
+    const onProactive = (data: { message: string; timestamp: string; requestId?: string; source?: string; type?: string; taskId?: string }) => {
+      const proactiveType = data.type || data.taskId;
+      if (proactiveType === 'greeting' && localStorage.getItem('lumi_allow_proactive_voice') !== 'true') return;
       if ((data.requestId || data.source) && !isCurrentChatEvent(data)) return;
       setMessages(prev => {
         if (prev.some(m => m.text === data.message && m.type === 'agent')) return prev;

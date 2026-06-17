@@ -1551,6 +1551,7 @@ export function DesktopUI({
   const [clientRuntime, setClientRuntime] = useState<ClientRuntimeSnapshot>({});
   const [canvasRuntime, setCanvasRuntime] = useState<ClientCanvasRuntime>({ open: false });
   const [isControlCenterOpen, setIsControlCenterOpen] = useState(false);
+  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('general');
   const [brightness, setBrightness] = useState(85);
@@ -2054,7 +2055,8 @@ export function DesktopUI({
       const idleS = data.idle_seconds ?? (data.idle_ms / 1000);
       const wasAway = lastIdleRef.current > IDLE_AWAY_S;
       const isBack = idleS < RETURN_S;
-      if (wasAway && isBack && !greetedRef.current) {
+      const allowProactiveGreeting = localStorage.getItem('lumi_allow_proactive_voice') === 'true';
+      if (wasAway && isBack && !greetedRef.current && allowProactiveGreeting) {
         greetedRef.current = true;
         // LLM-generated personalized greeting — server generates, TTS speaks
         socket.emit('greeting:generate', { scene: 'return' });
@@ -2591,6 +2593,7 @@ export function DesktopUI({
 
     const onProactive = (data: { type?: string; taskId: string; message: string; timestamp: string }) => {
       const taskId = data.type || data.taskId || data.taskId;
+      if (taskId === 'greeting' && localStorage.getItem('lumi_allow_proactive_voice') !== 'true') return;
       // Always add to notification center so user can find it later
       addNotification({
         type: taskId === 'daily_summary' || taskId === 'evening_wrapup' ? 'success' :
@@ -2848,6 +2851,14 @@ export function DesktopUI({
     if (tab === 'sync') {
       tab = 'devices';
     }
+    if (tab === 'notifications') {
+      setIsNotificationPanelOpen(prev => !prev);
+      setOpenWindows(prev => prev.filter(w => w !== 'notifications'));
+      setMinimizedWindows(prev => prev.filter(w => w !== 'notifications'));
+      setWindowOrder(prev => prev.filter(w => w !== 'notifications'));
+      if (focusedWindow === 'notifications') setFocusedWindow(null);
+      return;
+    }
 
     // Knowledge base, Chat, and Canvas open fullscreen, not as windows
     if (tab === 'knowledge') {
@@ -2951,6 +2962,14 @@ export function DesktopUI({
           if (task.trim()) setCanvasInitialTask(task.trim());
           return;
         }
+        if (windowId === 'notifications') {
+          setIsNotificationPanelOpen(true);
+          setOpenWindows(prev => prev.filter(w => w !== 'notifications'));
+          setMinimizedWindows(prev => prev.filter(w => w !== 'notifications'));
+          setWindowOrder(prev => prev.filter(w => w !== 'notifications'));
+          if (focusedWindow === 'notifications') setFocusedWindow(null);
+          return;
+        }
         if (windowId === 'memory-avatar') {
           void openMemoryAvatar();
           return;
@@ -2979,6 +2998,10 @@ export function DesktopUI({
         }
         if (windowId === 'canvas') {
           setCanvasOpen(false);
+          return;
+        }
+        if (windowId === 'notifications') {
+          setIsNotificationPanelOpen(false);
           return;
         }
         if (windowId === 'org' && activeTab === 'org') {
@@ -3505,11 +3528,8 @@ export function DesktopUI({
     step.type === 'error'
   );
   const workflowPanelVisible =
-    agentStatus === 'background' ||
-    agentStatus === 'executing' ||
-    agentStatus === 'waiting_confirmation' ||
-    agentStatus === 'error' ||
-    (operationMode === 'autonomous' && agentStatus !== 'idle') ||
+    agentStatus !== 'idle' ||
+    workflowSteps.length > 0 ||
     workflowHasExecution;
   const renderOperationModeSelector = (compact = false) => (
     <div
@@ -3821,10 +3841,15 @@ export function DesktopUI({
           <div className="flex items-center gap-6 flex-1 justify-end">
             <div className="flex items-center gap-4 text-white/55">
                <div className="flex items-center gap-1" onClick={() => setIsSearchOpen(true)}><Search size={14} className="hover:text-white transition-colors cursor-pointer" /></div>
-               <button onClick={() => toggleWindow('notifications')} className="flex items-center gap-1 relative hover:text-white transition-colors">
-                 <Bell size={14} />
-                 {unreadCount > 0 && (
-                   <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-red-500 text-xs font-black flex items-center justify-center text-white">
+               <button
+                 onClick={() => setIsNotificationPanelOpen(prev => !prev)}
+                 className={`flex items-center gap-1 relative transition-colors ${isNotificationPanelOpen ? 'text-white' : 'hover:text-white'}`}
+                 aria-expanded={isNotificationPanelOpen}
+                 aria-label={t.notificationsLabel || 'Notifications'}
+               >
+                  <Bell size={14} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-red-500 text-xs font-black flex items-center justify-center text-white">
                      {unreadCount > 9 ? '9+' : unreadCount}
                    </span>
                  )}
@@ -3891,6 +3916,38 @@ export function DesktopUI({
             </div>
           </div>
         </div>
+
+        <AnimatePresence>
+          {isNotificationPanelOpen && !isWallpaperMode && !musicVisible && (
+            <>
+              <motion.button
+                type="button"
+                aria-label={lang === 'zh' ? '关闭通知' : 'Close notifications'}
+                className="fixed inset-x-0 bottom-0 top-10 z-[101] cursor-default pointer-events-auto bg-transparent"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsNotificationPanelOpen(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: -18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -18, scale: 0.98 }}
+                transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+                className="fixed right-6 top-12 z-[102] h-[min(560px,calc(100vh-4.5rem))] w-[430px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/95 shadow-2xl shadow-black/50 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <NotificationCenter
+                  onChatMessage={(message) => {
+                    setIsNotificationPanelOpen(false);
+                    setChatPrefill(message);
+                    setChatOpen(true);
+                  }}
+                />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Global Control Center handled at top level for proper click detection */}
 
@@ -4266,7 +4323,7 @@ export function DesktopUI({
               <DailyPlans t={t} onOpenQueue={() => toggleWindow('plans')} />
 
               {/* Notification Preview */}
-              {notifications.filter(n => !n.read).length > 0 && (
+              {false && notifications.filter(n => !n.read).length > 0 && (
                 <GlassCard className="p-5 rounded-[2rem] space-y-2 border-white/5 bg-black/30 backdrop-blur-3xl cursor-pointer hover:bg-white/[0.06] transition-all" onClick={() => toggleWindow('notifications')}>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase tracking-widest text-white/55 flex items-center gap-2">
