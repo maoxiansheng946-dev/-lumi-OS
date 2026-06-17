@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, UserPlus, Shield, UserMinus, Loader2, Crown, User, AlertCircle } from 'lucide-react';
+import { Users, UserPlus, Shield, UserMinus, Loader2, Crown, User, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 import { useApp } from '../../contexts/AppContext';
+import { appConfirm } from '../../lib/appConfirm';
 
 interface Member {
   id: string;
@@ -26,6 +27,7 @@ export function OrgMembers() {
   const [inviteRole, setInviteRole] = useState('member');
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     loadOrgAndMembers();
@@ -56,6 +58,8 @@ export function OrgMembers() {
   const handleInvite = async () => {
     if (!inviteUserId.trim() || !orgId) return;
     setInviting(true);
+    setError('');
+    setSuccess('');
     try {
       const res = await fetch(`/api/org/org/${orgId}/members`, {
         method: 'POST',
@@ -65,7 +69,8 @@ export function OrgMembers() {
       });
       if (res.ok) {
         setInviteUserId('');
-        loadOrgAndMembers();
+        setSuccess(ui('成员已添加到组织', 'Member added to the organization'));
+        void loadOrgAndMembers();
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error || ui(`邀请失败（${res.status}）`, `Invite failed (${res.status})`));
@@ -76,6 +81,17 @@ export function OrgMembers() {
   };
 
   const handleRemove = async (userId: string) => {
+    const ok = await appConfirm({
+      title: ui('移除成员', 'Remove Member'),
+      message: ui('确定要从组织中移除此成员吗？', 'Remove this member from the organization?'),
+      confirmText: ui('移除', 'Remove'),
+      cancelText: ui('取消', 'Cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    setError('');
+    setSuccess('');
     try {
       const res = await fetch(`/api/org/org/${orgId}/members/${userId}`, {
         method: 'DELETE',
@@ -85,7 +101,8 @@ export function OrgMembers() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || ui(`移除失败（${res.status}）`, `Remove failed (${res.status})`));
       }
-      loadOrgAndMembers();
+      setSuccess(ui('成员已移除', 'Member removed'));
+      void loadOrgAndMembers();
     } catch (err: any) {
       setError(err.message || String(err));
     }
@@ -120,6 +137,12 @@ export function OrgMembers() {
         <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+      {success && (
+        <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          <CheckCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{success}</span>
         </div>
       )}
 
