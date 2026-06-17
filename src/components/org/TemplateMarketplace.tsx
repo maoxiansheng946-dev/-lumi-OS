@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Package, Search, Download, Star, Clock, Tag,
-  Loader2, ExternalLink, CheckCircle, AlertCircle,
+  Loader2, ExternalLink, CheckCircle, AlertCircle, Send,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
@@ -90,7 +90,13 @@ export function TemplateMarketplace() {
         const data = await res.json();
         // Refresh list to update download count
         loadTemplates();
-        setFeedback({ type: 'success', text: `${t.templateAdded || ui('模板已添加到你的智能体', 'Template added to your agents')}: ${data.template.name}` });
+        window.dispatchEvent(new CustomEvent('lumi:agents-changed', { detail: { agent: data.agent } }));
+        setFeedback({
+          type: 'success',
+          text: data.alreadyInstalled
+            ? ui(`已安装过，正在使用现有智能体：${data.agent?.name || data.template.name}`, `Already installed. Using existing agent: ${data.agent?.name || data.template.name}`)
+            : `${t.templateAdded || ui('模板已添加到你的智能体', 'Template added to your agents')}: ${data.agent?.name || data.template.name}`,
+        });
       } else {
         const data = await res.json().catch(() => ({}));
         setFeedback({ type: 'error', text: data.error || `${t.templateInstallFailed || ui('模板安装失败', 'Template install failed')} (${res.status})` });
@@ -104,12 +110,21 @@ export function TemplateMarketplace() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Package size={24} className="text-purple-400" />
-          {t.templateMarketplace || ui('模板市场', 'Template Marketplace')}
-        </h2>
-        <p className="text-white/40 text-sm">{t.templateMarketplaceDesc || ui('发现并安装组织内的智能体模板', 'Discover and install agent templates from your organization')}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Package size={24} className="text-purple-400" />
+            {t.templateMarketplace || ui('模板市场', 'Template Marketplace')}
+          </h2>
+          <p className="text-white/40 text-sm">{t.templateMarketplaceDesc || ui('发现并安装组织内的智能体模板', 'Discover and install agent templates from your organization')}</p>
+        </div>
+        <Button
+          onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'templates-create' } }))}
+          className="shrink-0 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm flex items-center gap-2"
+        >
+          <Send size={14} />
+          {t.submitTemplate || ui('提交模板', 'Submit Template')}
+        </Button>
       </div>
 
       {feedback && (

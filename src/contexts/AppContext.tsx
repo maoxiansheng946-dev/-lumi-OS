@@ -418,6 +418,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    const handleAgentsChanged = async (event: Event) => {
+      const agent = (event as CustomEvent).detail?.agent;
+      if (agent?.id) {
+        setAgents(prev => {
+          const exists = prev.some(a => a.id === agent.id);
+          return exists ? prev.map(a => a.id === agent.id ? { ...a, ...agent } : a) : [...prev, agent];
+        });
+        return;
+      }
+      try { setAgents(await agentService.listAgents()); } catch {}
+    };
+
+    window.addEventListener('lumi:agents-changed', handleAgentsChanged);
+    return () => window.removeEventListener('lumi:agents-changed', handleAgentsChanged);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const init = async () => {
       setLoading(true);
