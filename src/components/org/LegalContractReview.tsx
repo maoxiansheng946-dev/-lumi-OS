@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useT } from '../../lib/useT';
 import { Shield, Upload, Loader2, AlertTriangle, Check, HelpCircle, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface RiskItem {
   level: 'high' | 'medium' | 'low';
@@ -18,15 +19,35 @@ export function LegalContractReview() {
   const [result, setResult] = useState('');
   const [risks, setRisks] = useState<RiskItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [selectedRisk, setSelectedRisk] = useState<RiskItem | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setContract(ev.target?.result as string);
-    reader.readAsText(file);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append('files', file));
+      const res = await fetch('/api/files/upload', { method: 'POST', body: formData, credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('文件上传解析失败', 'File upload parsing failed'));
+      const text = (data.files || [])
+        .map((file: any) => String(file.content || file.preview || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+      if (!text) throw new Error(ui('没有提取到可审查的文本', 'No reviewable text extracted'));
+      setContract(prev => [prev, text].filter(Boolean).join('\n\n'));
+      toast.success(ui('文件已解析并填入合同文本', 'File parsed into contract text'));
+    } catch (err: any) {
+      const message = err?.message || ui('文件上传解析失败', 'File upload parsing failed');
+      setResult(ui('错误：', 'Error: ') + message);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   const review = async () => {
@@ -89,9 +110,10 @@ export function LegalContractReview() {
             </button>
             <button
               onClick={() => fileRef.current?.click()}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white/80 rounded-xl transition-colors flex items-center gap-2 text-sm"
+              disabled={uploading || loading}
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white/80 rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-40"
             >
-              <Upload size={14} />
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               Upload
             </button>
             <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} className="hidden" />

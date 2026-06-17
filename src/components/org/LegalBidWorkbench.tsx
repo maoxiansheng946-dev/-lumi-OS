@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { FileText, Upload, Download, Loader2 } from 'lucide-react';
 import { useT } from '../../lib/useT';
+import { toast } from 'sonner';
 
 export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchView?: (v: any) => void }) {
   const t = useT();
@@ -10,17 +11,34 @@ export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchVie
   const [projectName, setProjectName] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append('files', file));
+      const res = await fetch('/api/files/upload', { method: 'POST', body: formData, credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('文件上传解析失败', 'File upload parsing failed'));
+      const text = (data.files || [])
+        .map((file: any) => String(file.content || file.preview || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+      if (!text) throw new Error(ui('没有提取到可生成标书的文本', 'No bid requirements text extracted'));
       setRequirements(prev => [prev, text].filter(Boolean).join('\n\n'));
-    };
-    reader.readAsText(file);
+      toast.success(ui('文件已解析并填入招标要求', 'File parsed into bid requirements'));
+    } catch (err: any) {
+      const message = err?.message || ui('文件上传解析失败', 'File upload parsing failed');
+      setResult(`${ui('错误', 'Error')}: ${message}`);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   const generateBid = async () => {
@@ -89,9 +107,10 @@ export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchVie
             </button>
             <button
               onClick={() => fileRef.current?.click()}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white/80 rounded-xl transition-colors flex items-center gap-2 text-sm"
+              disabled={uploading || loading}
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white/80 rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-40"
             >
-              <Upload size={14} />
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {t.legalBidGenUpload}
             </button>
             <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} className="hidden" />
