@@ -74,6 +74,8 @@ export function DesignHub() {
 // ── Shared chat helper ──
 
 function useDesignChat() {
+  const t = useT();
+  const ui = (zh: string, en: string) => localText(t, zh, en);
   const [input, setInput] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -89,10 +91,11 @@ function useDesignChat() {
         body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
         credentials: 'include',
       });
-      const data = await res.json();
-      setResult(data.text || data.error || JSON.stringify(data));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('设计请求失败', 'Design request failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
     } catch (e: any) {
-      setResult('Error: ' + e.message);
+      setResult(ui('错误：', 'Error: ') + e.message);
     } finally {
       setLoading(false);
     }

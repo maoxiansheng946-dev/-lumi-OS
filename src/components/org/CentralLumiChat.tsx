@@ -41,7 +41,7 @@ export function CentralLumiChat() {
       });
       let kbContext = '';
       if (kbRes.ok) {
-        const results = await kbRes.json();
+        const results = await kbRes.json().catch(() => []);
         if (results.length > 0) {
           kbContext = '\n\nRelevant knowledge base context:\n' +
             results.map((r: any) => `[${r.title}] ${r.chunk}`).join('\n\n');
@@ -62,14 +62,15 @@ export function CentralLumiChat() {
         credentials: 'include',
       });
 
-      const data = await chatRes.json();
-      const reply = data.text || data.response || data.reply || data.message || data.error || ui('我现在处理这个问题有点困难。', "I'm having trouble processing that right now.");
+      const data = await chatRes.json().catch(() => ({}));
+      if (!chatRes.ok) throw new Error(data.error || ui('公司 Lumi 暂时无法回答这个问题', "Company Lumi can't answer right now."));
+      const reply = data.text || data.response || data.reply || data.message || ui('我现在处理这个问题有点困难。', "I'm having trouble processing that right now.");
 
       setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
-    } catch {
+    } catch (err: any) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: ui('我现在无法连接公司服务，请检查网络或组织服务状态。', "I'm currently unable to reach the company server. Please check your connection."),
+        content: err?.message || ui('我现在无法连接公司服务，请检查网络或组织服务状态。', "I'm currently unable to reach the company server. Please check your connection."),
         timestamp: Date.now(),
       }]);
     } finally {
