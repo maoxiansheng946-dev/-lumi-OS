@@ -52,9 +52,9 @@ export function ToolPanel({ t }: { t?: any }) {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950/60 backdrop-blur-xl text-white overflow-y-auto">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/5">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+    <div className="lumi-surface h-full flex flex-col text-white overflow-hidden">
+      <div className="flex items-center gap-3 border-b border-white/[0.08] px-5 py-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/20 bg-amber-500/15">
           <Wrench size={20} className="text-amber-400" />
         </div>
         <div>
@@ -65,7 +65,7 @@ export function ToolPanel({ t }: { t?: any }) {
         </div>
       </div>
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 md:p-6 space-y-6">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-white/55">
             <Loader2 size={24} className="animate-spin mr-2" /> {t?.loadingTools || 'Loading tools...'}
@@ -82,7 +82,7 @@ export function ToolPanel({ t }: { t?: any }) {
                   </span>
                 </div>
                 {section.items.length === 0 ? (
-                  <p className="text-xs text-white/40 italic px-4 py-2">{t?.noToolsInCategory || 'No tools in this category'}</p>
+                  <p className="lumi-panel px-4 py-3 text-xs italic text-white/40">{t?.noToolsInCategory || 'No tools in this category'}</p>
                 ) : (
                 <div className="space-y-1">
                   {section.items.map(tool => {
@@ -90,10 +90,10 @@ export function ToolPanel({ t }: { t?: any }) {
                     return (
                       <div
                         key={tool.name}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all ${
                           isEnabled(tool.name)
-                            ? 'bg-white/5 border-white/5 hover:bg-white/10'
-                            : 'bg-white/[0.02] border-white/[0.02] opacity-40'
+                            ? 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.07]'
+                            : 'bg-white/[0.02] border-white/[0.04] opacity-45'
                         }`}
                       >
                         <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${sec.bg} ${sec.border} border flex items-center justify-center`}>

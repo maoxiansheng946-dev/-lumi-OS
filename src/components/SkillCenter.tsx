@@ -416,18 +416,20 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   ), [marketSkills]);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="lumi-panel flex items-center justify-between gap-4 px-4 py-3">
         <div className="flex items-center gap-3">
-          <Zap className="text-celestial-saturn" size={20} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-celestial-saturn/20 bg-celestial-saturn/10">
+            <Zap className="text-celestial-saturn" size={20} />
+          </div>
           <h3 className="text-xl font-bold uppercase tracking-tighter text-white/90">{t.skillCenter || 'Skill Center'}</h3>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-white/45 font-mono">{sortedMarket.length} {t.available || 'available'}</span>
           <button
             onClick={() => { setLoadError(''); fetchMarketplace(); fetchInstalled(); fetchCategories(); }}
-            className="p-2 rounded-lg hover:bg-white/5 text-white/55 hover:text-white/60 transition-all"
+            className="lumi-icon-button h-8 w-8"
             title={t.refresh || 'Refresh'}
           >
             <RefreshCw size={14} />
@@ -455,15 +457,15 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+      <div className="lumi-panel flex w-fit gap-1 p-1">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === tab.id
                 ? 'bg-white/10 text-white'
-                : 'text-white/55 hover:text-white/50'
+                : 'text-white/55 hover:bg-white/[0.045] hover:text-white/75'
             }`}
           >
             {tab.icon}
@@ -496,7 +498,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       onClick={() => {
                         setDetailSkill(featuredSkill);
                       }}
-                      className={`relative p-8 rounded-[2.5rem] border border-white/10 overflow-hidden group cursor-pointer ${
+                      className={`relative overflow-hidden rounded-3xl border border-white/10 p-8 group cursor-pointer ${
                         idx === 0 ? 'bg-gradient-to-br from-purple-500/10 via-transparent to-pink-500/5' : 'bg-gradient-to-br from-amber-500/10 via-transparent to-yellow-500/5'
                       }`}
                     >
@@ -547,7 +549,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       onClick={() => {
                         setDetailSkill(featuredSkill);
                       }}
-                      className="p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-white/10 transition-all group flex items-center gap-4 cursor-pointer"
+                      className="lumi-panel flex cursor-pointer items-center gap-4 p-5 transition-all hover:border-white/15 hover:bg-white/[0.06]"
                     >
                       <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${skill.iconColor} flex items-center justify-center shrink-0`}>
                         {ICON_COMPONENTS[skill.icon] || <Zap size={18} className="text-white" />}
@@ -600,13 +602,13 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[200px]">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45" />
-                <Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchSkills || 'Search skills...'} className="w-full pl-9 bg-white/5 border-white/10 rounded-xl py-2 text-xs" />
+                <Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchSkills || 'Search skills...'} className="lumi-field w-full py-2 pl-9 text-xs" />
               </div>
               {/* Category filter */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={() => setActiveCategory('')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${!activeCategory ? 'bg-white/10 text-white' : 'bg-white/5 text-white/55 hover:text-white/50'}`}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${!activeCategory ? 'bg-white/10 text-white' : 'bg-white/[0.045] text-white/55 hover:bg-white/10 hover:text-white/75'}`}
                 >
                   {t.allCategories || 'All'}
                 </button>
@@ -614,7 +616,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(activeCategory === cat ? '' : cat)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeCategory === cat ? 'bg-celestial-saturn/20 text-celestial-saturn' : 'bg-white/5 text-white/55 hover:text-white/50'}`}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${activeCategory === cat ? 'bg-celestial-saturn/20 text-celestial-saturn' : 'bg-white/[0.045] text-white/55 hover:bg-white/10 hover:text-white/75'}`}
                   >
                     {cat}
                   </button>
@@ -627,7 +629,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                   <button
                     key={k}
                     onClick={() => setSortKey(k)}
-                    className={`px-2 py-1 rounded-md text-[12px] font-bold transition-all ${sortKey === k ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white/40'}`}
+                    className={`rounded-lg px-2 py-1 text-[12px] font-bold transition-all ${sortKey === k ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/[0.045] hover:text-white/70'}`}
                   >
                     {(t as any)[k] || k}
                   </button>
@@ -644,7 +646,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setDetailSkill(skill)}
-                    className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all group cursor-pointer"
+                    className="lumi-panel cursor-pointer p-6 transition-all hover:border-white/15 hover:bg-white/[0.06]"
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
@@ -735,7 +737,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
               </AnimatePresence>
             </div>
             {sortedMarket.length === 0 && (
-              <div className="p-16 bg-white/5 rounded-[2rem] border border-white/5 text-center">
+              <div className="lumi-panel p-16 text-center">
                 <ShoppingBag size={40} className="text-white/45 mx-auto mb-4" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm">{t.noSkillsFound || 'No skills found'}</p>
                 <p className="text-white/45 text-xs mt-2">{search || activeCategory ? (t.skillNoResultsFilter || 'No results. Try different filters.') : (t.skillCheckBack || 'Check back soon or generate your own.')}</p>
@@ -857,11 +859,11 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
               </div>
             )}
             {loading ? (
-              <div className="p-16 bg-white/5 rounded-[2rem] border border-white/5 text-center">
+              <div className="lumi-panel p-16 text-center">
                 <p className="text-white/40 text-sm">{t.loading || 'Loading...'}</p>
               </div>
             ) : installedSkills.length === 0 ? (
-              <div className="p-16 bg-white/5 rounded-[2rem] border border-white/5 text-center">
+              <div className="lumi-panel p-16 text-center">
                 <Wrench size={40} className="text-white/45 mx-auto mb-4" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm">{t.noSkillsInstalled || 'No skills installed'}</p>
                 <p className="text-white/45 text-xs mt-2">{t.skillBrowseMarketplace || 'Browse the marketplace or generate one.'}</p>
@@ -876,7 +878,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
                       onClick={() => setDetailSkill(skill)}
-                      className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all cursor-pointer"
+                      className="lumi-panel cursor-pointer p-6 transition-all hover:border-white/15 hover:bg-white/[0.06]"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0">
@@ -954,7 +956,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
         {activeTab === 'generate' && (
           <motion.div key="generate" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }} className="space-y-6">
-            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 space-y-4">
+            <div className="lumi-panel p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <Sparkles className="text-celestial-saturn" size={18} />
                 <h4 className="text-sm font-bold uppercase tracking-tight text-white">{t.generateNewSkill || 'Generate a New Skill'}</h4>
@@ -965,16 +967,16 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
               <div className="flex gap-2">
                 <Input value={genDescription} onChange={e => setGenDescription(e.target.value)}
                   placeholder={t.skillGeneratePlaceholder || 'e.g. Check if a website is down...'}
-                  className="flex-1 bg-white/5 border-white/10 rounded-xl py-2 text-xs"
+                  className="lumi-field flex-1 py-2 text-xs"
                   onKeyDown={e => e.key === 'Enter' && handleGenerate()} />
                 <Button onClick={handleGenerate} disabled={generating || !genDescription.trim()}
-                  className="bg-celestial-saturn text-black font-bold text-xs px-5 py-2 rounded-xl hover:scale-105 transition-transform disabled:opacity-40">
+                  className="lumi-button-primary bg-celestial-saturn text-black hover:bg-celestial-saturn/90">
                   {generating ? (t.generating || '...') : (t.generateBtn || 'Generate')}
                 </Button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {SAMPLE_PROMPTS.map(ex => (
-                  <button key={ex} onClick={() => setGenDescription(ex)} className="text-[12px] px-2 py-1 rounded-lg bg-white/5 border border-white/5 text-white/55 hover:text-white/50 hover:border-white/10 transition-colors">
+                  <button key={ex} onClick={() => setGenDescription(ex)} className="rounded-lg border border-white/[0.08] bg-white/[0.045] px-2 py-1 text-[12px] text-white/55 transition-colors hover:border-white/15 hover:text-white/75">
                     {ex}
                   </button>
                 ))}
@@ -1022,7 +1024,7 @@ function SkillDetailPane({ detailSkill, setDetailSkill, t, lang, marketSkills, i
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-5"
+      className="lumi-panel p-6 space-y-5"
     >
       <button
         onClick={() => setDetailSkill(null)}
