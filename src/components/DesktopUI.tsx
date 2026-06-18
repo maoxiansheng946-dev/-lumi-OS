@@ -1254,11 +1254,13 @@ function ExecutionWorkQueue({ t }: { t: any }) {
   const isZh = t?.langCode !== 'en';
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-8">
-      <section className="min-h-full rounded-[2rem] border border-white/5 bg-white/[0.03] p-5">
+      <section className="lumi-surface min-h-full rounded-3xl bg-black/20 p-5">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-lg font-black uppercase tracking-widest text-white/85">
-            <Calendar size={18} className="text-celestial-saturn" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-celestial-saturn/20 bg-celestial-saturn/10 text-celestial-saturn">
+              <Calendar size={18} />
+            </span>
             {isZh ? '计划与自主执行' : 'Plans & Autonomous Work'}
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/42">
@@ -1351,7 +1353,7 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
 
   return (
     <GlassCard
-      className={`${embedded ? 'h-full' : 'cursor-pointer hover:bg-white/[0.05]'} p-5 rounded-[2rem] border-white/5 bg-black/20 space-y-3 transition-colors`}
+      className={`lumi-panel ${embedded ? 'h-full' : 'cursor-pointer hover:bg-white/[0.05]'} space-y-3 rounded-2xl bg-black/20 p-5 transition-colors`}
       onClick={onOpenQueue}
     >
       <div className="flex items-center justify-between">
@@ -1372,14 +1374,14 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
           {onOpenQueue && (
             <button
               onClick={(e) => { e.stopPropagation(); onOpenQueue(); }}
-              className="rounded-lg border border-white/8 bg-white/[0.04] px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white/40 hover:bg-white/[0.08] hover:text-white/70"
+              className="lumi-button h-7 px-2 text-[10px]"
             >
               {isZh ? '队列' : 'Queue'}
             </button>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); setShowNew(!showNew); }}
-            className="h-6 w-6 rounded-lg bg-white/[0.04] text-[13px] font-bold text-white/40 hover:bg-white/[0.08] hover:text-white/70 transition-colors"
+            className="lumi-icon-button h-7 w-7 rounded-lg border-transparent text-[13px] font-bold"
           >
             {showNew ? '–' : '+'}
           </button>
@@ -1388,13 +1390,13 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
 
       {showNew && (
         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-          <input value={newPlan.title} onChange={e => setNewPlan(p => ({ ...p, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && createPlan()} placeholder={isZh ? '新计划...' : 'New plan...'} className="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder:text-white/25" />
-          <select value={newPlan.priority} onChange={e => setNewPlan(p => ({ ...p, priority: e.target.value }))} className="w-16 bg-white/5 border border-white/10 rounded-lg text-white/70 text-xs">
+          <input value={newPlan.title} onChange={e => setNewPlan(p => ({ ...p, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && createPlan()} placeholder={isZh ? '新计划...' : 'New plan...'} className="lumi-field min-w-0 flex-1 py-1.5 text-xs" />
+          <select value={newPlan.priority} onChange={e => setNewPlan(p => ({ ...p, priority: e.target.value }))} className="lumi-field w-16 py-1.5 text-xs text-white/70">
             <option value="high">H</option>
             <option value="medium">M</option>
             <option value="low">L</option>
           </select>
-          <button onClick={createPlan} disabled={!newPlan.title.trim()} className="px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs font-bold disabled:opacity-30">{isZh ? '添加' : 'Add'}</button>
+          <button onClick={createPlan} disabled={!newPlan.title.trim()} className="lumi-button-primary h-8 px-3 text-xs">{isZh ? '添加' : 'Add'}</button>
         </div>
       )}
 

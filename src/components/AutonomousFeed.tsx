@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Zap, CheckCircle, XCircle, Clock, Monitor, Terminal, Search, ChevronDown, RefreshCw, X } from 'lucide-react';
 import { useSocket } from '@/hooks/useSocket';
 import { toast } from 'sonner';
+import { useT } from '@/lib/useT';
 
 interface AutoTask {
   id: string;
@@ -25,6 +26,9 @@ type FilterMode = 'all' | 'running' | 'completed' | 'failed' | 'cancelled' | 'de
 
 export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boolean }) {
   const socket = useSocket();
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [tasks, setTasks] = useState<AutoTask[]>([]);
   const [queue, setQueue] = useState<AutoTask[]>([]);
   const [history, setHistory] = useState<AutoTask[]>([]);
@@ -132,7 +136,7 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
       setQueue(prev => prev.filter(t => t.id !== task.id));
       setTasks(prev => prev.filter(t => t.id !== task.id));
       setHistory(prev => [cancelledTask, ...prev.filter(t => t.id !== task.id)].slice(0, 50));
-      toast.success('Autonomous task cancelled');
+      toast.success(ui('自主任务已取消', 'Autonomous task cancelled'));
     } catch (err: any) {
       toast.error(err?.message || 'Failed to cancel task');
     } finally {
@@ -173,17 +177,17 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
   };
 
   const filters: { id: FilterMode; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'running', label: 'Active' },
-    { id: 'completed', label: 'Done' },
-    { id: 'failed', label: 'Failed' },
-    { id: 'cancelled', label: 'Cancelled' },
-    { id: 'desktop', label: 'Desktop' },
-    { id: 'analysis', label: 'Analysis' },
+    { id: 'all', label: ui('全部', 'All') },
+    { id: 'running', label: ui('进行中', 'Active') },
+    { id: 'completed', label: ui('完成', 'Done') },
+    { id: 'failed', label: ui('失败', 'Failed') },
+    { id: 'cancelled', label: ui('已取消', 'Cancelled') },
+    { id: 'desktop', label: ui('桌面', 'Desktop') },
+    { id: 'analysis', label: ui('分析', 'Analysis') },
   ];
 
   return (
-    <div className="bg-white/[0.03] border border-white/5 rounded-2xl overflow-hidden">
+    <div className="lumi-panel overflow-hidden bg-black/20">
       <div
         role="button"
         tabIndex={0}
@@ -194,17 +198,19 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
             setExpanded(!expanded);
           }
         }}
-        className="w-full flex items-center justify-between p-4 hover:bg-white/[0.02] transition-colors"
+        className="flex w-full items-center justify-between p-4 transition-colors hover:bg-white/[0.03]"
       >
         <div className="flex items-center gap-2">
-          <Zap size={16} className="text-amber-400" />
-          <span className="text-sm font-bold uppercase tracking-tight text-white/70">Autonomous Activity</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
+            <Zap size={16} />
+          </span>
+          <span className="text-sm font-black uppercase tracking-[0.12em] text-white/75">{ui('自主执行记录', 'Autonomous Activity')}</span>
           {liveItems.length > 0 && (
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-white/25">{liveItems.length} live</span>
+          <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-mono text-white/35">{liveItems.length} {ui('实时', 'live')}</span>
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); void loadTasks(); }}
@@ -215,8 +221,8 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
                 void loadTasks();
               }
             }}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/8 bg-white/[0.03] text-white/35 hover:bg-white/[0.08] hover:text-white/70"
-            title="Refresh autonomous work"
+            className="lumi-icon-button h-7 w-7 rounded-lg"
+            title={ui('刷新自主任务', 'Refresh autonomous work')}
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -227,13 +233,13 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
       {expanded && (
         <div className="border-t border-white/5">
           {/* Filter bar */}
-          <div className="flex gap-1 px-4 py-2 overflow-x-auto">
+          <div className="custom-scrollbar flex gap-1 overflow-x-auto px-4 py-2">
             {filters.map(f => (
               <button
                 key={f.id}
                 onClick={() => setFilter(f.id)}
-                className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                  filter === f.id ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                className={`rounded-full border px-3 py-1 text-xs font-bold whitespace-nowrap transition-colors ${
+                  filter === f.id ? 'border-amber-300/25 bg-amber-400/10 text-amber-100' : 'border-transparent text-white/40 hover:border-white/[0.08] hover:bg-white/[0.04] hover:text-white/70'
                 }`}
               >
                 {f.label}
@@ -250,12 +256,12 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
           <div className="max-h-80 overflow-y-auto custom-scrollbar px-2 pb-2 space-y-1">
             <AnimatePresence>
               {loading && allItems.length === 0 ? (
-                <div className="text-center py-8 text-xs text-white/30">
-                  Loading autonomous work...
+                <div className="lumi-panel py-8 text-center text-xs text-white/30">
+                  {ui('正在加载自主执行记录...', 'Loading autonomous work...')}
                 </div>
               ) : allItems.length === 0 ? (
-                <div className="text-center py-8 text-xs text-white/30">
-                  No autonomous tasks yet. Switch to autonomous mode and wait for Lumi to initiate work.
+                <div className="lumi-panel py-8 text-center text-xs text-white/30">
+                  {ui('暂无自主任务。切到自主模式后，Lumi 的工作记录会出现在这里。', 'No autonomous tasks yet. Switch to autonomous mode and wait for Lumi to initiate work.')}
                 </div>
               ) : (
                 allItems.map(task => (
@@ -263,7 +269,7 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
                     key={task.id}
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors cursor-pointer"
+                    className="cursor-pointer rounded-2xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/[0.1] hover:bg-white/[0.05]"
                     onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
                   >
                     <div className="flex items-center gap-2">
@@ -278,7 +284,7 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
                           onClick={(event) => { event.stopPropagation(); void cancelTask(task); }}
                           disabled={cancellingIds.includes(task.id)}
                           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-red-400/15 bg-red-500/10 text-red-200/55 hover:bg-red-500/18 hover:text-red-100 disabled:opacity-30"
-                          title="Cancel task"
+                          title={ui('取消任务', 'Cancel task')}
                         >
                           <X size={12} />
                         </button>
@@ -289,7 +295,7 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
                       <motion.div
                         initial={{ height: 0 }}
                         animate={{ height: 'auto' }}
-                        className="mt-2 pt-2 border-t border-white/5 space-y-1 text-xs text-white/50"
+                        className="mt-2 space-y-1 border-t border-white/[0.08] pt-2 text-xs text-white/50"
                       >
                         {task.result && (
                           <p className="text-white/60 leading-relaxed">{task.result.slice(0, 300)}</p>

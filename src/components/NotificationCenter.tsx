@@ -27,12 +27,12 @@ export function NotificationCenter({ onChatMessage }: { onChatMessage?: (message
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950/60 backdrop-blur-xl text-white overflow-y-auto">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/5">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center relative">
+    <div className="flex h-full flex-col overflow-hidden bg-zinc-950/55 text-white backdrop-blur-xl">
+      <div className="flex items-center gap-3 border-b border-white/[0.08] px-6 py-4">
+        <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-500/15">
           <Bell size={20} className="text-amber-400" />
           {visibleItems.filter(n => !n.read).length > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-xs font-black flex items-center justify-center">
+            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs font-black">
               {visibleItems.filter(n => !n.read).length > 9 ? '9+' : visibleItems.filter(n => !n.read).length}
             </span>
           )}
@@ -48,13 +48,13 @@ export function NotificationCenter({ onChatMessage }: { onChatMessage?: (message
           <div className="flex gap-2">
             <button
               onClick={markAllNotificationsRead}
-              className="p-2 rounded-lg bg-white/5 text-white/55 hover:text-white hover:bg-white/10 transition-all"
+              className="lumi-icon-button h-8 w-8 rounded-lg"
             >
               <CheckCheck size={14} />
             </button>
             <button
               onClick={clearNotifications}
-              className="p-2 rounded-lg bg-white/5 text-white/55 hover:text-red-400 hover:bg-white/10 transition-all"
+              className="lumi-icon-button h-8 w-8 rounded-lg hover:text-red-300"
             >
               <Trash2 size={14} />
             </button>
@@ -62,9 +62,9 @@ export function NotificationCenter({ onChatMessage }: { onChatMessage?: (message
         )}
       </div>
 
-      <div className="flex-1 p-4">
+      <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
         {visibleItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-white/40">
+          <div className="lumi-panel flex flex-col items-center justify-center py-16 text-white/40">
             <Bell size={48} className="mb-4 opacity-20" />
             <span className="text-xs font-bold uppercase tracking-widest">{t.ncEmpty || 'No notifications'}</span>
             <span className="text-xs mt-1">{t.systemEventsHere || 'System events and alerts will appear here'}</span>
@@ -82,11 +82,11 @@ export function NotificationCenter({ onChatMessage }: { onChatMessage?: (message
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') handleClick(n); }}
                   onClick={() => handleClick(n)}
-                  className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer hover:bg-white/[0.08] ${
-                    n.read ? 'bg-white/[0.02]' : 'bg-white/5 border border-white/5'
+                  className={`group flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition-colors hover:border-white/[0.1] hover:bg-white/[0.07] ${
+                    n.read ? 'border-transparent bg-white/[0.02]' : 'border-white/[0.08] bg-white/[0.05]'
                   }`}
                 >
-                  <div className="flex-shrink-0 mt-0.5">
+                  <div className="mt-0.5 flex-shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.04] p-1.5">
                     {ICONS[n.type] || ICONS.info}
                   </div>
                   <div className="flex-1 min-w-0">

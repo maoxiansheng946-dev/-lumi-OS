@@ -1,28 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Cpu, Plus, CheckCircle, Loader2 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function TeamHub({ t }: { t?: any }) {
   const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showConnectForm, setShowConnectForm] = useState(false);
   const [connectName, setConnectName] = useState('');
   const [connectCategory, setConnectCategory] = useState('general');
   const [connectSkillTags, setConnectSkillTags] = useState('');
   const [connectCommand, setConnectCommand] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const loadAgentsFailedText = t?.loadAgentsFailed || 'Failed to load agents';
 
   const fetchAgents = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await fetch('/api/agents', { credentials: 'include' });
-      if (res.ok) setAgents(await res.json());
-    } catch {}
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || loadAgentsFailedText);
+      setAgents(Array.isArray(data) ? data : data.agents || []);
+    } catch (err: any) {
+      const message = err?.message || loadAgentsFailedText;
+      setLoadError(message);
+      toast.error(message);
+    }
     setLoading(false);
-  }, []);
+  }, [loadAgentsFailedText]);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
@@ -97,12 +104,14 @@ export function TeamHub({ t }: { t?: any }) {
   const externalAgents = agents.filter(a => a.runtime === 'external');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="lumi-panel flex items-center justify-between gap-4 p-5">
         <div>
-          <h2 className="text-xl font-bold uppercase tracking-tighter text-white/90 flex items-center gap-2">
-            <Users size={20} className="text-cyan-400" />
+          <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-400/10 text-cyan-300">
+              <Users size={20} />
+            </span>
             {t?.teamHub || 'Agent Team'}
           </h2>
           <p className="text-sm text-white/40 max-w-xl mt-1">
@@ -111,7 +120,7 @@ export function TeamHub({ t }: { t?: any }) {
         </div>
         <button
           onClick={() => setShowConnectForm(!showConnectForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs font-bold text-cyan-400 hover:bg-cyan-500/20 transition-all shrink-0"
+          className="lumi-button-primary shrink-0 border-cyan-400/25 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25"
         >
           <ExternalLink size={12} />
           {t?.connectExternal || 'Connect External Agent'}
@@ -121,32 +130,32 @@ export function TeamHub({ t }: { t?: any }) {
       <AnimatePresence>
         {showConnectForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="p-5 bg-cyan-500/5 rounded-2xl border border-cyan-500/10 space-y-4">
+            <div className="lumi-panel space-y-4 border-cyan-500/15 bg-cyan-500/5 p-5">
               <p className="text-xs text-cyan-400/70">{t?.connectExternalDesc || 'Link an AI agent running on your machine or cloud.'}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input value={connectName} onChange={e => setConnectName(e.target.value)}
-                  placeholder={t?.agentName || 'Agent Name'} className="bg-white/5 border-white/10 rounded-xl py-2 text-xs" />
+                <input value={connectName} onChange={e => setConnectName(e.target.value)}
+                  placeholder={t?.agentName || 'Agent Name'} className="lumi-field py-2 text-xs" />
                 <select value={connectCategory} onChange={e => setConnectCategory(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-xs text-white/80">
+                  className="lumi-field py-2 text-xs text-white/80">
                   {['general','code','content','analysis','search','automation','assistant','media'].map(c => (
                     <option key={c} value={c} className="bg-gray-900">{c}</option>
                   ))}
                 </select>
-                <Input value={connectSkillTags} onChange={e => setConnectSkillTags(e.target.value)}
-                  placeholder={t?.agentSkillTags || 'Skill Tags (comma separated)'} className="bg-white/5 border-white/10 rounded-xl py-2 text-xs" />
-                <Input value={connectCommand} onChange={e => setConnectCommand(e.target.value)}
-                  placeholder={t?.agentCommandHint || 'openclaw send --task "{task}"'} className="bg-white/5 border-white/10 rounded-xl py-2 text-xs font-mono" />
+                <input value={connectSkillTags} onChange={e => setConnectSkillTags(e.target.value)}
+                  placeholder={t?.agentSkillTags || 'Skill Tags (comma separated)'} className="lumi-field py-2 text-xs" />
+                <input value={connectCommand} onChange={e => setConnectCommand(e.target.value)}
+                  placeholder={t?.agentCommandHint || 'openclaw send --task "{task}"'} className="lumi-field py-2 font-mono text-xs" />
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleConnectExternal}
+                <button onClick={handleConnectExternal}
                   disabled={connecting || !connectName.trim() || !connectCommand.trim()}
-                  className="bg-cyan-500 text-black font-bold text-xs px-4 py-2 rounded-xl hover:scale-105 transition-transform disabled:opacity-40">
+                  className="lumi-button-primary h-9 border-cyan-300/25 bg-cyan-300/90 px-4 text-xs text-slate-950 hover:bg-cyan-200">
                   {connecting ? (t?.connectingBtn || 'Connecting...') : (t?.connectBtn || 'Connect')}
-                </Button>
-                <Button onClick={() => setShowConnectForm(false)}
-                  className="bg-white/5 text-white/55 font-bold text-xs px-4 py-2 rounded-xl hover:bg-white/10 transition-all">
+                </button>
+                <button onClick={() => setShowConnectForm(false)}
+                  className="lumi-button h-9 px-4 text-xs">
                   {t?.cancel || 'Cancel'}
-                </Button>
+                </button>
               </div>
             </div>
           </motion.div>
@@ -154,12 +163,17 @@ export function TeamHub({ t }: { t?: any }) {
       </AnimatePresence>
 
       {loading ? (
-        <div className="p-16 bg-white/5 rounded-[2rem] border border-white/5 text-center">
+        <div className="lumi-panel p-16 text-center">
           <Loader2 size={32} className="text-white/40 mx-auto mb-4 animate-spin" />
           <p className="text-white/40 text-sm">{t?.loading || 'Loading...'}</p>
         </div>
+      ) : loadError ? (
+        <div className="lumi-panel border-red-400/15 bg-red-500/5 p-8 text-center">
+          <p className="text-sm text-red-200/80">{loadError}</p>
+          <button onClick={() => void fetchAgents()} className="lumi-button mt-4">{t?.retry || 'Retry'}</button>
+        </div>
       ) : agents.length === 0 ? (
-        <div className="p-16 bg-white/5 rounded-[2rem] border border-white/5 text-center">
+        <div className="lumi-panel p-16 text-center">
           <Users size={40} className="text-white/45 mx-auto mb-4" />
           <p className="text-white/40 font-bold uppercase tracking-widest text-sm">{t?.noTeamMembers || 'No team members yet'}</p>
           <p className="text-white/45 text-xs mt-2">{t?.teamCreateHint || 'Use agent_create in chat to add a teammate.'}</p>
@@ -178,11 +192,11 @@ export function TeamHub({ t }: { t?: any }) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-white/10 transition-all space-y-3"
+                      className="lumi-panel space-y-3 p-5 transition-colors hover:border-white/15 hover:bg-white/[0.06]"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-500/10">
                             <Bot size={16} className="text-cyan-400" />
                           </div>
                           <div>
@@ -193,14 +207,14 @@ export function TeamHub({ t }: { t?: any }) {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleToggle(agent)}
-                            className={`p-1.5 rounded-lg transition-all ${agent.isFrozen ? 'bg-white/5 text-white/30 hover:text-white/50' : 'bg-green-500/10 text-green-400'}`}
+                            className={`rounded-lg p-1.5 transition-all ${agent.isFrozen ? 'bg-white/5 text-white/30 hover:text-white/50' : 'bg-green-500/10 text-green-400'}`}
                             title={agent.isFrozen ? (t?.activate || 'Activate') : (t?.freeze || 'Freeze')}
                           >
                             {agent.isFrozen ? <Power size={14} /> : <PowerOff size={14} />}
                           </button>
                           <button
                             onClick={() => handleDelete(agent.id)}
-                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-white/30 hover:text-red-400 transition-all"
+                            className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
                             title={t?.remove || 'Remove'}
                           >
                             <Trash2 size={14} />
@@ -240,11 +254,11 @@ export function TeamHub({ t }: { t?: any }) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="p-5 bg-cyan-500/5 rounded-2xl border border-cyan-500/10 hover:border-cyan-500/30 transition-all space-y-3"
+                      className="lumi-panel space-y-3 border-cyan-500/15 bg-cyan-500/5 p-5 transition-colors hover:border-cyan-500/30"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-500/10">
                             <ExternalLink size={16} className="text-cyan-400" />
                           </div>
                           <div>
@@ -254,7 +268,7 @@ export function TeamHub({ t }: { t?: any }) {
                         </div>
                         <button
                           onClick={() => handleDelete(agent.id)}
-                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-white/30 hover:text-red-400 transition-all"
+                          className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
                           title={t?.remove || 'Remove'}
                         >
                           <Trash2 size={14} />
