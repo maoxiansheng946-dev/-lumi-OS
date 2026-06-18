@@ -4,10 +4,12 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { createRequire } from 'module';
 import { ToolRegistry } from '../registry';
 import { ingestDocument } from '../../agents/rag';
 
 const OUTPUT_DIR = path.join(process.cwd(), 'lumi_output');
+const require = createRequire(import.meta.url);
 
 function ensureOutputDir(): string {
   if (!fs.existsSync(OUTPUT_DIR)) {

@@ -26,6 +26,35 @@ export interface LLMUsageRecord {
   totalTokens: number;
 }
 
+const DEFAULT_TOOL_RESULT_MODEL_LIMIT = 12_000;
+const TOOL_RESULT_LIMITS: Record<string, number> = {
+  desktop_list_files: 4_000,
+  list_directory: 4_000,
+  search_files: 6_000,
+  grep_files: 8_000,
+  read_file: 12_000,
+  read_files_batch: 14_000,
+  extract_document_text: 16_000,
+  read_docx: 12_000,
+  read_pdf: 12_000,
+  ocr_image_file: 10_000,
+  ocr_screen: 8_000,
+  ocr_region: 8_000,
+};
+
+function compactToolResultForModel(toolName: string, value: string): string {
+  const text = value || '';
+  const limit = TOOL_RESULT_LIMITS[toolName] || DEFAULT_TOOL_RESULT_MODEL_LIMIT;
+  if (text.length <= limit) return text;
+  const head = Math.floor(limit * 0.72);
+  const tail = Math.max(800, limit - head - 240);
+  return [
+    text.slice(0, head),
+    `\n\n[Tool result truncated for model context: ${text.length} characters total. Kept the beginning and end. Ask/read a smaller file range if more detail is needed.]\n\n`,
+    text.slice(-tail),
+  ].join('');
+}
+
 function filterToolDeclarationsForPolicy(
   declarations: ReturnType<ToolRegistry['getToolDeclarations']>,
   context?: ToolContext,
@@ -204,7 +233,7 @@ export async function runWithTools(
 
       conversationHistory.push({
         role: 'tool',
-        content: error ? `Error: ${error}` : result,
+        content: error ? `Error: ${error}` : compactToolResultForModel(tc.name, result),
         toolCallId: tc.id,
         name: tc.name,
       });

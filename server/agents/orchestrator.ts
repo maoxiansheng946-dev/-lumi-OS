@@ -22,6 +22,7 @@ import { recordWorkflow } from "../skills/worklog";
 import { personalityRegistry } from "../personality";
 import { recordTokenUsage } from "../llm/token_tracker";
 import { executeExternalAgent, validateExternalCommand } from "./external_runtime";
+import { ToolExecutionRecord } from "../tools/types";
 
 type LLMProvider = 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto';
 
@@ -70,6 +71,22 @@ export interface OrchestrationContext {
   availableAgentIds?: string[];
   desktopRelay?: (toolName: string, args: Record<string, any>) => Promise<string>;
 }
+
+export interface OrchestrationToolMeta {
+  subTaskId: string;
+  agentId: string;
+  agentName: string;
+}
+
+export type OrchestrationToolEvent = Omit<ToolExecutionRecord, 'result'> & {
+  result?: string;
+  error?: string;
+};
+
+export type OrchestrationToolCallback = (
+  record: OrchestrationToolEvent,
+  meta: OrchestrationToolMeta,
+) => void;
 
 // ── Complexity classification ──
 
@@ -602,6 +619,7 @@ async function executeWorkerTask(
   llmConfig: { provider: LLMProvider; model: string },
   llmGetters: LlmGetters,
   fallbackAgents: AgentRecord[],
+  onTool?: OrchestrationToolCallback,
 ): Promise<{ subTaskId: string; output: string; agentId: string }> {
   const { subTask, agent } = assignment;
 
@@ -660,17 +678,32 @@ async function executeWorkerTask(
         requestConfirmation: async () => true,
         desktopRelay: context.desktopRelay,
         llmGetters,
+        onToolStart: (record: { id: string; name: string; arguments: Record<string, any> }) => {
+          onTool?.({
+            id: record.id,
+            name: record.name,
+            arguments: record.arguments,
+          }, {
+            subTaskId: subTask.id,
+            agentId: currentAgent.id,
+            agentName: currentAgent.name,
+          });
+        },
       };
-      const WORKER_TIMEOUT_MS = 120_000;
+      const WORKER_TIMEOUT_MS = 240_000;
       const timeoutPromise = new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error('Worker timed out after 2 minutes')), WORKER_TIMEOUT_MS),
+        setTimeout(() => rej(new Error('Worker timed out after 4 minutes')), WORKER_TIMEOUT_MS),
       );
       const result = await Promise.race([
         runWithTools(
           messages,
           toolRegistry,
           { provider: llmConfig.provider, model: llmConfig.model, maxTokens: 4000, userId: context.userId },
-          undefined,
+          (record) => onTool?.(record, {
+            subTaskId: subTask.id,
+            agentId: currentAgent.id,
+            agentName: currentAgent.name,
+          }),
           isRetry ? 12 : 8,
           llmGetters.getDeepSeek,
           llmGetters.getGemini,
@@ -735,6 +768,7 @@ export async function executeWorkflow(
   llmConfig: { provider: LLMProvider; model: string },
   llmGetters: LlmGetters,
   fallbackAgents: AgentRecord[] = [],
+  onTool?: OrchestrationToolCallback,
 ): Promise<WorkflowResult> {
   const groups = topologicalGroups(assignments);
 
@@ -746,7 +780,7 @@ export async function executeWorkflow(
     const groupResults = await Promise.all(
       group.map(a => {
         usedAgentIds.add(a.agent.id);
-        return executeWorkerTask(a, context, llmConfig, llmGetters, fallbackAgents);
+        return executeWorkerTask(a, context, llmConfig, llmGetters, fallbackAgents, onTool);
       }),
     );
     // Only record routing success if worker actually succeeded (not error string)
@@ -987,6 +1021,7 @@ export async function runOrchestratedTask(
   llmConfig: { provider: LLMProvider; model: string },
   llmGetters: LlmGetters,
   onProgress?: (message: string) => void,
+  onTool?: OrchestrationToolCallback,
 ): Promise<OrchestratedResult | null> {
   const complexity = classifyComplexity(text, context);
   if (complexity !== 'complex' && complexity !== 'moderate') return null;
@@ -1005,7 +1040,7 @@ export async function runOrchestratedTask(
   const assignments = matchWorkers(capped, availableAgents);
   onProgress?.(`[Orchestrator] Assigned to ${assignments.length} worker(s)\n`);
 
-  const workflowResult = await executeWorkflow(assignments, context, llmConfig, llmGetters, availableAgents);
+  const workflowResult = await executeWorkflow(assignments, context, llmConfig, llmGetters, availableAgents, onTool);
 
   const aggregated = complexity === 'moderate' && capped.length <= 2
     ? workflowResult.aggregatedOutput

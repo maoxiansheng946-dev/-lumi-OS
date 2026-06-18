@@ -650,6 +650,10 @@ export function registerChatHandler(
 
       let responseText = '';
       let llmWasCalled = false;
+      const prefersSequentialCanvasWorkflow =
+        eventSource === 'canvas' &&
+        shouldChainTask(text) &&
+        /(?:方案|报告|文档|文件|装修|室内|设计|CAD|cad|图纸|平面图|施工图|材料|色彩|预算|成果)/u.test(text);
 
       if (cognition.directToolExecuted && cognition.responseText) {
         // Path A: Lumi handled this directly — no LLM needed
@@ -679,7 +683,7 @@ export function registerChatHandler(
         }
       }
 
-      if (!responseText && allowToolUseForTurn && !clientActionOnlyTurn && !selfRepairTurn && !isSanctuary && (cognition.intent.category === 'command' || cognition.intent.category === 'code' || cognition.intent.category === 'question')) {
+      if (!responseText && !prefersSequentialCanvasWorkflow && allowToolUseForTurn && !clientActionOnlyTurn && !selfRepairTurn && !isSanctuary && (cognition.intent.category === 'command' || cognition.intent.category === 'code' || cognition.intent.category === 'question')) {
         // Path B: Orchestrator — decompose tasks into sub-tasks for worker agents
         // (Skipped for sanctuary agents — they stay in their territory)
         try {
@@ -690,6 +694,22 @@ export function registerChatHandler(
             { provider: activeProvider, model: activeModel },
             llmGetters,
             exposeAgentWork ? (msg) => emitAgent("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
+            (record, meta) => {
+              const payload: Record<string, any> = {
+                correlationId: record.id,
+                toolCallId: record.id,
+                name: record.name,
+                arguments: record.arguments,
+                args: record.arguments,
+                subTaskId: meta.subTaskId,
+                workerAgentId: meta.agentId,
+                workerAgentName: meta.agentName,
+              };
+              if (record.result !== undefined) payload.result = formatToolResultForUi(record.result);
+              if (record.error !== undefined) payload.error = record.error;
+              emitAgent("agent:tool_call", payload);
+              emitAgent("agent:tool", payload);
+            },
           );
           if (orchResult) {
             responseText = orchResult.responseText;
@@ -724,7 +744,26 @@ export function registerChatHandler(
           emitAgent("agent:status", { status: "thinking", agentName: personality.name, phase: 'background' });
           const chainerResult = await runNLChainer(
             text,
-            { userId: uid, provider: activeProvider, model: activeModel, desktopRelay, context: { isCancelled: () => abortController.signal.aborted, toolPolicy: personality.toolPolicy } },
+            {
+              userId: uid,
+              provider: activeProvider,
+              model: activeModel,
+              desktopRelay,
+              context: { isCancelled: () => abortController.signal.aborted, toolPolicy: personality.toolPolicy },
+              onTool: (record) => {
+                const payload: Record<string, any> = {
+                  correlationId: record.id,
+                  toolCallId: record.id,
+                  name: record.name,
+                  arguments: record.arguments,
+                  args: record.arguments,
+                };
+                if (record.result !== '') payload.result = formatToolResultForUi(record.result);
+                if (record.error !== undefined) payload.error = record.error;
+                emitAgent("agent:tool_call", payload);
+                emitAgent("agent:tool", payload);
+              },
+            },
             llmGetters,
             (step, total, desc) => {
               emitAgent("agent:status", { status: "thinking", agentName: personality.name, phase: 'background', detail: `Step ${step}/${total}: ${desc}` });

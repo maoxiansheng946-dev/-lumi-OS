@@ -25,17 +25,20 @@ function basename(value: string): string {
 function buildCanvasContext(cards: CanvasCard[]): string {
   const artifacts = cards
     .filter(card => card.type === 'artifact' && (card.metadata?.content || card.metadata?.preview || card.metadata?.filepath || card.detail))
-    .slice(-8);
+    .slice(-6);
   if (artifacts.length === 0) return '';
 
-  let budget = 18000;
+  let budget = 7000;
   const sections: string[] = [];
   for (const card of artifacts) {
     if (budget <= 0) break;
     const title = String(card.metadata?.fileName || card.text || 'Canvas artifact');
     const path = String(card.metadata?.filepath || card.metadata?.path || '');
     const content = String(card.metadata?.content || card.metadata?.preview || card.detail || '').trim();
-    const body = content.slice(0, Math.max(0, Math.min(content.length, budget)));
+    const perArtifactLimit = Math.min(1200, budget);
+    const body = content.length > perArtifactLimit
+      ? `${content.slice(0, perArtifactLimit)}\n[Canvas artifact preview truncated: ${content.length} characters total. Use read_file/extract tools on the path for full content.]`
+      : content;
     budget -= body.length;
     sections.push([
       `### ${title}`,

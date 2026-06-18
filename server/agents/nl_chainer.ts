@@ -260,6 +260,7 @@ export async function runNLChainer(
     model: string;
     desktopRelay?: (tool: string, args: Record<string, any>) => Promise<string>;
     context?: ToolContext;
+    onTool?: (record: ToolExecutionRecord) => void;
   },
   llmGetters: LlmGetters,
   onStep?: (step: number, total: number, description: string) => void,
@@ -351,11 +352,19 @@ If no suitable alternative exists, output: { "toolName": "" }`;
   };
 
   const executeTool = async (name: string, args: Record<string, any>): Promise<string> => {
+    const id = `chain_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    config.onTool?.({ id, name, arguments: args, result: '' });
     // Handle desktop relay tools
-    if (config.desktopRelay && /^(desktop_|computer_)/.test(name)) {
-      return config.desktopRelay(name, args);
+    try {
+      const output = config.desktopRelay && /^(desktop_|computer_)/.test(name)
+        ? await config.desktopRelay(name, args)
+        : await toolRegistry.execute(name, args, config.context);
+      config.onTool?.({ id, name, arguments: args, result: output });
+      return output;
+    } catch (err: any) {
+      config.onTool?.({ id, name, arguments: args, result: '', error: err?.message || String(err) });
+      throw err;
     }
-    return toolRegistry.execute(name, args, config.context);
   };
 
   const stepResults = await executePlan(plan, executeTool, config.context, onStep, replanFn);
@@ -377,6 +386,9 @@ If no suitable alternative exists, output: { "toolName": "" }`;
 export function shouldChainTask(userText: string): boolean {
   // Multi-step indicators in Chinese and English
   const chainPatterns = [
+    /(?:生成|创建|制作|编写|写|输出|导出|保存).*(?:方案|报告|文档|文件|表格|PPT|ppt|PDF|pdf|DOCX|docx)/u,
+    /(?:继续|接着|下一步|深化|完善).*(?:方案|报告|文档|文件|画布|成果|设计|装修)/u,
+    /(?:装修|室内|设计|CAD|cad|图纸|平面图|施工图).*(?:方案|文档|文件|输出|生成|保存|深化|材料|色彩|预算)/u,
     /然后/, /接着/, /之后/, /最后/, /再/, /并且/, /同时/,
     /then\s/, /after\s/, /and\s+also/, /then\s+create/, /then\s+save/,
     // Compound task patterns
