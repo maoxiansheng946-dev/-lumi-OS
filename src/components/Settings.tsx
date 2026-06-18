@@ -1669,12 +1669,12 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
     })
       .then(async r => {
         const data = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(data?.error || ui('自主执行设置更新失败', 'Failed to update autonomy settings'));
+        if (!r.ok) throw new Error(data?.error || ui('自主设置更新失败', 'Failed to update autonomy settings'));
         if (data) setGateConfig({ ...DEFAULT_AUTONOMY_GATE, ...data });
       })
       .catch((err: any) => {
         setGateConfig(gateConfig);
-        toast.error(err?.message || ui('自主执行设置更新失败', 'Failed to update autonomy settings'));
+        toast.error(err?.message || ui('自主设置更新失败', 'Failed to update autonomy settings'));
       });
   };
 
@@ -1754,8 +1754,8 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('自动执行模式', 'Auto Execute Mode')}</div>
-            <p className="text-xs text-white/40 mt-1">{ui('允许 Lumi 用工具、画布、桌面控制和团队智能体处理多步工作。', 'Allow Lumi to handle multi-step work with tools, canvas, desktop control, and team agents.')}</p>
+            <div className="text-xs font-black uppercase tracking-widest text-white/60">{ui('自主模式', 'Autonomy Mode')}</div>
+            <p className="text-xs text-white/40 mt-1">{ui('允许 Lumi 先给行动指南，再用工具、画布、桌面控制和团队智能体处理多步工作。', 'Allow Lumi to give an action guide, then handle multi-step work with tools, canvas, desktop control, and team agents.')}</p>
           </div>
           <button
             onClick={() => setOperationMode(isAutonomous ? 'assistant' : 'autonomous')}
@@ -1767,7 +1767,7 @@ function AutonomousSettingsPanel({ t, operationMode, setOperationMode }: { t: an
         {isAutonomous && (
           <div className="flex items-center gap-2 text-xs text-cyan-400/70">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            {ui('自动执行已开启：Lumi 可以把复杂任务拆成可见的画布工作路径。', 'Auto execute active: Lumi can turn complex tasks into visible canvas work.')}
+            {ui('自主模式已开启：Lumi 可以把复杂任务拆成可见的工作路径。', 'Autonomy active: Lumi can turn complex tasks into visible work paths.')}
           </div>
         )}
       </div>

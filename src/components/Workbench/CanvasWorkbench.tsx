@@ -15,6 +15,7 @@ interface CanvasWorkbenchProps {
   t: any;
   user: any;
   domain?: 'personal' | 'work';
+  orgId?: string | null;
   initialTask?: string;
   onInitialTaskConsumed?: () => void;
 }
@@ -36,7 +37,7 @@ function normalizeLoadedCanvasCards(cards: CanvasCard[]): CanvasCard[] {
   });
 }
 
-export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal', initialTask, onInitialTaskConsumed }: CanvasWorkbenchProps) {
+export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal', orgId = null, initialTask, onInitialTaskConsumed }: CanvasWorkbenchProps) {
   const socket = socketService.connect();
   const [sessions, setSessions] = useState<CanvasSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -71,10 +72,11 @@ export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal',
         saveState,
         status: statusText ? 'working' : 'idle',
         domain,
+        orgId: domain === 'work' ? orgId : null,
         updatedAt: Date.now(),
       },
     }));
-  }, [cards, currentSessionId, domain, edges, isOpen, saveState, selectedEdgeId, sessions, statusText]);
+  }, [cards, currentSessionId, domain, edges, isOpen, orgId, saveState, selectedEdgeId, sessions, statusText]);
 
   useEffect(() => {
     return () => {
@@ -108,6 +110,7 @@ export function CanvasWorkbench({ isOpen, onClose, t, user, domain = 'personal',
     cards,
     edges,
     domain,
+    orgId,
     onCards: onCardsReceived,
     onEdges: onEdgesReceived,
     onStatusChange,

@@ -5,7 +5,7 @@ import { getMemoryFirewallPolicy } from '../memory/firewall';
 import { formatMusicProfileForPrompt, getCachedMusicProfile } from '../music/library_profile';
 import { getActionConstitutionPolicy } from '../tools/action_constitution';
 
-export type ClientMode = 'chat' | 'assistant' | 'autonomous' | 'meeting' | 'music';
+export type ClientMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
 export type ClientCapabilityKind =
   | 'mode'
   | 'window'
@@ -37,7 +37,7 @@ export interface ClientStateSnapshot {
   mode?: ClientMode;
   activeTab?: string;
   workDomain?: 'personal' | 'work';
-  org?: { connected?: boolean; name?: string; role?: string };
+  org?: { connected?: boolean; id?: string; name?: string; role?: string };
   windows?: { open?: string[]; focused?: string | null; minimized?: string[] };
   surfaces?: {
     knowledgeOpen?: boolean;
@@ -82,6 +82,7 @@ export interface ClientStateSnapshot {
     saveState?: string;
     status?: string;
     domain?: string;
+    orgId?: string | null;
     updatedAt?: number;
   };
   files?: {
@@ -163,14 +164,6 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     stateKeys: ['mode', 'meeting', 'voice'],
   },
   {
-    id: 'mode.music',
-    label: 'Music mode',
-    kind: 'mode',
-    actions: ['set_client_mode(music)', 'open_music_center', 'show_music_layer', 'hide_music_layer'],
-    notes: 'Music-focused state for playback, recommendations, lyrics, and mood layer. Switching mode does not auto-open the player.',
-    stateKeys: ['mode', 'music'],
-  },
-  {
     id: 'mode.assistant',
     label: 'Assistant mode',
     kind: 'mode',
@@ -180,7 +173,7 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
   },
   {
     id: 'mode.autonomous',
-    label: 'Auto execute mode',
+    label: 'Autonomy mode',
     kind: 'mode',
     actions: ['set_client_mode(autonomous)', 'open_canvas_task'],
     notes: 'Visible multi-step execution through tools, canvas, desktop control, and teams.',
@@ -297,7 +290,7 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     label: 'Music center and mood layer',
     kind: 'media',
     actions: ['open_music_center', 'show_music_layer', 'hide_music_layer'],
-    notes: 'Music playback control, NetEase integration, lyrics, and fullscreen mood layer.',
+    notes: 'Music playback control, NetEase integration, lyrics, and fullscreen mood layer. Music is an always-available media capability, not a top-level work mode.',
     stateKeys: ['music'],
   },
   {
@@ -565,7 +558,7 @@ export function formatClientSelfPrompt(userId: string): string {
     `- Current mode: ${state.mode || 'unknown'}`,
     `- Active tab: ${state.activeTab || 'unknown'}`,
     `- Work domain: ${state.workDomain || 'personal'}`,
-    `- Organization: ${state.org?.connected ? `${state.org.name || 'connected'} (${state.org.role || 'member'})` : 'not connected or personal domain'}`,
+    `- Organization: ${state.org?.connected ? `${state.org.name || state.org.id || 'connected'} (${state.org.role || 'member'}${state.org.id ? `, id=${state.org.id}` : ''})` : 'not connected or personal domain'}`,
     `- Open windows: ${(state.windows?.open || []).join(', ') || 'none'}`,
     `- Focused window: ${state.windows?.focused || 'none'}`,
     `- Surfaces: knowledge=${Boolean(state.surfaces?.knowledgeOpen)}, chat=${Boolean(state.surfaces?.chatOpen)}, canvas=${Boolean(state.surfaces?.canvasOpen)}, meeting=${Boolean(state.surfaces?.meetingOpen)}, musicLayer=${Boolean(state.surfaces?.musicLayerVisible)}, wallpaper=${Boolean(state.surfaces?.wallpaperMode)}`,
@@ -573,7 +566,7 @@ export function formatClientSelfPrompt(userId: string): string {
     `- Music: ${state.music?.isPlaying ? 'playing' : 'idle'}${state.music?.trackName ? `, track="${state.music.trackName}"` : ''}${state.music?.volume != null ? `, volume=${state.music.volume}` : ''}, layer=${Boolean(state.music?.layerVisible ?? state.surfaces?.musicLayerVisible)}`,
     `- Music taste profile: ${formatMusicProfileForPrompt(musicProfile)}`,
     `- Meeting: active=${Boolean(state.meeting?.active)}, notes=${state.meeting?.noteCount || 0}, report=${Boolean(state.meeting?.hasReport)}, reportGenerating=${Boolean(state.meeting?.reportGenerating)}`,
-    `- Canvas: open=${Boolean(state.canvas?.open)}, session=${state.canvas?.sessionId || 'none'}, cards=${state.canvas?.cardCount || 0}, running=${state.canvas?.runningCount || 0}, errors=${state.canvas?.errorCount || 0}, save=${state.canvas?.saveState || 'unknown'}`,
+    `- Canvas: open=${Boolean(state.canvas?.open)}, session=${state.canvas?.sessionId || 'none'}, domain=${state.canvas?.domain || state.workDomain || 'personal'}${state.canvas?.orgId ? `, orgId=${state.canvas.orgId}` : ''}, cards=${state.canvas?.cardCount || 0}, running=${state.canvas?.runningCount || 0}, errors=${state.canvas?.errorCount || 0}, save=${state.canvas?.saveState || 'unknown'}`,
     `- Files: path=${state.files?.currentPath || 'unknown'}, items=${state.files?.itemCount ?? 0}, loading=${Boolean(state.files?.loading)}${state.files?.error ? `, error=${state.files.error}` : ''}`,
     `- Permissions: ${formatStateObject(state.permissions)}`,
     `- Tools: agent=${state.tools?.agentStatus || 'idle'}, workflowSteps=${state.tools?.workflowStepCount || 0}, runningSteps=${state.tools?.runningWorkflowSteps || 0}`,
@@ -609,7 +602,7 @@ export function formatClientSelfPrompt(userId: string): string {
     'When the user reports a client failure, do not stop at repeating the error. First read client_get_state, inspect relevant status/log/config tools when available, try one safe recovery or retry if the cause is clear, verify the state changed, then explain the remaining blocker if it still fails.',
     'If a routed client action, music playback, meeting capture, canvas task, organization workspace, or file operation fails, treat that as a repairable client workflow: diagnose -> safe recovery -> verify -> concise report.',
     'Do not shrink yourself into voice interaction. Voice, chat, Feishu, canvas, organization, music, meeting, tools, skills, files, and desktop control are different entrances into the same local Lumi.',
-    'Respect modes: chat is conversation-first but can act on explicit commands, meeting is transcription/reporting, music is listening/playback atmosphere, assistant is guided work, autonomous is visible multi-step execution.',
+    'Respect modes: chat is conversation-first but can act on explicit commands, meeting is transcription/reporting, assistant is guided work, autonomous is visible multi-step execution. Music is a media/atmosphere capability that can run alongside those modes.',
     '',
     '### Client Capabilities',
     ...capabilityLines,

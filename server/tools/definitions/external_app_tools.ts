@@ -16,7 +16,7 @@ function requireDesktopRelay(context?: ToolContext) {
 
 function requireExternalAutomation() {
   if (!isExternalAppAutomationAllowed()) {
-    throw new Error('External app automation is disabled. Enable it in Settings > Auto Execute before opening or controlling external apps.');
+    throw new Error('External app automation is disabled. Enable it in Settings > Autonomy before opening or controlling external apps.');
   }
 }
 
@@ -81,6 +81,14 @@ function dxfArc(cx: number, cy: number, r: number, start: number, end: number, l
 
 function dxfText(x: number, y: number, text: string, height = 240, layer = 'TEXT'): string[] {
   return ['0', 'TEXT', '8', layer, '10', String(x), '20', String(y), '30', '0', '40', String(height), '1', text.slice(0, 80)];
+}
+
+function svgEscape(value: any): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function buildRoundedRectEntities(width: number, height: number, radius: number): string[] {
@@ -167,6 +175,74 @@ function buildDxf(args: Record<string, any>): string {
 
   entities.push('0', 'ENDSEC', '0', 'EOF');
   return `${entities.join('\n')}\n`;
+}
+
+function buildCadPreviewSvg(args: Record<string, any>, title: string): string {
+  const width = Math.max(1, Number(args.width) || 100);
+  const height = Math.max(1, Number(args.height) || 60);
+  const radius = Math.max(0, Number(args.cornerRadius) || 0);
+  const holes = Array.isArray(args.holes) ? args.holes : [];
+  const walls = Array.isArray(args.walls) ? args.walls : Array.isArray(args.lines) ? args.lines : [];
+  const rooms = Array.isArray(args.rooms) ? args.rooms : [];
+  const labels = Array.isArray(args.labels) ? args.labels : [];
+  const margin = Math.max(width, height) * 0.05;
+  const viewBox = `${-margin} ${-margin} ${width + margin * 2} ${height + margin * 2}`;
+  const strokeWidth = Math.max(1, Math.min(width, height) / 260);
+  const textSize = Math.max(180, Math.min(width, height) / 32);
+  const parts: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="960" height="640">`,
+    '<rect x="-100000" y="-100000" width="200000" height="200000" fill="#08111f"/>',
+    `<text x="0" y="${-margin * 0.35}" fill="#9fb7d8" font-size="${textSize}" font-family="Arial, sans-serif">${svgEscape(title)}</text>`,
+    `<rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" ry="${radius}" fill="none" stroke="#38bdf8" stroke-width="${strokeWidth * 1.4}"/>`,
+  ];
+
+  for (const room of rooms.slice(0, 120)) {
+    const x = Number(room?.x);
+    const y = Number(room?.y);
+    const w = Number(room?.width ?? room?.w);
+    const h = Number(room?.height ?? room?.h);
+    if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+      parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="rgba(45,212,191,0.08)" stroke="#2dd4bf" stroke-width="${strokeWidth}"/>`);
+      if (room?.name) {
+        parts.push(`<text x="${x + 120}" y="${y + Math.min(h / 2, 600)}" fill="#d8f3ff" font-size="${Number(room?.textHeight) || textSize}" font-family="Arial, sans-serif">${svgEscape(room.name)}</text>`);
+      }
+    }
+  }
+
+  for (const wall of walls.slice(0, 500)) {
+    const x1 = Number(wall?.x1 ?? wall?.from?.x);
+    const y1 = Number(wall?.y1 ?? wall?.from?.y);
+    const x2 = Number(wall?.x2 ?? wall?.to?.x);
+    const y2 = Number(wall?.y2 ?? wall?.to?.y);
+    if ([x1, y1, x2, y2].every(Number.isFinite)) {
+      parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fbbf24" stroke-width="${strokeWidth * 1.8}" stroke-linecap="round"/>`);
+    }
+  }
+
+  for (const hole of holes.slice(0, 40)) {
+    const x = Number(hole?.x);
+    const y = Number(hole?.y);
+    const r = Number(hole?.r ?? hole?.radius);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(r) && r > 0) {
+      parts.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="#f472b6" stroke-width="${strokeWidth}"/>`);
+    }
+  }
+
+  for (const label of labels.slice(0, 160)) {
+    const x = Number(label?.x);
+    const y = Number(label?.y);
+    const text = String(label?.text || label?.name || '').trim();
+    if (Number.isFinite(x) && Number.isFinite(y) && text) {
+      parts.push(`<text x="${x}" y="${y}" fill="#e5e7eb" font-size="${Number(label?.height) || textSize}" font-family="Arial, sans-serif">${svgEscape(text)}</text>`);
+    }
+  }
+
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+function getCadPreviewPath(dxfPath: string): string {
+  return dxfPath.replace(/\.dxf$/i, '.svg');
 }
 
 function ensureDxfExtension(filePath: string): string {
@@ -357,7 +433,11 @@ export function registerExternalAppTools(registry: ToolRegistry): void {
       const title = safeFileName(String(args.title || 'lumi_cad_draft'));
       const outPath = resolveCadOutputPath(args, title);
       fs.writeFileSync(outPath, buildDxf(args), 'utf-8');
+      const previewSvg = buildCadPreviewSvg(args, title);
+      const previewPath = getCadPreviewPath(outPath);
+      fs.writeFileSync(previewPath, previewSvg, 'utf-8');
       const stat = fs.statSync(outPath);
+      const previewStat = fs.statSync(previewPath);
 
       let openResult: string | undefined;
       if (args.openPreview) {
@@ -368,6 +448,8 @@ export function registerExternalAppTools(registry: ToolRegistry): void {
 
       return JSON.stringify({
         path: outPath,
+        previewPath,
+        previewSvg,
         title,
         unit: args.unit || 'unit',
         width: Number(args.width) || 100,
@@ -376,6 +458,12 @@ export function registerExternalAppTools(registry: ToolRegistry): void {
         outputDirectory: path.dirname(outPath),
         exists: fs.existsSync(outPath),
         size: stat.size,
+        previewExists: fs.existsSync(previewPath),
+        previewSize: previewStat.size,
+        artifacts: [
+          { type: 'dxf', path: outPath },
+          { type: 'svg_preview', path: previewPath },
+        ],
         walls: Array.isArray(args.walls) ? args.walls.length : Array.isArray(args.lines) ? args.lines.length : 0,
         rooms: Array.isArray(args.rooms) ? args.rooms.length : 0,
         labels: Array.isArray(args.labels) ? args.labels.length : 0,

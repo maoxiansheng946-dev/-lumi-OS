@@ -68,12 +68,12 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
     {
       eyebrow: ui('03 / 执行模式', '03 / Execution Mode'),
       title: ui('先看模式，再让 AI 动手', 'Check The Mode Before Lumi Acts'),
-      description: ui('模式会影响 Lumi 的执行方式。聊天适合纯交流，助手会按任务调用能力，自动执行适合多步可见流程。', 'Modes affect how Lumi acts. Chat is conversation-only, Assistant chooses abilities for the task, and Auto Execute handles visible multi-step work.'),
-      action: ui('根据任务切换聊天 / 助手 / 自动执行', 'Switch between Chat / Assistant / Auto Execute'),
+      description: ui('模式会影响 Lumi 的执行方式。会议负责记录，聊天适合交流，助手会按任务调用能力，自主适合多步可见流程。', 'Modes affect how Lumi acts. Meeting records notes, Chat is conversation, Assistant chooses abilities for the task, and Autonomy handles visible multi-step work.'),
+      action: ui('根据任务切换会议 / 聊天 / 助手 / 自主', 'Switch between Meeting / Chat / Assistant / Autonomy'),
       bullets: [
         ui('聊天：只回答，不主动动手', 'Chat: answer only, no proactive actions'),
         ui('助手：按需调用工具、技能和团队', 'Assistant: use tools, skills, and teams as needed'),
-        ui('自动执行：多步任务，敏感操作仍会确认', 'Auto Execute: multi-step work, sensitive actions still require confirmation'),
+        ui('自主：多步任务，敏感操作仍会确认', 'Autonomy: multi-step work, sensitive actions still require confirmation'),
       ],
       icon: <MousePointer2 size={34} className="text-cyan-300" />,
       accent: 'bg-cyan-400',
@@ -160,7 +160,7 @@ export function DesktopOnboarding({ isOpen, onFinish, t }: OnboardingProps) {
             {[
               [ui('聊天', 'Chat'), ui('只交流', 'Talk only'), MessageSquare],
               [ui('助手', 'Assistant'), ui('调用能力', 'Use abilities'), MousePointer2],
-              [ui('自动执行', 'Auto'), ui('多步执行', 'Multi-step'), Zap],
+              [ui('自主', 'Autonomy'), ui('多步执行', 'Multi-step'), Zap],
             ].map(([label, hint, Icon], index) => {
               const ActiveIcon = Icon as typeof MousePointer2;
               return (

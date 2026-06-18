@@ -35,13 +35,22 @@ function getHeightText(card: CanvasCard): string {
   if (card.type === 'tool_call') {
     parts.push(card.metadata?.result, card.metadata?.error);
   }
+  if (card.type === 'artifact') {
+    parts.push(card.metadata?.filepath, card.metadata?.preview, card.metadata?.companionPreviewPath);
+  }
   return parts.filter(Boolean).join(' ');
 }
 
 function estimateHeight(card: CanvasCard, width: number): number {
   const charsPerLine = Math.max(20, Math.floor(width / 7));
   const lines = Math.ceil(getHeightText(card).length / charsPerLine);
-  const base = card.type === 'stage_header' ? 84 : card.type === 'tool_call' ? 116 : card.type === 'artifact' ? 132 : 104;
+  const base = card.type === 'stage_header'
+    ? 84
+    : card.type === 'tool_call'
+      ? 116
+      : card.type === 'artifact'
+        ? card.metadata?.svgPreview ? 300 : 132
+        : 104;
   return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, base + lines * 18));
 }
 

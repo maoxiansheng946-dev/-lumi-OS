@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import * as authService from '../services/authService';
 import * as agentService from '../services/agentService';
 import * as notificationService from '../services/notificationService';
+import { socketService } from '../services/socketService';
 
 interface UserProfile {
   uid: string;
@@ -52,10 +53,11 @@ interface ToolOverride {
   securityLevel?: string;
 }
 
-export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting' | 'music';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
 
 function normalizeOperationMode(mode: unknown): OperationMode {
-  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting' || mode === 'music') return mode;
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting') return mode;
+  if (mode === 'music') return 'assistant';
   if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
   return 'assistant';
 }
@@ -182,9 +184,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          if (data.token) localStorage.setItem('lumi_auth_token', data.token);
+          if (data.token) {
+            localStorage.setItem('lumi_auth_token', data.token);
+            socketService.refreshAuth();
+          }
           setWorkDomain('personal');
           localStorage.setItem('lumi_work_domain', 'personal');
+          window.dispatchEvent(new CustomEvent('lumi:domain-changed', {
+            detail: { domain: 'personal', orgId: null, orgRole: null },
+          }));
           return { success: true, domain: 'personal', message: '已切换到个人域', connection: orgConnection };
         }
         const data = await res.json().catch(() => ({}));
@@ -226,11 +234,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         if (data.orgId) {
           const conn = { orgId: data.orgId, orgRole: data.orgRole, orgName, connected: true };
-          if (data.token) localStorage.setItem('lumi_auth_token', data.token);
+          if (data.token) {
+            localStorage.setItem('lumi_auth_token', data.token);
+            socketService.refreshAuth();
+          }
           setOrgConnection(conn);
           setWorkDomain('work');
           localStorage.setItem('lumi_work_domain', 'work');
           localStorage.setItem('lumi_org_connection', JSON.stringify(conn));
+          window.dispatchEvent(new CustomEvent('lumi:domain-changed', {
+            detail: { domain: 'work', orgId: conn.orgId, orgRole: conn.orgRole, orgName: conn.orgName },
+          }));
           return { success: true, domain: 'work', message: '已切换到工作域', connection: conn };
         }
       }

@@ -349,7 +349,7 @@ export function MusicMoodLayer() {
           {track?.name || 'Mood layer standby'}
         </p>
         <p className="mt-0.5 max-w-[260px] text-[9px] font-serif" style={{ color: 'rgba(42,36,24,0.22)' }}>
-          {track?.artists?.join(' / ') || 'Open music mode or ask Lumi to play when you are ready.'}
+          {track?.artists?.join(' / ') || 'Open Music Center or ask Lumi to play when you are ready.'}
         </p>
       </motion.div>
     </motion.div>

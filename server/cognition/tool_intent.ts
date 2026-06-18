@@ -62,7 +62,7 @@ export function shouldAllowToolUseForTurn(text: string, source?: string, operati
   const mode = normalizeOperationMode(operationMode);
   if (isDiagnosticOrRepairRequest(text)) return true;
   if (mode === 'chat') return hasClientActionIntent(text) || hasExplicitToolIntent(text);
-  if (mode === 'meeting' || mode === 'music') return hasClientActionIntent(text);
+  if (mode === 'meeting') return hasClientActionIntent(text);
   if (mode === 'autonomous' && AUTONOMOUS_TASK_PATTERNS.some((pattern) => pattern.test(text.trim()))) return true;
   if (hasExplicitToolIntent(text)) return true;
   return false;

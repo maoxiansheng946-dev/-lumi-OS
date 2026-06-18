@@ -99,7 +99,11 @@ export function CanvasCard({ card, t, onRetry }: CanvasCardProps) {
 function ArtifactBody({ card }: { card: PositionedCard }) {
   const filePath = String(card.metadata?.filepath || card.metadata?.path || '');
   const preview = String(card.metadata?.content || card.metadata?.preview || card.detail || '').trim();
-  const isImage = /\.(png|jpe?g|webp|gif)$/i.test(filePath);
+  const svgPreview = String(card.metadata?.svgPreview || '').trim();
+  const isImage = /\.(png|jpe?g|webp|gif|svg)$/i.test(filePath) || Boolean(svgPreview);
+  const svgPreviewUrl = svgPreview.startsWith('<svg')
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgPreview)}`
+    : '';
   const copyPath = () => {
     if (!filePath) return;
     navigator.clipboard?.writeText(filePath).catch(() => {});
@@ -129,6 +133,18 @@ function ArtifactBody({ card }: { card: PositionedCard }) {
           >
             <Copy size={12} />
           </button>
+        </div>
+      )}
+
+      {svgPreviewUrl && (
+        <div className="overflow-hidden rounded-lg border border-cyan-400/10 bg-slate-950/80">
+          <img src={svgPreviewUrl} alt="CAD preview" className="block h-44 w-full object-contain" />
+        </div>
+      )}
+
+      {card.metadata?.companionPreviewPath && (
+        <div className="truncate rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[10px] text-white/45">
+          Preview: {card.metadata.companionPreviewPath}
         </div>
       )}
 

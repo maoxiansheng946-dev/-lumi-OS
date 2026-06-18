@@ -119,6 +119,19 @@ class SocketService {
     return this.socket;
   }
 
+  refreshAuth() {
+    const token = getStoredToken();
+    this.token = token;
+    if (!this.socket) return null;
+    this.socket.auth = { token, fingerprint: DEVICE_FINGERPRINT };
+    if (this.socket.connected) {
+      this.socket.disconnect().connect();
+    } else {
+      this.socket.connect();
+    }
+    return this.socket;
+  }
+
   getSocket() {
     return this.socket;
   }

@@ -127,8 +127,8 @@ export function registerClientSelfTools(registry: ToolRegistry): void {
         },
         mode: {
           type: 'string',
-          enum: ['chat', 'meeting', 'music', 'assistant', 'autonomous'],
-          description: 'Target Lumi mode for set_mode or set_client_mode.',
+          enum: ['meeting', 'chat', 'assistant', 'autonomous'],
+          description: 'Target Lumi mode for set_mode or set_client_mode. Music is not a mode; use open_music_center or show_music_layer.',
         },
         task: {
           type: 'string',

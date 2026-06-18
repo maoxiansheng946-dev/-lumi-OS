@@ -7,6 +7,7 @@ interface UseCanvasSocketOptions {
   cards?: CanvasCard[];
   edges?: CanvasEdge[];
   domain?: 'personal' | 'work';
+  orgId?: string | null;
   onCards: (cards: CanvasCard[]) => void;
   onEdges: (edges: CanvasEdge[]) => void;
   onStatusChange: (status: string) => void;
@@ -49,7 +50,7 @@ function tryParseJson(value: string): any | null {
   try { return JSON.parse(value); } catch { return null; }
 }
 
-const ARTIFACT_EXTENSIONS = 'dxf|dwg|pdf|pptx|docx|xlsx|xls|txt|md|json|csv|png|jpe?g|webp|html|ts|tsx|js|jsx|py';
+const ARTIFACT_EXTENSIONS = 'dxf|dwg|svg|pdf|pptx|docx|xlsx|xls|txt|md|json|csv|png|jpe?g|webp|html|ts|tsx|js|jsx|py';
 const ARTIFACT_EXTENSION_RE = new RegExp(`\\.(?:${ARTIFACT_EXTENSIONS})$`, 'i');
 
 function normalizeArtifactRef(candidate: string): string {
@@ -127,9 +128,13 @@ function extractArtifactsFromTool(toolName: string, toolArgs: any, result?: stri
   const artifacts: CanvasCard[] = [];
 
   paths.forEach((path, index) => {
+    const isCadPreview = toolName === 'cad_generate_dxf' && parsed?.previewPath && String(parsed.previewPath) === path;
+    const isCadDxf = toolName === 'cad_generate_dxf' && parsed?.path && String(parsed.path) === path;
     artifacts.push(buildArtifactCard(path, 'tool_result', parsed?.note || parsed?.analysis || result.slice(0, 1200), now + index, {
       toolName,
       args: toolArgs,
+      ...(isCadPreview ? { artifactKind: 'cad_preview', svgPreview: parsed?.previewSvg, companionDxfPath: parsed?.path } : {}),
+      ...(isCadDxf ? { artifactKind: 'cad_dxf', companionPreviewPath: parsed?.previewPath, svgPreview: parsed?.previewSvg } : {}),
     }));
   });
 
@@ -185,7 +190,7 @@ function extractArtifactsFromText(text: string, source: string): CanvasCard[] {
   return refs.map((path, index) => buildArtifactCard(path, source, text, now + index));
 }
 
-export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onCards, onEdges, onStatusChange }: UseCanvasSocketOptions) {
+export function useCanvasSocket({ socket, cards, edges, domain = 'personal', orgId = null, onCards, onEdges, onStatusChange }: UseCanvasSocketOptions) {
   const cardsRef = useRef<CanvasCard[]>([]);
   const edgesRef = useRef<CanvasEdge[]>([]);
   const groupIdRef = useRef<string>('');
@@ -594,11 +599,11 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
       category: undefined,
       agentId: undefined,
       domain,
-      orgId: null,
+      orgId: domain === 'work' ? orgId : null,
       source: 'canvas',
       requestId,
     });
-  }, [socket, newGroupId, addCard, addEdge, domain, armRequestTimeout]);
+  }, [socket, newGroupId, addCard, addEdge, domain, orgId, armRequestTimeout]);
 
   const retryFromCard = useCallback((cardId: string) => {
     // Find the card and its group, re-submit the user request for that group
@@ -660,11 +665,12 @@ export function useCanvasSocket({ socket, cards, edges, domain = 'personal', onC
         history: [],
         personalityId: 'lumi',
         domain,
+        orgId: domain === 'work' ? orgId : null,
         source: 'canvas',
         requestId,
       });
     }
-  }, [socket, updateCard, scheduleFlush, domain, addCard, armRequestTimeout]);
+  }, [socket, updateCard, scheduleFlush, domain, orgId, addCard, armRequestTimeout]);
 
   return { submitTask, clearCards, retryFromCard };
 }

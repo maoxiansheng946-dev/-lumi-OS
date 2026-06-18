@@ -30,6 +30,7 @@ import { runNLChainer, shouldChainTask } from "../agents/nl_chainer";
 import { autoInstallForTask } from "../agents/auto_installer";
 import { adjustMusicPlayback, getMusicFailureMessage, isMusicAdjustmentRequest, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
 import { searchKnowledgeBase } from "../org/kb";
+import { getMember } from "../org/db";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 import { buildProfessionOverlay } from "../autonomy/professions";
 import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
@@ -144,14 +145,25 @@ export function registerChatHandler(
     let resolvedOrgId = '';
     try {
       const authToken = socket.handshake?.auth?.token;
+      let decoded: any = null;
       if (authToken) {
-        const decoded: any = jwt.verify(authToken, JWT_SECRET);
+        decoded = jwt.verify(authToken, JWT_SECRET);
         if (data.domain === 'personal') {
           resolvedDomain = 'personal';
           resolvedOrgId = '';
         } else if (decoded.orgId) {
           resolvedDomain = 'work';
           resolvedOrgId = decoded.orgId;
+        }
+      }
+      if (resolvedDomain !== 'work' && data.domain === 'work') {
+        const requestedOrgId = typeof data.orgId === 'string' ? data.orgId.trim() : '';
+        if (requestedOrgId) {
+          const membership = getMember(requestedOrgId, uid);
+          if (membership && membership.status !== 'left' && membership.status !== 'suspended') {
+            resolvedDomain = 'work';
+            resolvedOrgId = requestedOrgId;
+          }
         }
       }
     } catch {}
@@ -383,7 +395,7 @@ export function registerChatHandler(
       const opModeConfig = getOperationModeConfig(operationMode);
       const allowToolUseForTurn = shouldAllowToolUseForTurn(text, source, operationMode);
       const selfRepairTurn = isDiagnosticOrRepairRequest(text);
-      const clientActionOnlyTurn = !selfRepairTurn && hasClientActionOnlyIntent(text) && (operationMode === 'chat' || operationMode === 'meeting' || operationMode === 'music');
+      const clientActionOnlyTurn = !selfRepairTurn && hasClientActionOnlyIntent(text) && (operationMode === 'chat' || operationMode === 'meeting');
       const clientActionToolPolicy = clientActionOnlyTurn
         ? { allowedTools: ['client_get_state', 'client_action'], requireConfirmation: [], forbiddenTools: [], maxIterations: 4 }
         : null;
@@ -411,10 +423,10 @@ export function registerChatHandler(
       effectiveSystemPrompt += '\n\n' + formatClientSelfPrompt(uid);
       console.log('[ChatHandler] tool gate:', allowToolUseForTurn ? 'enabled' : 'chat-only', 'operationMode:', operationMode, 'clientActionOnly:', clientActionOnlyTurn, 'selfRepair:', selfRepairTurn);
       if (clientActionOnlyTurn) {
-        effectiveSystemPrompt += '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. For music requests, switch to music mode before opening the music center or mood layer. For meeting/autonomous mode, use the client action confirmation flow when required.';
+        effectiveSystemPrompt += '\n\n## Client Mode Control\nThe user is asking Lumi to change a client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. Music is a playback/atmosphere capability, not a top-level work mode: open the music center or mood layer without switching client mode. For meeting/autonomous mode, use the client action confirmation flow when required.';
       } else if (selfRepairTurn) {
         effectiveSystemPrompt += '\n\n## Client Self-Repair Turn\nThe user is reporting that Lumi or one of its client workflows is failing. Do not only apologize or repeat the raw error. Use client_get_state first when tools are available, inspect relevant status/log/config surfaces, apply one safe recovery or retry when the cause is clear, verify the result, and then give a concise report. Reads and status checks are allowed; writes, desktop control, external app automation, and system changes still require confirmation.';
-      } else if (opModeConfig && (allowToolUseForTurn || operationMode === 'music' || operationMode === 'meeting')) {
+      } else if (opModeConfig && (allowToolUseForTurn || operationMode === 'meeting')) {
         effectiveSystemPrompt += '\n\n' + opModeConfig.promptOverlay;
       } else {
         effectiveSystemPrompt += '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';
@@ -647,12 +659,9 @@ export function registerChatHandler(
 
       // Path A2: music intent. Handle before the generic tool loop so Lumi
       // does not wander into unrelated tools or report raw provider errors.
-      const isMusicAdjustment = isMusicAdjustmentRequest(text) && (operationMode === 'music' || source === 'music-center');
+      const isMusicAdjustment = isMusicAdjustmentRequest(text);
       if (!responseText && (isMusicPlaybackRequest(text) || isMusicAdjustment)) {
         try {
-          void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
-            console.warn('[Music Intent] Failed to sync music client mode:', err.message);
-          });
           const result = isMusicAdjustment
             ? await adjustMusicPlayback(uid, socket, text)
             : await searchAndPlay(uid, socket, text);

@@ -293,7 +293,7 @@ function buildReport(
       id: 'music',
       label: ui(isZh, '音乐工作流', 'Music workflow'),
       status: hasMusic ? 'ready' : 'partial',
-      detail: hasMusic ? ui(isZh, '已检测到网易云/音乐应用。', 'NetEase/Cloud Music app detected.') : ui(isZh, '未检测到音乐应用；Lumi 音乐模式仍可使用已配置服务。', 'Music app not detected; Lumi music mode can still use configured services.'),
+      detail: hasMusic ? ui(isZh, '已检测到网易云/音乐应用。', 'NetEase/Cloud Music app detected.') : ui(isZh, '未检测到音乐应用；Lumi 音乐能力仍可使用已配置服务。', 'Music app not detected; Lumi music playback can still use configured services.'),
     },
   ];
 
@@ -735,8 +735,8 @@ export function SystemExplorer({ t, onSectionChange }: { t?: any; onSectionChang
             ready={detectedAppGroups.some(group => group.id === 'wechat' || group.id === 'cad' || group.id === 'ai_apps')}
           />
           <WorkflowTile
-            title={ui(isZh, '音乐模式', 'Music mode')}
-            detail={detectedAppGroups.some(group => group.id === 'netease') ? ui(isZh, '已检测到音乐应用；Lumi 音乐模式可以协同播放。', 'Music app detected; Lumi music mode can coordinate playback.') : ui(isZh, '音乐模式仍可通过已配置的音乐服务工作。', 'Music mode can still work through configured music services.')}
+            title={ui(isZh, '音乐能力', 'Music playback')}
+            detail={detectedAppGroups.some(group => group.id === 'netease') ? ui(isZh, '已检测到音乐应用；Lumi 可以协同播放。', 'Music app detected; Lumi can coordinate playback.') : ui(isZh, '音乐能力仍可通过已配置的音乐服务工作。', 'Music playback can still work through configured music services.')}
             ready={detectedAppGroups.some(group => group.id === 'netease')}
           />
         </div>

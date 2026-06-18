@@ -137,23 +137,21 @@ function isPureInterruptCommand(text: string): boolean {
 }
 
 function detectVoiceClientModeSwitch(text: string): OperationMode | null {
-  const normalized = text.replace(/\s+/g, '');
-  const hasSwitchVerb = /切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到|已经.*切换到/.test(normalized);
+  const normalized = text.replace(/\s+/g, '').toLowerCase();
+  const hasSwitchVerb = /(切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到|switch|change|enter|start|open)/i.test(normalized);
   if (!hasSwitchVerb) return null;
-  if (/聊天模式/.test(normalized)) return 'chat';
-  if (/助手模式/.test(normalized)) return 'assistant';
-  if (/音乐模式/.test(normalized)) return 'music';
-  if (/会议模式/.test(normalized)) return 'meeting';
-  if (/自动执行模式|自主执行模式/.test(normalized)) return 'autonomous';
+  if (/(会议模式|会议|meetingmode|meeting)/i.test(normalized)) return 'meeting';
+  if (/(聊天模式|聊天|chatmode|chat)/i.test(normalized)) return 'chat';
+  if (/(助手模式|助手|assistantmode|assistant)/i.test(normalized)) return 'assistant';
+  if (/(自主模式|自主|自主执行|自动执行|autonomymode|autonomousmode|autonomy|autonomous|autoexecute)/i.test(normalized)) return 'autonomous';
   return null;
 }
 
 function isPureModeSwitchRequest(text: string, mode: OperationMode | null): boolean {
   if (!mode) return false;
-  const normalized = text.replace(/\s+/g, '');
-  return /^(露米|lumi)?(请|帮我|给我)?(切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到)(聊天|助手|音乐|会议|自动执行|自主执行)模式[。.!！]*$/i.test(normalized);
+  const normalized = text.replace(/\s+/g, '').toLowerCase();
+  return /^(lumi|露米)?(请|帮我|给我|麻烦)?(切换|切到|切成|换到|进入|打开|开启|启动|设为|设置为|切回|回到|switch|change|enter|start|open)(到|成)?(会议|聊天|助手|自主|自主执行|自动执行|meeting|chat|assistant|autonomy|autonomous|autoexecute)(模式|mode)?[。.!！?？]*$/i.test(normalized);
 }
-
 function shouldAutoPromoteVoiceWork(text: string, operationMode: OperationMode, requestedMode: OperationMode | null): boolean {
   if (operationMode !== 'chat' || requestedMode) return false;
   if (isMusicPlaybackRequest(text) || isMusicAdjustmentRequest(text)) return false;
@@ -405,7 +403,7 @@ async function processVoiceInput(
   const effectiveOpModeConfig = getOperationModeConfig(effectiveOperationMode);
   const allowToolUseForTurn = autoPromoteToAssistant || shouldAllowToolUseForTurn(userText, undefined, effectiveOperationMode);
   const selfRepairTurn = isDiagnosticOrRepairRequest(userText);
-  const clientActionOnlyTurn = !selfRepairTurn && hasClientActionOnlyIntent(userText) && (effectiveOperationMode === 'chat' || effectiveOperationMode === 'meeting' || effectiveOperationMode === 'music');
+  const clientActionOnlyTurn = !selfRepairTurn && hasClientActionOnlyIntent(userText) && (effectiveOperationMode === 'chat' || effectiveOperationMode === 'meeting');
   const clientActionToolPolicy = clientActionOnlyTurn
     ? { allowedTools: ['client_get_state', 'client_action'], requireConfirmation: [], forbiddenTools: [], maxIterations: 4 }
     : null;
@@ -432,10 +430,10 @@ async function processVoiceInput(
   const exposeAgentWork = shouldExposeAgentWork(userText);
   logger.info(`[Audio] tool gate: ${allowToolUseForTurn ? 'enabled' : 'chat-only'} mode=${operationMode} effective=${effectiveOperationMode} clientActionOnly=${clientActionOnlyTurn} selfRepair=${selfRepairTurn}`);
   const opModeOverlay = clientActionOnlyTurn
-    ? '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. For music requests, switch to music mode before opening the music center or mood layer. For meeting/autonomous mode, use the client action confirmation flow when required.'
+    ? '\n\n## Client Mode Control\nThe user is asking Lumi to change client mode or open a client-native surface. You may only use client_get_state and client_action. Do not use file, terminal, desktop mouse/keyboard, web, team, or external-app tools. Music is a playback/atmosphere capability, not a top-level work mode: open the music center or mood layer without switching client mode. For meeting/autonomous mode, use the client action confirmation flow when required.'
     : selfRepairTurn
     ? '\n\n## Client Self-Repair Turn\nThe user is reporting that Lumi or one of its client workflows is failing. Do not only apologize or repeat the raw error. Use client_get_state first when tools are available, inspect relevant status/log/config surfaces, apply one safe recovery or retry when the cause is clear, verify the result, and then give a concise spoken report. Reads and status checks are allowed; writes, desktop control, external app automation, and system changes still require confirmation.'
-    : (effectiveOpModeConfig && (allowToolUseForTurn || effectiveOperationMode === 'music' || effectiveOperationMode === 'meeting') ? '\n\n' + effectiveOpModeConfig.promptOverlay : '');
+    : (effectiveOpModeConfig && (allowToolUseForTurn || effectiveOperationMode === 'meeting') ? '\n\n' + effectiveOpModeConfig.promptOverlay : '');
   const interactionOverlay = allowToolUseForTurn
     ? toolVoiceOverlay
     : baseVoiceOverlay + '\n\n## Interaction Mode\nThis turn is chat-only. Do not call tools, operate the desktop, assemble a team, or claim that you are taking actions. Answer naturally unless the user gives an explicit command.';
@@ -590,25 +588,34 @@ async function processVoiceInput(
   // ── Quick Command Fast-Path: deterministic commands skip LLM entirely ──
   const directlyAppliedMode: OperationMode | null =
     autoPromoteToAssistant ? 'assistant'
-    : requestedMode && ['chat', 'assistant', 'music'].includes(requestedMode) ? requestedMode
+    : requestedMode && ['meeting', 'chat', 'assistant', 'autonomous'].includes(requestedMode) ? requestedMode
     : null;
   if (directlyAppliedMode) {
+    let modeSynced = true;
     try {
-      await desktopRelay('client_action', { action: 'set_client_mode', mode: directlyAppliedMode });
+      await desktopRelay('client_action', {
+        action: 'set_client_mode',
+        mode: directlyAppliedMode,
+        confirmed: directlyAppliedMode === 'meeting' || directlyAppliedMode === 'autonomous',
+      });
     } catch (err: any) {
+      modeSynced = false;
       socket.emit('agent:notification', {
         type: 'client_action',
         level: 'warning',
         message: `Mode switch did not reach the client: ${err?.message || err}`,
       });
     }
-    saveOperationModePreference(session.userId, directlyAppliedMode);
+    if (modeSynced) {
+      saveOperationModePreference(session.userId, directlyAppliedMode);
+    }
 
     if (isPureModeSwitchRequest(userText, requestedMode)) {
-      const modeLabel = directlyAppliedMode === 'chat' ? '聊天模式'
-        : directlyAppliedMode === 'music' ? '音乐模式'
-        : '助手模式';
-      responseText = `已切到${modeLabel}。`;
+      const modeLabel = directlyAppliedMode === 'meeting' ? '会议模式'
+        : directlyAppliedMode === 'chat' ? '聊天模式'
+        : directlyAppliedMode === 'assistant' ? '助手模式'
+        : '自主模式';
+      responseText = modeSynced ? `已切到${modeLabel}。` : `我收到切换到${modeLabel}的请求了，但前端没有完成切换。`;
       flushSentence(responseText);
       await Promise.allSettled(ttsPromises);
       const conv = getOrCreateActiveConversation(session.userId, session.agentId);
@@ -691,7 +698,7 @@ async function processVoiceInput(
     return;
   }
 
-  const immediateMusicAdjustment = isMusicAdjustmentRequest(userText) && effectiveOperationMode === 'music';
+  const immediateMusicAdjustment = isMusicAdjustmentRequest(userText);
   if (isMusicPlaybackRequest(userText) || immediateMusicAdjustment) {
     logger.info('[Audio] Music intent matched, acknowledging before playback...');
     responseText = immediateMusicAdjustment
@@ -713,9 +720,6 @@ async function processVoiceInput(
 
     const musicUserId = session.userId;
     void (async () => {
-      void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
-        logger.warn('[Audio] Failed to sync music client mode:', err.message);
-      });
 
       try {
         const result = immediateMusicAdjustment
@@ -790,13 +794,10 @@ async function processVoiceInput(
     logger.info(`[Audio] Cognition: ${cognition.intent.category} (confidence: ${cognition.intent.confidence}), model: ${effectiveModel}`);
 
     // ── Music intent shortcut — intercept before LLM tool-call loop ──
-    const isMusicAdjustment = isMusicAdjustmentRequest(userText) && effectiveOperationMode === 'music';
+    const isMusicAdjustment = isMusicAdjustmentRequest(userText);
     if (isMusicPlaybackRequest(userText) || isMusicAdjustment) {
       logger.info('[Audio] Music intent matched, attempting shortcut...');
       try {
-        void desktopRelay('client_action', { action: 'set_client_mode', mode: 'music' }).catch((err: any) => {
-          logger.warn('[Audio] Failed to sync music client mode:', err.message);
-        });
         const result = isMusicAdjustment
           ? await adjustMusicPlayback(session.userId, socket, userText)
           : await searchAndPlay(session.userId, socket, userText);

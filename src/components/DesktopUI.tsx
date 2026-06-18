@@ -170,6 +170,7 @@ interface ClientCanvasRuntime {
   saveState?: string;
   status?: string;
   domain?: string;
+  orgId?: string | null;
   updatedAt?: number;
 }
 
@@ -1263,7 +1264,7 @@ function ExecutionWorkQueue({ t }: { t: any }) {
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/42">
             {isZh
-              ? '这里是 Lumi 的工作队列：手动计划、自动执行任务、桌面控制和工具调用进度都汇到这里看。'
+              ? '这里是 Lumi 的工作队列：手动计划、自主任务、桌面控制和工具调用进度都汇到这里看。'
               : 'This is Lumi’s work queue: manual plans, autonomous tasks, desktop control, and tool execution progress all converge here.'}
           </p>
         </div>
@@ -1402,7 +1403,7 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
         <div className="text-white/30 text-xs py-2">{isZh ? '加载中...' : 'Loading...'}</div>
       ) : plans.length === 0 ? (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3 text-xs text-white/30">
-          {isZh ? '没有待办计划。可以点 + 新建，或打开工作队列查看 Lumi 的自动执行记录。' : 'No active plans. Add one with +, or open the queue to review Lumi autonomous activity.'}
+          {isZh ? '没有待办计划。可以点 + 新建，或打开工作队列查看 Lumi 的自主记录。' : 'No active plans. Add one with +, or open the queue to review Lumi autonomous activity.'}
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -3019,12 +3020,17 @@ export function DesktopUI({
       };
 
       const setClientMode = (value: string) => {
-        const allowed = ['chat', 'meeting', 'music', 'assistant', 'autonomous'];
+        if (value === 'music') {
+          openSurface('music-center');
+          showModeHintBriefly();
+          return;
+        }
+        const allowed = ['chat', 'meeting', 'assistant', 'autonomous'];
         if (!allowed.includes(value)) throw new Error(`Unsupported mode: ${value}`);
         if ((value === 'autonomous' || value === 'meeting') && !confirmed) {
           throw new Error(`${value} mode requires explicit user confirmation`);
         }
-        setOperationMode(value as any);
+        setOperationMode(value as OperationMode);
         if (value === 'meeting') setMeetingNotesOpen(true);
         showModeHintBriefly();
       };
@@ -3056,22 +3062,20 @@ export function DesktopUI({
           return;
         }
         if (action === 'open_music_center') {
-          setClientMode('music');
           openSurface('music-center');
-          respond({ ok: true, action, target: 'music-center', mode: 'music' });
+          respond({ ok: true, action, target: 'music-center', mode: operationMode });
           return;
         }
         if (action === 'show_music_layer' || action === 'hide_music_layer') {
           if (action === 'show_music_layer') {
-            setClientMode('music');
             if (!musicSnapshot.track) {
               openSurface('music-center');
-              respond({ ok: false, action, mode: 'music', reason: 'music_track_required', target: 'music-center' });
+              respond({ ok: false, action, mode: operationMode, reason: 'music_track_required', target: 'music-center' });
               return;
             }
           }
           window.dispatchEvent(new CustomEvent('lumi:music-layer', { detail: { visible: action === 'show_music_layer' } }));
-          respond({ ok: true, action, ...(action === 'show_music_layer' ? { mode: 'music' } : {}) });
+          respond({ ok: true, action, mode: operationMode });
           return;
         }
         if (action === 'start_meeting_mode') {
@@ -3207,6 +3211,7 @@ export function DesktopUI({
         workDomain,
         org: {
           connected: Boolean(orgConnection?.connected),
+          id: orgConnection?.orgId || '',
           name: orgConnection?.orgName || '',
           role: orgConnection?.orgRole || '',
         },
@@ -3261,6 +3266,7 @@ export function DesktopUI({
           saveState: canvasRuntime.saveState || 'idle',
           status: canvasRuntime.status || 'idle',
           domain: canvasRuntime.domain || workDomain,
+          orgId: canvasRuntime.orgId || (workDomain === 'work' ? orgConnection?.orgId || '' : ''),
           updatedAt: canvasRuntime.updatedAt,
         },
         files: {
@@ -3436,43 +3442,35 @@ export function DesktopUI({
   ];
   const operationModeOptions = [
     {
-      id: 'chat' as const,
-      label: t.modeChat || (lang === 'zh' ? '聊天' : 'Chat'),
-      title: t.modeChatTitle || (lang === 'zh' ? '聊天模式' : 'Chat mode'),
-      description: t.modeChatDesc || (lang === 'zh' ? '只回答和交流，不主动调用工具、键鼠、命令、团队或画布。' : 'Conversation only. Lumi will not proactively call tools, control desktop, use commands, teams, or canvas.'),
-      hint: t.modeChatHint || 'Conversation only',
-      icon: <MessageSquare size={16} />,
-    },
-    {
       id: 'meeting' as const,
       label: t.modeMeeting || (lang === 'zh' ? '会议' : 'Meeting'),
       title: t.modeMeetingTitle || (lang === 'zh' ? '会议模式' : 'Meeting mode'),
-      description: t.modeMeetingDesc || (lang === 'zh' ? '自动开启语音转文字，只收录会议笔记，不回复、不调用工具。' : 'Automatically starts speech-to-text and records meeting notes without replying or calling tools.'),
-      hint: t.modeMeetingHint || (lang === 'zh' ? 'Live notes' : 'Live notes'),
+      description: t.modeMeetingDesc || (lang === 'zh' ? '自动开启语音转文字，收录会议笔记；结束后整理纪要、分析和报告。' : 'Starts speech-to-text, records meeting notes, then produces a summary, analysis, and report when ended.'),
+      hint: t.modeMeetingHint || (lang === 'zh' ? '会议记录' : 'Live notes'),
       icon: <FileText size={16} />,
     },
     {
-      id: 'music' as const,
-      label: t.modeMusic || (lang === 'zh' ? '音乐' : 'Music'),
-      title: t.modeMusicTitle || (lang === 'zh' ? '音乐模式' : 'Music mode'),
-      description: t.modeMusicDesc || (lang === 'zh' ? '专注播放、推荐、歌词和氛围层；不自动打开窗口，不处理无关执行任务。' : 'Focuses on playback, recommendations, lyrics, and mood layer without opening windows or doing unrelated execution work.'),
-      hint: t.modeMusicHint || (lang === 'zh' ? 'Listening atmosphere' : 'Listening atmosphere'),
-      icon: <Music size={16} />,
+      id: 'chat' as const,
+      label: t.modeChat || (lang === 'zh' ? '聊天' : 'Chat'),
+      title: t.modeChatTitle || (lang === 'zh' ? '聊天模式' : 'Chat mode'),
+      description: t.modeChatDesc || (lang === 'zh' ? '默认安静交流；明确给出工作指令时，Lumi 会先说明行动方式再调用能力。' : 'Quiet conversation by default. With a clear work command, Lumi explains the route before acting.'),
+      hint: t.modeChatHint || (lang === 'zh' ? '安静交流' : 'Quiet chat'),
+      icon: <MessageSquare size={16} />,
     },
     {
       id: 'assistant' as const,
       label: t.modeAssistant || (lang === 'zh' ? '助手' : 'Assistant'),
       title: t.modeAssistantTitle || (lang === 'zh' ? '助手模式' : 'Assistant mode'),
-      description: t.modeAssistantDesc || (lang === 'zh' ? '按任务选择键鼠、命令、工具、技能或团队；复杂画布任务先提示再执行。' : 'Choose desktop control, commands, tools, skills, or teams by task; prompt before complex canvas work.'),
-      hint: t.modeAssistantHint || 'Guided execution',
+      description: t.modeAssistantDesc || (lang === 'zh' ? '按任务选择聊天、画布、文件工具或桌面操作；开始前先给行动指南。' : 'Chooses chat, canvas, file tools, or desktop control by task, with an action guide first.'),
+      hint: t.modeAssistantHint || (lang === 'zh' ? '引导执行' : 'Guided execution'),
       icon: <Sparkles size={16} />,
     },
     {
       id: 'autonomous' as const,
-      label: t.modeAutoExecute || (lang === 'zh' ? '自动执行' : 'Auto Execute'),
-      title: t.modeAutoExecuteTitle || (lang === 'zh' ? '自动执行模式' : 'Auto Execute mode'),
-      description: t.modeAutoExecuteDesc || (lang === 'zh' ? '适合多步任务；可自动使用画布、键鼠、命令、工具和团队，并展示进度。' : 'For multi-step tasks. Lumi can use canvas, desktop control, commands, tools, and teams while showing progress.'),
-      hint: t.modeAutoExecuteHint || 'Multi-step visible work',
+      label: t.modeAutonomy || t.modeAutoExecute || (lang === 'zh' ? '自主' : 'Autonomy'),
+      title: t.modeAutonomyTitle || t.modeAutoExecuteTitle || (lang === 'zh' ? '自主模式' : 'Autonomy mode'),
+      description: t.modeAutonomyDesc || t.modeAutoExecuteDesc || (lang === 'zh' ? '适合多步任务；Lumi 会先给行动指南，再用画布、桌面控制、命令、工具和团队推进，并展示进度。' : 'For multi-step work. Lumi gives an action guide, then uses canvas, desktop control, commands, tools, and teams with visible progress.'),
+      hint: t.modeAutonomyHint || t.modeAutoExecuteHint || (lang === 'zh' ? '自主推进' : 'Visible autonomous work'),
       icon: <Zap size={16} />,
     },
   ];
@@ -3507,15 +3505,6 @@ export function DesktopUI({
       dot: 'bg-cyan-300',
       selected: 'border-cyan-400/30 bg-cyan-400/20 text-cyan-100 shadow-cyan-500/10',
     },
-    music: {
-      level: t.modeLevelMusic || 'Atmosphere',
-      input: t.modeInputMusic || 'Music intent',
-      tools: t.modeToolsMusic || 'Music tools',
-      execution: t.modeExecutionMood || 'Mood layer',
-      tone: 'border-rose-400/20 bg-rose-400/10 text-rose-200',
-      dot: 'bg-rose-300',
-      selected: 'border-rose-400/30 bg-rose-400/20 text-rose-100 shadow-rose-500/10',
-    },
     assistant: {
       level: t.modeLevelAssistant || 'Guided',
       input: t.modeInputTask || 'Task request',
@@ -3526,7 +3515,7 @@ export function DesktopUI({
       selected: 'border-violet-400/30 bg-violet-400/20 text-violet-100 shadow-violet-500/10',
     },
     autonomous: {
-      level: t.modeLevelAutonomous || 'Autonomous',
+      level: t.modeLevelAutonomous || (lang === 'zh' ? '自主' : 'Autonomous'),
       input: t.modeInputWorkflow || 'Workflow goal',
       tools: t.modeToolsAuto || 'Tools + teams',
       execution: t.modeExecutionVisible || 'Visible execution',
@@ -4546,7 +4535,7 @@ export function DesktopUI({
                   <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs leading-relaxed text-white/45">
                     {pendingOperationMode === 'meeting'
                       ? (t.modeMeetingConfirmNote || 'Meeting mode starts microphone speech-to-text, records notes, and can generate a report when you end it.')
-                      : (t.modeAutoConfirmNote || 'Auto Execute can use tools, canvas, teams, commands, and desktop control with visible progress and confirmations for sensitive actions.')}
+                      : (t.modeAutoConfirmNote || (lang === 'zh' ? '自主模式可以使用工具、画布、团队、命令和桌面控制；进度会可见，敏感操作仍会确认。' : 'Autonomy can use tools, canvas, teams, commands, and desktop control with visible progress and confirmations for sensitive actions.'))}
                   </div>
                 </div>
               </div>
@@ -4761,6 +4750,7 @@ export function DesktopUI({
         t={t}
         user={user}
         domain={workDomain}
+        orgId={workDomain === 'work' ? orgConnection?.orgId || null : null}
         initialTask={canvasInitialTask}
         onInitialTaskConsumed={() => setCanvasInitialTask('')}
       />

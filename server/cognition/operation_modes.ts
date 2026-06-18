@@ -5,7 +5,7 @@
  */
 import { ToolPolicy } from '../personality/types';
 
-export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting' | 'music';
+export type OperationMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
 
 export interface OperationModeConfig {
   id: OperationMode;
@@ -22,7 +22,7 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
     label: 'Chat',
     labelCN: 'Chat',
     description: 'Conversation-first. Lumi answers naturally by default, but explicit user commands can still use tools because chat is an entrance into the same local Lumi.',
-    promptOverlay: 'This is conversation-first chat mode. If the user is only talking or asking a question, answer naturally and do not call tools. If this turn was routed here because the user gave an explicit actionable command, you may use the appropriate tools and client actions while respecting confirmation boundaries. Do not pretend you acted without tool evidence.',
+    promptOverlay: 'This is conversation-first chat mode. If the user is only talking or asking a question, answer naturally and do not call tools. If this turn was routed here because the user gave an explicit actionable command, first provide a concise action guide unless the task is trivial, then use the appropriate tools and client actions while respecting confirmation boundaries. If the work surface is ambiguous, ask whether to work in chat, canvas, or directly on the desktop. Do not pretend you acted without tool evidence.',
     toolPolicy: {
       allowedTools: ['*'],
       requireConfirmation: [
@@ -50,6 +50,8 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
     description: 'Guided assistance. Lumi can use desktop, terminal, tools, skills, and teams when the request asks for action.',
     promptOverlay: [
       'You are in assistant mode.',
+      'Before handling a non-trivial task, give the user a concise action guide: where you will work (chat, canvas, or desktop), what you will do first, and what needs confirmation.',
+      'If the user did not specify a work surface and the choice matters, ask one short question instead of guessing.',
       'Choose the least disruptive execution capability for the user request: normal reply, tool, skill, file action, terminal command, mouse/keyboard desktop control, team/sub-agent, or canvas.',
       'Do not open the canvas unless the user asks for it or the UI has already moved the task into the canvas.',
       'For visible desktop work, explain what you are about to do and use mouse/keyboard tools naturally.',
@@ -76,11 +78,13 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
 
   autonomous: {
     id: 'autonomous',
-    label: 'Auto Execute',
-    labelCN: 'Auto Execute',
-    description: 'Multi-step execution. Lumi can plan, use tools, operate the desktop, open canvas, and coordinate agents with visible progress.',
+    label: 'Autonomy',
+    labelCN: '自主',
+    description: 'Multi-step autonomous work. Lumi gives an action guide, then plans, uses tools, operates the desktop, opens canvas, and coordinates agents with visible progress.',
     promptOverlay: [
-      'You are in auto execution mode.',
+      'You are in autonomy mode.',
+      'Start with a concise action guide before running a multi-step task: route, major steps, expected outputs, and confirmation points.',
+      'If the work surface is unclear, ask whether to use chat tools, canvas, or direct desktop control before proceeding.',
       'Work through the task end-to-end when the user gives an actionable request.',
       'Use the appropriate capabilities: desktop mouse/keyboard, terminal, files, skills, tools, MCP, canvas, team agents, and sub-agents.',
       'Keep progress visible, summarize major steps, and do not hide failures.',
@@ -112,7 +116,7 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
   meeting: {
     id: 'meeting',
     label: 'Meeting',
-    labelCN: 'Meeting',
+    labelCN: '会议',
     description: 'Transcription-only meeting notes. Lumi listens and records, but does not answer or execute tools for each utterance.',
     promptOverlay: 'Meeting mode is transcription-only. Record speech as meeting notes. Do not call tools, operate the desktop, speak responses, or treat every utterance as a command.',
     toolPolicy: {
@@ -123,23 +127,11 @@ export const OPERATION_MODE_CONFIGS: Record<OperationMode, OperationModeConfig> 
     },
   },
 
-  music: {
-    id: 'music',
-    label: 'Music',
-    labelCN: 'Music',
-    description: 'Music listening and atmosphere mode. Lumi prioritizes playback, recommendations, lyrics, and mood layer control.',
-    promptOverlay: 'You are in music mode. Prioritize music playback, recommendations, lyrics, listening atmosphere, and mood layer control. Do not perform unrelated desktop, file, terminal, or automation work unless the user explicitly switches modes.',
-    toolPolicy: {
-      allowedTools: [],
-      requireConfirmation: [],
-      forbiddenTools: ['*'],
-      maxIterations: 0,
-    },
-  },
 };
 
 export function normalizeOperationMode(mode?: string): OperationMode {
-  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting' || mode === 'music') return mode;
+  if (mode === 'chat' || mode === 'assistant' || mode === 'autonomous' || mode === 'meeting') return mode;
+  if (mode === 'music') return 'assistant';
   if (mode === 'desktop_control' || mode === 'terminal') return 'assistant';
   return 'assistant';
 }
