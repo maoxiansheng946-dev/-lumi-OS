@@ -1161,6 +1161,8 @@ function LLMProvidersPage({ t, providerStatus }: { t: any; providerStatus: Recor
 }
 
 function OllamaProviderRow({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [baseUrl, setBaseUrl] = useState(() => {
     try { return localStorage.getItem('lumi_ollama_url') || 'http://localhost:11434'; } catch { return 'http://localhost:11434'; }
   });
@@ -1234,13 +1236,15 @@ function OllamaProviderRow({ t }: { t?: any }) {
         </div>
       )}
       {!detected && !checking && baseUrl && (
-        <p className="text-xs text-white/40">No local models found at this address. Make sure Ollama is running.</p>
+        <p className="text-xs text-white/40">{t?.noOllamaModelsFound || ui('此地址未发现本地模型。请确认 Ollama 正在运行。', 'No local models found at this address. Make sure Ollama is running.')}</p>
       )}
     </div>
   );
 }
 
 function LmStudioProviderRow({ t }: { t?: any }) {
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [baseUrl, setBaseUrl] = useState(() => {
     try { return localStorage.getItem('lumi_lmstudio_url') || 'http://localhost:1234'; } catch { return 'http://localhost:1234'; }
   });
@@ -1311,7 +1315,7 @@ function LmStudioProviderRow({ t }: { t?: any }) {
         </div>
       )}
       {!detected && !checking && baseUrl && (
-        <p className="text-xs text-white/40">No models found. Make sure LM Studio is running and a model is loaded.</p>
+        <p className="text-xs text-white/40">{t?.noLmStudioModelsFound || ui('未发现模型。请确认 LM Studio 正在运行，并且已加载模型。', 'No models found. Make sure LM Studio is running and a model is loaded.')}</p>
       )}
     </div>
   );

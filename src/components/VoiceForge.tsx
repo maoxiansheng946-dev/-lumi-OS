@@ -33,6 +33,8 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
   const [voiceName, setVoiceName] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevRecordingCount = useRef(0);
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   useEffect(() => {
     refreshVoices();
@@ -151,14 +153,14 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
       {!compact && (
         <div className="lumi-panel flex items-start justify-between gap-4 p-5">
           <div>
-             <h3 className="text-3xl font-black italic uppercase tracking-tighter text-glow mb-2">{t.voiceForge || 'Voice Forge'}</h3>
+             <h3 className="text-3xl font-black italic uppercase tracking-tighter text-glow mb-2">{t.voiceForge || ui('声音工坊', 'Voice Forge')}</h3>
              <p className="text-xs text-white/40 uppercase tracking-widest leading-relaxed max-w-lg">
-               {t.voiceForgeDesc || 'Clone your digital essence or select from neural presets.'}
+               {t.voiceForgeDesc || ui('克隆你的声音，或从预设声音中选择。', 'Clone your digital essence or select from neural presets.')}
              </p>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-celestial-saturn/20 bg-celestial-saturn/10 p-4 shadow-xl">
              <Sparkles className="text-celestial-saturn animate-pulse" size={20} />
-             <div className="text-xs font-black uppercase tracking-widest text-celestial-saturn">{t.neuralSynthesisActive || 'Neural Synthesis Active'}</div>
+             <div className="text-xs font-black uppercase tracking-widest text-celestial-saturn">{t.neuralSynthesisActive || ui('语音合成已启用', 'Neural Synthesis Active')}</div>
           </div>
         </div>
       )}
@@ -168,7 +170,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
         <div className={`space-y-6 overflow-y-auto ${compact ? '' : 'pr-4 custom-scrollbar'}`}>
            <div className="lumi-panel relative space-y-8 overflow-hidden p-8">
               <div className="text-center space-y-6 relative z-10">
-                 <div className="text-xs font-black uppercase tracking-[0.4em] text-white/45">{t.audioVisualizer || 'Neural Audio Visualizer'}</div>
+                 <div className="text-xs font-black uppercase tracking-[0.4em] text-white/45">{t.audioVisualizer || ui('音频可视化', 'Neural Audio Visualizer')}</div>
                  
                  <div className="flex justify-center items-center h-48">
                     {!isRecording ? (
@@ -258,7 +260,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                       className="lumi-button h-10 rounded-full px-6 text-xs"
                     >
                       <Upload size={14} className="mr-1" />
-                      {t.uploadAudioFile || 'Upload Audio File'}
+                      {t.uploadAudioFile || ui('上传音频文件', 'Upload Audio File')}
                     </Button>
                     <p className="text-[10px] text-white/25 font-mono mt-1">MP3, WAV, WebM, OGG, M4A &middot; &le;10 MB</p>
                  </div>
@@ -274,7 +276,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                 <div className="flex justify-between items-center">
                    <h4 className="text-xs font-black uppercase tracking-widest text-white/40 flex items-center gap-2">
                      <History size={14} />
-                     {t.recordings || 'Recordings'} ({recordings.length})
+                     {t.recordings || ui('录音样本', 'Recordings')} ({recordings.length})
                    </h4>
                    <button onClick={() => recordings.forEach((_, i) => removeRecording(i))} className="text-[12px] font-bold text-red-400 uppercase tracking-widest hover:underline transition-all">{t.vfClearAll || 'Clear All'}</button>
                 </div>
@@ -302,7 +304,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
 
                 <div className="pt-6 border-t border-white/5 space-y-4">
                    <div className="space-y-2">
-                      <label className="text-xs font-black uppercase tracking-widest text-white/55 ml-2">{t.voiceName || 'Voice Name'}</label>
+                      <label className="text-xs font-black uppercase tracking-widest text-white/55 ml-2">{t.voiceName || ui('声音名称', 'Voice Name')}</label>
                       <Input
                         value={voiceName}
                         onChange={e => setVoiceName(e.target.value)}
@@ -379,7 +381,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
            <div className="space-y-8 pb-12">
               <section className="space-y-4">
                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 italic">{t.clonedVoices || 'Cloned Voices'}</h4>
+                    <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 italic">{t.clonedVoices || ui('克隆声音', 'Cloned Voices')}</h4>
                     <span className="text-xs font-mono text-celestial-saturn/40">{clonedVoices.length} {t.voicesLimit || '/ 10 limit'}</span>
                  </div>
                  
@@ -397,7 +399,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
                             <MicOff size={32} />
                          </div>
                          <p className="text-xs font-black uppercase tracking-widest text-white/45 italic">
-                            {t.noRecordings || 'No recordings found. Speak to create one.'}
+                            {t.noRecordings || ui('还没有录音样本。录一段声音即可创建。', 'No recordings found. Speak to create one.')}
                          </p>
                       </div>
                     )}
@@ -406,7 +408,7 @@ export function VoiceForge({ t, compact, onCloneSuccess }: { t: any; compact?: b
 
               <section className="space-y-4">
                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 italic">{t.premadeVoices || 'Premade Voices'}</h4>
+                    <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 italic">{t.premadeVoices || ui('预设声音', 'Premade Voices')}</h4>
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {premadeVoices.map((v) => (

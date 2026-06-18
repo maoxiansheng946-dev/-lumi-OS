@@ -127,6 +127,8 @@ function getGridPoints(cx: number, cy: number, radius: number): string {
 
 export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
   const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
   const DIM_LABELS: Record<string, string> = {
     analytical: t.dimAnalytical || '分析型',
     intuitive: t.dimIntuitive || '直觉型',
@@ -163,7 +165,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
     if (!socket) return;
     const handler = (event: { personalityId: string; version: string; narrative: string; mutations: any[]; timestamp: string }) => {
       if (event.personalityId === personalityId) {
-        toast.success(`${t.lumiEvolvedTo || 'Lumi evolved to'} ${event.version}!`, {
+        toast.success(`${t.lumiEvolvedTo || ui('Lumi 已演化到', 'Lumi evolved to')} ${event.version}!`, {
           description: event.narrative?.slice(0, 100),
         });
         // Re-fetch to get the full updated state
@@ -203,7 +205,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
       });
       if (!r.ok) throw new Error((await r.json()).error || 'Failed to update freeze state');
       fetchEvolutionData();
-      toast.success(data.evolutionFrozenAt ? 'Evolution unfrozen' : 'Evolution frozen');
+      toast.success(data.evolutionFrozenAt ? ui('人格演化已恢复', 'Evolution unfrozen') : ui('人格演化已冻结', 'Evolution frozen'));
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -222,7 +224,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
       });
       if (!r.ok) throw new Error((await r.json()).error || 'Failed to revert evolution');
       fetchEvolutionData();
-      toast.success('Evolution reverted');
+      toast.success(ui('已回退该次人格演化', 'Evolution reverted'));
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -260,7 +262,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
             <GitBranch size={18} />
           </span>
           <div>
-            <h2 className="text-sm font-black text-white/90 uppercase tracking-wider">{t.personalityEvolution || 'Personality Evolution'}</h2>
+            <h2 className="text-sm font-black text-white/90 uppercase tracking-wider">{t.personalityEvolution || ui('人格演化', 'Personality Evolution')}</h2>
             {data && (
               <p className="text-xs text-white/55 font-mono">
                 v{data.version} &middot; {evolutionSteps.length} step{evolutionSteps.length !== 1 ? 's' : ''}
@@ -279,7 +281,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
             }`}
           >
             {freezing ? <Loader2 size={12} className="animate-spin" /> : null}
-            {data?.evolutionFrozenAt ? 'Frozen' : 'Active'}
+            {data?.evolutionFrozenAt ? ui('已冻结', 'Frozen') : ui('活跃', 'Active')}
           </button>
           <button
             onClick={triggerEvolution}
@@ -287,7 +289,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
             className="lumi-button-primary h-9 border-fuchsia-500/30 bg-fuchsia-500/20 px-4 text-xs text-fuchsia-300 hover:bg-fuchsia-500/30"
           >
             {evolving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-            {t.evolve || 'Evolve'}
+            {t.evolve || ui('演化', 'Evolve')}
           </button>
         </div>
       </div>
@@ -295,7 +297,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
       {!hasHistory ? (
         <div className="flex h-64 flex-col items-center justify-center gap-4 text-white/45">
           <TrendingUp size={48} />
-          <p className="text-xs">{t.noEvolutionHistory || "No evolution history yet. Lumi's personality grows with you."}</p>
+          <p className="text-xs">{t.noEvolutionHistory || ui('暂无演化历史。Lumi 会在与你的互动中逐渐成长。', "No evolution history yet. Lumi's personality grows with you.")}</p>
         </div>
       ) : (
         <div className="flex h-[calc(100%-65px)]">
@@ -423,7 +425,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
                   {selected.ownerProfile && (
                     <div className="lumi-panel space-y-2 p-4">
                       <h3 className="text-xs font-black text-white/55 uppercase tracking-wider flex items-center gap-2">
-                        <Target size={12} /> {t.ownerProfile || 'Owner Profile'}
+                        <Target size={12} /> {t.ownerProfile || ui('用户画像', 'Owner Profile')}
                       </h3>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
@@ -456,7 +458,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
                   {selectedAudit && (
                     <div className="lumi-panel space-y-3 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-xs font-black text-white/55 uppercase tracking-wider">Evolution Audit</h3>
+                        <h3 className="text-xs font-black text-white/55 uppercase tracking-wider">{ui('演化审计', 'Evolution Audit')}</h3>
                         <span className={`text-[11px] font-mono uppercase px-2 py-1 rounded-full ${
                           selectedAudit.status === 'reverted'
                             ? 'bg-zinc-500/20 text-zinc-300'
@@ -470,23 +472,23 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
                         </span>
                       </div>
                       <div className="text-[12px] text-white/50 space-y-1">
-                        <div>Audit ID: <span className="font-mono text-white/65">{selectedAudit.id}</span></div>
-                        <div>Reversible: {selectedAudit.reversible ? 'Yes' : 'No'}</div>
-                        <div>Fields: {selectedAudit.mutationFields.join(', ') || 'none'}</div>
+                        <div>{ui('审计 ID', 'Audit ID')}: <span className="font-mono text-white/65">{selectedAudit.id}</span></div>
+                        <div>{ui('可回退', 'Reversible')}: {selectedAudit.reversible ? ui('是', 'Yes') : ui('否', 'No')}</div>
+                        <div>{ui('字段', 'Fields')}: {selectedAudit.mutationFields.join(', ') || ui('无', 'none')}</div>
                       </div>
                       <button
                         onClick={revertSelected}
                         disabled={!selectedAudit.reversible || selectedAudit.status === 'reverted' || reverting}
                         className="lumi-button h-9 border-red-500/20 bg-red-500/10 px-3 text-xs text-red-300 hover:bg-red-500/20"
                       >
-                        {reverting ? 'Reverting...' : 'Revert This Step'}
+                        {reverting ? ui('回退中...', 'Reverting...') : ui('回退这一步', 'Revert This Step')}
                       </button>
                     </div>
                   )}
 
                   {/* Mutations */}
                   <h3 className="text-xs font-black text-white/55 uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles size={12} /> {t.mutations || 'Mutations'}
+                    <Sparkles size={12} /> {t.mutations || ui('变化记录', 'Mutations')}
                   </h3>
                   {selected.mutations.map((mut, mi) => (
                     <motion.div
@@ -513,7 +515,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
                 </>
               ) : (
                 <div className="flex items-center justify-center h-full text-white/35 text-xs">
-                  {t.selectEvolutionStep || 'Select an evolution step to view details'}
+                  {t.selectEvolutionStep || ui('选择一个演化步骤查看详情', 'Select an evolution step to view details')}
                 </div>
               )}
             </div>
@@ -526,7 +528,7 @@ export function PersonalityEvolution({ personalityId = 'lumi' }: Props) {
         <div className="flex items-center gap-6 border-t border-white/[0.08] px-5 py-3 font-mono text-[12px] text-white/45">
           <span>{t.plasticity || 'Plasticity:'} <span className="text-white/40">{data.evolutionConfig.plasticity.toFixed(1)}</span></span>
           <span>{t.cooldown || 'Cooldown:'} <span className="text-white/40">{(data.evolutionConfig.cooldownMs / 86400000).toFixed(0)}d</span></span>
-          <span>{t.maxMutations || 'Max Mutations:'} <span className="text-white/40">{data.evolutionConfig.maxMutationsPerStep}</span></span>
+          <span>{t.maxMutations || ui('最大变化数:', 'Max Mutations:')} <span className="text-white/40">{data.evolutionConfig.maxMutationsPerStep}</span></span>
           <span>{t.minMemories || 'Min Memories:'} <span className="text-white/40">{data.evolutionConfig.minMemoriesForEvolution}</span></span>
         </div>
       )}
