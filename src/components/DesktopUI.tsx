@@ -332,29 +332,28 @@ function OSWindow({
           ...(!isSnapped ? { top: '30%', left: '30%' } : {}),
         }}
         onClick={() => !isMinimized && onFocus(id)}
-        className={`os-window pointer-events-auto overflow-hidden ${isMaximized ? 'rounded-none' : 'rounded-[2.5rem]'} ${isMinimized ? 'pointer-events-none' : ''} ${isDragging ? 'is-dragging' : ''}`}
+        className={`os-window pointer-events-auto overflow-hidden ${isMaximized ? 'rounded-none' : 'rounded-3xl'} ${isMinimized ? 'pointer-events-none' : ''} ${isDragging ? 'is-dragging' : ''}`}
       >
         <div
-          className="os-window-header px-6"
+          className="os-window-header"
         >
-          <div className="flex items-center gap-4 select-none">
-            <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${colorClass} flex items-center justify-center p-1.5 shadow-lg border border-white/10 group-hover:rotate-6 transition-transform`}>
+          <div className="flex min-w-0 items-center gap-3 select-none">
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${colorClass} p-1.5 shadow-lg ring-1 ring-white/15 transition-transform`}>
               {React.isValidElement(icon)
                 ? React.cloneElement(icon as React.ReactElement<any>, { size: 16, className: 'text-white' })
                 : icon}
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-black tracking-[0.2em] uppercase text-white/80 leading-none mb-0.5">{title}</span>
-              <span className="text-xs font-bold text-white/45 uppercase tracking-widest leading-none">{t.statusOperational || 'Status: Operational / Shared Root'}</span>
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-xs font-black uppercase leading-none tracking-[0.16em] text-white/80">{title}</span>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
-              className="w-3 h-3 rounded-full bg-red-500/40 border border-red-500/60 hover:bg-red-500/80 flex items-center justify-center transition-colors group/close"
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/45 transition-colors hover:border-red-400/30 hover:bg-red-500/15 hover:text-red-100"
               title={t.close || 'Close'}
             >
-              <X size={6} className="text-white opacity-0 group-hover/close:opacity-100 transition-opacity" />
+              <X size={15} />
             </button>
           </div>
         </div>
@@ -751,7 +750,7 @@ function NativeFilesWindow({
         <button
           onClick={() => parentPath && onNavigate(parentPath)}
           disabled={!parentPath || isLoading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button"
         >
           <ArrowLeft size={15} />
           {t.back || 'Back'}
@@ -759,7 +758,7 @@ function NativeFilesWindow({
         <button
           onClick={onHome}
           disabled={isLoading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button"
         >
           <HardDrive size={15} />
           Home
@@ -767,7 +766,7 @@ function NativeFilesWindow({
         <button
           onClick={onRefresh}
           disabled={isLoading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button"
         >
           <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
           {t.refresh || 'Refresh'}
@@ -775,7 +774,7 @@ function NativeFilesWindow({
         <button
           onClick={() => setShowNewFolder(prev => !prev)}
           disabled={isLoading || !currentPath}
-          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button"
         >
           <FolderPlus size={15} />
           {t.newFolder || 'New Folder'}
@@ -783,7 +782,7 @@ function NativeFilesWindow({
         <button
           onClick={onPickDirectory}
           disabled={isLoading}
-          className="ml-auto flex h-10 items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 text-xs font-black text-cyan-200 transition-colors hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button ml-auto border-cyan-400/20 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/15"
         >
           <Folder size={15} />
           {t.chooseFolder || 'Choose Folder'}
@@ -791,7 +790,7 @@ function NativeFilesWindow({
         <button
           onClick={() => currentPath && onOpenItem(currentPath)}
           disabled={!currentPath || isLoading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-celestial-saturn/25 bg-celestial-saturn/10 px-3 text-xs font-black text-celestial-saturn transition-colors hover:bg-celestial-saturn/18 disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button-primary"
         >
           <Folder size={15} />
           {t.openInExplorer || 'Open in Explorer'}
@@ -799,7 +798,7 @@ function NativeFilesWindow({
       </div>
 
       {showNewFolder && (
-        <form onSubmit={submitNewFolder} className="flex items-center gap-2 rounded-2xl border border-celestial-saturn/20 bg-celestial-saturn/10 px-3 py-2">
+        <form onSubmit={submitNewFolder} className="lumi-panel flex items-center gap-2 border-celestial-saturn/20 bg-celestial-saturn/10 px-3 py-2">
           <FolderPlus size={15} className="shrink-0 text-celestial-saturn" />
           <input
             value={newFolderName}
@@ -809,13 +808,13 @@ function NativeFilesWindow({
             placeholder={t.folderName || 'Folder name'}
             className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-white/72 outline-none placeholder:text-white/25"
           />
-          <button type="submit" disabled={!newFolderName.trim()} className="h-8 rounded-lg border border-celestial-saturn/25 bg-celestial-saturn/10 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-celestial-saturn transition-colors hover:bg-celestial-saturn/18 disabled:opacity-30">
+          <button type="submit" disabled={!newFolderName.trim()} className="lumi-button-primary h-8 px-3 text-[10px] uppercase tracking-[0.14em]">
             {t.create || 'Create'}
           </button>
         </form>
       )}
 
-      <form onSubmit={handlePathSubmit} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+      <form onSubmit={handlePathSubmit} className="lumi-panel flex items-center gap-2 bg-black/25 px-3 py-2">
         <Folder size={16} className="shrink-0 text-celestial-saturn" />
         <input
           value={pathInput}
@@ -828,7 +827,7 @@ function NativeFilesWindow({
           type="button"
           onClick={copyCurrentPath}
           disabled={!currentPath || isLoading}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/42 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-icon-button h-8 w-8 rounded-lg"
           title={t.copyPath || 'Copy path'}
         >
           <Copy size={14} />
@@ -836,7 +835,7 @@ function NativeFilesWindow({
         <button
           type="submit"
           disabled={isLoading}
-          className="h-8 shrink-0 rounded-lg border border-celestial-saturn/25 bg-celestial-saturn/10 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-celestial-saturn transition-colors hover:bg-celestial-saturn/18 disabled:cursor-not-allowed disabled:opacity-30"
+          className="lumi-button-primary h-8 shrink-0 px-3 text-[10px] uppercase tracking-[0.14em]"
         >
           {t.go || 'Go'}
         </button>
@@ -848,7 +847,7 @@ function NativeFilesWindow({
             key={location.id}
             onClick={() => location.id === 'home' ? onHome() : onNavigate(location.path)}
             disabled={isLoading || (location.id !== 'home' && !location.path)}
-            className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-white/55 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            className="lumi-button min-w-0 justify-start"
           >
             <span className="shrink-0 text-celestial-saturn">{location.icon}</span>
             <span className="truncate">{location.label}</span>
@@ -856,7 +855,7 @@ function NativeFilesWindow({
         ))}
       </div>
 
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+      <div className="lumi-panel flex items-center gap-3 bg-black/25 px-4 py-3">
         <Folder size={17} className="shrink-0 text-celestial-saturn" />
         <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar">
           {pathCrumbs.length > 0 ? (
@@ -884,7 +883,7 @@ function NativeFilesWindow({
         </span>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 sm:flex-row sm:items-center">
+      <div className="lumi-panel flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Search size={16} className="shrink-0 text-white/35" />
           <input
