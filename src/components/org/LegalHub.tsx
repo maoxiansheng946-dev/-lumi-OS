@@ -330,11 +330,13 @@ export function LegalHub() {
 
   return (
     <div className="flex h-full">
-      <div className="w-48 border-r border-white/5 bg-white/[0.02] flex flex-col">
-        <div className="p-4 border-b border-white/5">
-          <h3 className="text-white text-sm font-bold flex items-center gap-2">
-            <Scale size={16} className="text-amber-400" />
-            {t.legalHub || ui('律所', 'Law Firm')}
+      <div className="flex w-56 shrink-0 flex-col border-r border-white/[0.08] bg-black/20">
+        <div className="border-b border-white/[0.08] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.12em] text-white/85">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
+              <Scale size={16} />
+            </span>
+            <span className="min-w-0 truncate">{t.legalHub || ui('律所', 'Law Firm')}</span>
           </h3>
           {activeCase && (
             <p className="mt-2 line-clamp-2 text-xs text-white/45">
@@ -342,24 +344,24 @@ export function LegalHub() {
             </p>
           )}
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto p-2">
           {navItems.map(item => (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+              className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
                 view === item.id
-                  ? 'bg-amber-500/10 text-amber-400'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                  ? 'border-amber-400/20 bg-amber-500/10 text-amber-200'
+                  : 'border-transparent text-white/50 hover:border-white/[0.08] hover:bg-white/[0.05] hover:text-white/80'
               }`}
             >
-              {item.icon}
-              {item.label}
+              <span className="shrink-0">{item.icon}</span>
+              <span className="min-w-0 truncate">{item.label}</span>
             </button>
           ))}
         </nav>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="custom-scrollbar flex-1 overflow-y-auto bg-black/10">
         {renderView()}
       </div>
     </div>
@@ -534,7 +536,7 @@ function LegalCaseWorkspace({
           </p>
           <button
             onClick={onCreateCase}
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-500"
+            className="lumi-button-primary mt-6 border-amber-400/25 bg-amber-500/15 px-5 py-3 text-amber-200 hover:bg-amber-500/25"
           >
             <Plus size={16} />
             {ui('新建案件', 'New Case')}
@@ -548,7 +550,7 @@ function LegalCaseWorkspace({
   const selectedMaterial = (activeCase.materials || []).find(material => material.id === selectedMaterialId) || (activeCase.materials || [])[0] || null;
 
   return (
-    <div className="h-full overflow-y-auto p-5">
+    <div className="custom-scrollbar h-full overflow-y-auto p-5">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-amber-300">
@@ -562,7 +564,7 @@ function LegalCaseWorkspace({
         </div>
         <button
           onClick={onCreateCase}
-          className="inline-flex items-center gap-2 rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm font-semibold text-white/75 transition-colors hover:bg-white/[0.12]"
+          className="lumi-button h-10 px-4 text-sm"
         >
           <Plus size={15} />
           {ui('新建案件', 'New Case')}
@@ -571,7 +573,7 @@ function LegalCaseWorkspace({
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-3">
-          <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+          <div className="lumi-panel p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">{ui('案件列表', 'Cases')}</div>
               {orgBacked && (
@@ -579,14 +581,14 @@ function LegalCaseWorkspace({
                   type="button"
                   onClick={onRefreshCases}
                   disabled={refreshing}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-white/42 hover:bg-white/10 hover:text-white/70 disabled:opacity-40"
+                  className="lumi-icon-button h-7 w-7 rounded-lg"
                   title={ui('刷新组织案件', 'Refresh organization cases')}
                 >
                   <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
                 </button>
               )}
             </div>
-            <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/8 bg-black/24 px-2">
+            <div className="lumi-field mb-2 flex items-center gap-2 rounded-lg px-2 py-0">
               <Search size={13} className="shrink-0 text-white/30" />
               <input
                 value={caseFilter}
@@ -597,17 +599,17 @@ function LegalCaseWorkspace({
             </div>
             <div className="space-y-1.5">
               {filteredCases.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-white/8 px-3 py-4 text-center text-xs text-white/30">
+                <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-white/30">
                   {ui('没有匹配案件', 'No matching cases')}
                 </div>
               ) : filteredCases.map(item => (
                 <button
                   key={item.id}
                   onClick={() => onSelectCase(item.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left transition-all ${
+                  className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                     item.id === activeCaseId
-                      ? 'bg-amber-500/12 text-amber-200'
-                      : 'bg-white/[0.03] text-white/58 hover:bg-white/[0.06] hover:text-white/75'
+                      ? 'border-amber-400/20 bg-amber-500/12 text-amber-200'
+                      : 'border-transparent bg-white/[0.03] text-white/58 hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white/75'
                   }`}
                 >
                   <div className="truncate text-sm font-semibold">{item.title || item.party || item.caseNumber || ui('未命名案件', 'Untitled case')}</div>
@@ -617,7 +619,7 @@ function LegalCaseWorkspace({
             </div>
           </div>
 
-          <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.045] p-3">
+          <div className="lumi-panel border-amber-400/15 bg-amber-400/[0.045] p-3">
             <div className="flex items-start gap-2 text-amber-200">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
               <p className="text-xs leading-5 text-amber-100/70">
@@ -628,7 +630,7 @@ function LegalCaseWorkspace({
         </div>
 
         <div className="space-y-5">
-          <section className="rounded-xl border border-white/8 bg-white/[0.035] p-4">
+          <section className="lumi-panel p-4">
             <div className="mb-4 flex items-center gap-2 text-white/78">
               <FolderOpen size={16} className="text-amber-300" />
               <h3 className="text-sm font-bold">{ui('案件档案', 'Case File')}</h3>
@@ -645,7 +647,7 @@ function LegalCaseWorkspace({
                 <select
                   value={activeCase.stage}
                   onChange={event => update({ stage: event.target.value as LegalCaseStage })}
-                  className="h-10 w-full rounded-lg border border-white/10 bg-black/35 px-3 text-sm text-white outline-none focus:border-amber-400/50"
+                  className="lumi-field h-10 w-full rounded-lg focus:border-amber-400/50"
                 >
                   {Object.entries(stageLabels).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
@@ -659,7 +661,7 @@ function LegalCaseWorkspace({
                 value={activeCase.notes}
                 onChange={event => update({ notes: event.target.value })}
                 rows={4}
-                className="w-full resize-none rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/25 focus:border-amber-400/50"
+                className="lumi-field w-full resize-none rounded-lg text-sm leading-6 focus:border-amber-400/50"
                 placeholder={ui('记录当事人陈述、争议焦点、证据缺口、下一步动作...', 'Record statements, issues, evidence gaps, and next actions...')}
               />
             </label>
@@ -672,7 +674,7 @@ function LegalCaseWorkspace({
             <LegalActionButton icon={<ClipboardList size={16} />} title={ui('案件计划', 'Case plan')} desc={ui('生成推进步骤', 'Create workflow')} onClick={onCreatePlan} />
           </section>
 
-          <section className="rounded-xl border border-white/8 bg-white/[0.035] p-4">
+          <section className="lumi-panel p-4">
             <div className="mb-4 flex items-center gap-2 text-white/78">
               <Calendar size={16} className="text-cyan-300" />
               <h3 className="text-sm font-bold">{ui('期限与开庭', 'Deadlines and Hearings')}</h3>
@@ -683,20 +685,20 @@ function LegalCaseWorkspace({
               <DateField label={ui('上诉期限', 'Appeal deadline')} value={activeCase.appealDeadline} onChange={value => update({ appealDeadline: value })} onReminder={() => createDateReminder('appeal')} />
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={calculateAppealDeadline} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs font-semibold text-white/68 hover:bg-white/[0.12]">
+              <button onClick={calculateAppealDeadline} className="lumi-button h-9 px-3 text-xs">
                 {ui('按判决日期计算上诉期限', 'Calculate appeal deadline')}
               </button>
-              <button onClick={onOpenMeetingNotes} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs font-semibold text-white/68 hover:bg-white/[0.12]">
+              <button onClick={onOpenMeetingNotes} className="lumi-button h-9 px-3 text-xs">
                 {ui('打开会谈笔记', 'Open meeting notes')}
               </button>
-              <button onClick={() => onSetView('import')} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs font-semibold text-white/68 hover:bg-white/[0.12]">
+              <button onClick={() => onSetView('import')} className="lumi-button h-9 px-3 text-xs">
                 {ui('导入裁判文书', 'Import judgment')}
               </button>
             </div>
           </section>
 
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <div className="rounded-xl border border-white/8 bg-white/[0.035] p-4">
+            <div className="lumi-panel p-4">
               <div className="mb-3 flex items-center gap-2 text-white/78">
                 <Gavel size={16} className="text-amber-300" />
                 <h3 className="text-sm font-bold">{ui('开庭短信/通知提取', 'Hearing Notice Extractor')}</h3>
@@ -705,14 +707,14 @@ function LegalCaseWorkspace({
                 value={noticeText}
                 onChange={event => setNoticeText(event.target.value)}
                 rows={5}
-                className="w-full resize-none rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/25 focus:border-amber-400/50"
+                className="lumi-field w-full resize-none rounded-lg text-sm leading-6 focus:border-amber-400/50"
                 placeholder={ui('粘贴短信或法院通知，自动提取案号、法院、开庭日期...', 'Paste SMS or court notice to extract case number, court, and hearing date...')}
               />
               <div className="mt-3 flex items-center gap-3">
                 <button
                   onClick={extractNotice}
                   disabled={!noticeText.trim()}
-                  className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-500 disabled:opacity-40"
+                  className="lumi-button-primary h-9 border-amber-400/25 bg-amber-500/15 px-4 text-xs text-amber-200 hover:bg-amber-500/25"
                 >
                   {ui('提取到案件', 'Extract')}
                 </button>
@@ -720,7 +722,7 @@ function LegalCaseWorkspace({
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/8 bg-white/[0.035] p-4">
+            <div className="lumi-panel p-4">
               <div className="mb-3 flex items-center gap-2 text-white/78">
                 <FileText size={16} className="text-blue-300" />
                 <h3 className="text-sm font-bold">{ui('材料与文书', 'Materials and Documents')}</h3>
@@ -729,7 +731,7 @@ function LegalCaseWorkspace({
                 <button
                   onClick={generateEngagementLetter}
                   disabled={documentLoading === 'engagement'}
-                  className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12] disabled:opacity-45"
+                  className="lumi-button h-9 px-3 text-xs"
                 >
                   {documentLoading === 'engagement' ? ui('生成中...', 'Drafting...') : ui('生成委托书', 'Engagement letter')}
                 </button>
@@ -738,14 +740,14 @@ function LegalCaseWorkspace({
                     setDocumentStatus(ui('已启动庭审/会谈转写，结束后会把纪要归档到当前案件。', 'Trial/consultation transcription started; notes will archive to this case when finished.'));
                     onStartConsultation();
                   }}
-                  className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]"
+                  className="lumi-button h-9 px-3 text-xs"
                 >
                   {ui('庭审笔录', 'Trial notes')}
                 </button>
-                <button onClick={() => onSetView('contract-review')} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]">
+                <button onClick={() => onSetView('contract-review')} className="lumi-button h-9 px-3 text-xs">
                   {ui('合同审查', 'Contract review')}
                 </button>
-                <button onClick={() => onSetView('asset-trace')} className="rounded-lg bg-white/[0.08] px-3 py-2 text-xs text-white/70 hover:bg-white/[0.12]">
+                <button onClick={() => onSetView('asset-trace')} className="lumi-button h-9 px-3 text-xs">
                   {ui('财产线索', 'Asset trace')}
                 </button>
               </div>
@@ -767,7 +769,7 @@ function LegalCaseWorkspace({
                       key={material.id}
                       type="button"
                       onClick={() => setSelectedMaterialId(material.id)}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors ${
+                       className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition-colors ${
                         selectedMaterial?.id === material.id ? 'bg-cyan-400/10' : 'bg-black/22 hover:bg-white/[0.055]'
                       }`}
                     >
@@ -780,7 +782,7 @@ function LegalCaseWorkspace({
                 )}
               </div>
               {selectedMaterial?.content && (
-                <div className="mt-4 rounded-lg border border-white/8 bg-black/24 p-3">
+                <div className="lumi-panel mt-4 rounded-xl bg-black/24 p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-white/35">{ui('材料内容', 'Material Content')}</div>
                   <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-white/68 custom-scrollbar">{selectedMaterial.content}</pre>
                 </div>
@@ -800,7 +802,7 @@ function CaseField({ label, value, onChange }: { label: string; value: string; o
       <input
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="h-10 w-full rounded-lg border border-white/10 bg-black/35 px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-amber-400/50"
+        className="lumi-field h-10 w-full rounded-lg focus:border-amber-400/50"
       />
     </label>
   );
@@ -815,10 +817,10 @@ function DateField({ label, value, onChange, onReminder }: { label: string; valu
           type="date"
           value={value}
           onChange={event => onChange(event.target.value)}
-          className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-black/35 px-3 text-sm text-white outline-none focus:border-amber-400/50"
+          className="lumi-field h-10 min-w-0 flex-1 rounded-lg focus:border-amber-400/50"
         />
         {onReminder && (
-          <button type="button" onClick={onReminder} className="h-10 rounded-lg bg-white/[0.08] px-3 text-xs font-semibold text-white/65 hover:bg-white/[0.12]">
+          <button type="button" onClick={onReminder} className="lumi-button h-10 rounded-lg px-3 text-xs">
             +
           </button>
         )}
@@ -831,7 +833,7 @@ function LegalActionButton({ icon, title, desc, onClick }: { icon: React.ReactNo
   return (
     <button
       onClick={onClick}
-      className="group rounded-xl border border-white/8 bg-white/[0.035] p-4 text-left transition-all hover:border-amber-400/25 hover:bg-amber-400/[0.045]"
+      className="lumi-panel group p-4 text-left transition-colors hover:border-amber-400/25 hover:bg-amber-400/[0.045]"
     >
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.08] text-amber-300 group-hover:bg-amber-400/12">
         {icon}
@@ -892,7 +894,7 @@ function LegalStrategyView({ caseFile }: { caseFile?: LegalCaseFile | null }) {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
       <h2 className="text-xl font-bold text-white">{t.legalCaseStrategyTitle}</h2>
       <p className="text-white/50 text-sm">{t.legalCaseStrategyDesc}</p>
       <textarea
@@ -900,18 +902,18 @@ function LegalStrategyView({ caseFile }: { caseFile?: LegalCaseFile | null }) {
         onChange={e => setFacts(e.target.value)}
         placeholder={t.legalCaseStrategyPlaceholder}
         rows={8}
-        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50 resize-none"
+        className="lumi-field min-h-48 w-full resize-none focus:border-amber-500/50"
       />
       <button
         onClick={analyze}
         disabled={loading || !facts.trim()}
-        className="px-6 py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-medium transition-colors flex items-center gap-2"
+        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
       >
         <Brain size={16} />
         {loading ? ui('分析中...', 'Analyzing...') : t.legalCaseStrategyAnalyze}
       </button>
       {result && (
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-white/80 text-sm">
+        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
           {result}
         </div>
       )}
@@ -951,7 +953,7 @@ function LegalVerifyView() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
       <h2 className="text-xl font-bold text-white">{t.legalVerifyCitationTitle}</h2>
       <p className="text-white/50 text-sm">{t.legalVerifyCitationDesc}</p>
       <textarea
@@ -959,18 +961,18 @@ function LegalVerifyView() {
         onChange={e => setText(e.target.value)}
         placeholder={t.legalVerifyCitationPlaceholder}
         rows={6}
-        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50 resize-none"
+        className="lumi-field min-h-40 w-full resize-none focus:border-amber-500/50"
       />
       <button
         onClick={verify}
         disabled={loading || !text.trim()}
-        className="px-6 py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-medium transition-colors flex items-center gap-2"
+        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
       >
         <CheckCircle size={16} />
         {loading ? ui('校验中...', 'Verifying...') : t.legalVerifyCitationVerify}
       </button>
       {results && results.length > 0 && (
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-white/80 text-sm">
+        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
           {results.map((r: any, i: number) => (
             <div key={i} className={r.error ? 'text-red-400' : ''}>{r.content || r.error}</div>
           ))}
@@ -1026,7 +1028,7 @@ function LegalImportView({
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
       <h2 className="text-xl font-bold text-white">{t.legalImportJudgmentTitle}</h2>
       <p className="text-white/50 text-sm">{t.legalImportJudgmentDesc}</p>
       <textarea
@@ -1034,18 +1036,18 @@ function LegalImportView({
         onChange={e => setContent(e.target.value)}
         placeholder={ui('粘贴裁判文书正文，或在聊天窗口上传 PDF/DOCX 文件后让 Lumi 导入...', 'Paste judgment document content here, or upload PDF/DOCX files in chat and ask Lumi to import them...')}
         rows={12}
-        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50 resize-none font-mono text-sm"
+        className="lumi-field min-h-72 w-full resize-none font-mono text-sm focus:border-amber-500/50"
       />
       <button
         onClick={importJudgment}
         disabled={loading || !content.trim()}
-        className="px-6 py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-medium transition-colors flex items-center gap-2"
+        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
       >
         <Upload size={16} />
         {loading ? ui('导入中...', 'Importing...') : t.legalImportJudgment}
       </button>
       {status && (
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-white/80 text-sm">
+        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
           {status}
         </div>
       )}

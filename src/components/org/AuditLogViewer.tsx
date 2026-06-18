@@ -4,7 +4,6 @@ import {
   ScrollText, Search, Download, Filter, Loader2,
   Clock, User, FileText, AlertCircle, CheckCircle,
 } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 
 interface AuditEntry {
@@ -93,28 +92,30 @@ export function AuditLogViewer() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6">
+      <div className="lumi-panel flex items-center justify-between gap-4 p-5">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <ScrollText size={24} className="text-amber-400" />
+          <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
+              <ScrollText size={24} />
+            </span>
             {t.orgAudit}
           </h2>
-          <p className="text-white/40 text-sm">{ui(`${entries.length} 条记录`, `${entries.length} entries`)}</p>
+          <p className="mt-1 text-sm text-white/40">{ui(`${entries.length} 条记录`, `${entries.length} entries`)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
+          <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`rounded-lg flex items-center gap-1 text-sm ${showFilters ? 'bg-amber-500/20 text-amber-400' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+            className={`lumi-button h-9 text-sm ${showFilters ? 'border-amber-400/25 bg-amber-500/15 text-amber-200' : ''}`}
           >
             <Filter size={14} /> {ui('筛选', 'Filters')}
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={handleExport}
-            className="bg-white/10 hover:bg-white/20 text-white/70 rounded-lg flex items-center gap-1 text-sm"
+            className="lumi-button h-9 text-sm"
           >
             <Download size={14} /> {ui('导出 CSV', 'Export CSV')}
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -134,7 +135,7 @@ export function AuditLogViewer() {
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-end gap-3"
+          className="lumi-panel flex items-end gap-3 p-4"
         >
           <div className="flex-1">
             <label className="text-white/55 text-xs block mb-1">{ui('用户 ID', 'User ID')}</label>
@@ -142,7 +143,7 @@ export function AuditLogViewer() {
               value={filters.userId}
               onChange={e => setFilters(f => ({ ...f, userId: e.target.value }))}
               placeholder={ui('按用户筛选...', 'Filter by user...')}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none"
+              className="lumi-field h-10 w-full rounded-lg text-sm"
             />
           </div>
           <div className="flex-1">
@@ -151,7 +152,7 @@ export function AuditLogViewer() {
               value={filters.action}
               onChange={e => setFilters(f => ({ ...f, action: e.target.value }))}
               placeholder={ui('例如 template.create...', 'e.g. template.create...')}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none"
+              className="lumi-field h-10 w-full rounded-lg text-sm"
             />
           </div>
           <div className="flex-1">
@@ -160,20 +161,20 @@ export function AuditLogViewer() {
               value={filters.resourceType}
               onChange={e => setFilters(f => ({ ...f, resourceType: e.target.value }))}
               placeholder={ui('例如 agent_template...', 'e.g. agent_template...')}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none"
+              className="lumi-field h-10 w-full rounded-lg text-sm"
             />
           </div>
-          <Button onClick={handleFilter} className="bg-amber-600 hover:bg-amber-500 text-white rounded-lg flex items-center gap-1">
+          <button onClick={handleFilter} className="lumi-button-primary h-10 border-amber-400/25 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25">
             <Search size={14} /> {ui('搜索', 'Search')}
-          </Button>
+          </button>
         </motion.div>
       )}
 
       {/* Entries */}
       {loading ? (
-        <div className="text-center py-12 text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
+        <div className="lumi-panel py-12 text-center text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
       ) : entries.length === 0 ? (
-        <div className="text-center py-12 text-white/55">
+        <div className="lumi-panel py-12 text-center text-white/55">
           <ScrollText size={32} className="mx-auto mb-2 opacity-30" />
           {ui('未找到审计记录', 'No audit entries found')}
         </div>
@@ -184,7 +185,7 @@ export function AuditLogViewer() {
             return (
               <div
                 key={entry.id}
-                className="bg-white/5 border border-white/5 rounded-lg px-4 py-3 flex items-center gap-4 hover:bg-white/[0.07] transition-colors"
+                className="lumi-panel flex items-center gap-4 rounded-xl px-4 py-3 transition-colors hover:border-white/15 hover:bg-white/[0.07]"
               >
                 <Clock size={12} className="text-white/45 flex-shrink-0" />
                 <span className="text-white/45 text-xs font-mono min-w-[140px]">

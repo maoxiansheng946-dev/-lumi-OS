@@ -4,7 +4,6 @@ import {
   Package, Search, Download, Star, Clock, Tag,
   Loader2, ExternalLink, CheckCircle, AlertCircle, Send,
 } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 import { useSocket } from '../../hooks/useSocket';
 
@@ -109,22 +108,24 @@ export function TemplateMarketplace() {
   const categories = [...new Set(templates.map(t => t.category))];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-6 p-6">
+      <div className="lumi-panel flex items-start justify-between gap-4 p-5">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Package size={24} className="text-purple-400" />
+          <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-300/15 bg-purple-400/10 text-purple-300">
+              <Package size={24} />
+            </span>
             {t.templateMarketplace || ui('模板市场', 'Template Marketplace')}
           </h2>
-          <p className="text-white/40 text-sm">{t.templateMarketplaceDesc || ui('发现并安装组织内的智能体模板', 'Discover and install agent templates from your organization')}</p>
+          <p className="mt-1 text-sm text-white/40">{t.templateMarketplaceDesc || ui('发现并安装组织内的智能体模板', 'Discover and install agent templates from your organization')}</p>
         </div>
-        <Button
+        <button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'templates-create' } }))}
-          className="shrink-0 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm flex items-center gap-2"
+          className="lumi-button-primary shrink-0 border-purple-400/25 bg-purple-500/15 text-purple-200 hover:bg-purple-500/25"
         >
           <Send size={14} />
           {t.submitTemplate || ui('提交模板', 'Submit Template')}
-        </Button>
+        </button>
       </div>
 
       {feedback && (
@@ -146,13 +147,13 @@ export function TemplateMarketplace() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={t.searchTemplates || ui('搜索模板...', 'Search templates...')}
-            className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-purple-500/40"
+            className="lumi-field h-10 w-full rounded-lg py-2 pl-9 pr-4 text-sm focus:border-purple-500/40"
           />
         </div>
         <select
           value={category}
           onChange={e => setCategory(e.target.value)}
-          className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white/60 text-sm"
+          className="lumi-field h-10 rounded-lg text-sm text-white/60"
         >
           <option value="">{t.allCategoriesFilter || ui('全部分类', 'All Categories')}</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -161,9 +162,9 @@ export function TemplateMarketplace() {
 
       {/* Grid */}
       {loading ? (
-        <div className="text-center py-12 text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
+        <div className="lumi-panel py-12 text-center text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-white/55">
+        <div className="lumi-panel py-12 text-center text-white/55">
           <Package size={32} className="mx-auto mb-2 opacity-30" />
           {t.noTemplatesFound || ui('未找到模板', 'No templates found')}
         </div>
@@ -175,7 +176,7 @@ export function TemplateMarketplace() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => setSelected(template)}
-              className="bg-white/5 border border-white/10 rounded-xl p-5 hover:bg-white/[0.07] hover:border-purple-500/20 transition-all cursor-pointer group"
+              className="lumi-panel group cursor-pointer p-5 transition-colors hover:border-purple-500/25 hover:bg-white/[0.07]"
             >
               <div className="flex items-start justify-between mb-3">
                 <span className="text-2xl">{template.icon || 'Bot'}</span>
@@ -212,7 +213,7 @@ export function TemplateMarketplace() {
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
             onClick={e => e.stopPropagation()}
-            className="bg-celestial-deep border border-white/10 rounded-2xl p-8 max-w-md w-full"
+            className="lumi-surface w-full max-w-md rounded-2xl p-8"
           >
             <div className="text-center mb-6">
               <span className="text-4xl">{selected.icon || 'Bot'}</span>
@@ -232,10 +233,10 @@ export function TemplateMarketplace() {
               </span>
             </div>
 
-            <Button
+            <button
               onClick={() => handleInstall(selected.id)}
               disabled={installing === selected.id}
-              className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-xl py-3 flex items-center justify-center gap-2"
+              className="lumi-button-primary w-full border-purple-400/25 bg-purple-500/15 py-3 text-purple-200 hover:bg-purple-500/25"
             >
               {installing === selected.id ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -243,7 +244,7 @@ export function TemplateMarketplace() {
                 <Download size={16} />
               )}
               {installing === selected.id ? (t.installingTemplate || ui('安装中...', 'Installing...')) : (t.installTemplate || ui('安装模板', 'Install Template'))}
-            </Button>
+            </button>
 
             {feedback?.type === 'success' && (
               <p className="text-center text-green-400 text-xs mt-2 flex items-center justify-center gap-1">

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Save, FileText, Tag, Loader2, BookOpen, AlertCircle, CheckCircle } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 
 interface Props {
@@ -94,11 +93,15 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-3xl mx-auto">
-      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-        <FileText size={24} className="text-blue-400" />
-        {articleId ? (t.editArticle || ui('编辑文章', 'Edit Article')) : (t.newArticle || ui('新建文章', 'New Article'))}
-      </h2>
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
+      <div className="lumi-panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-300/15 bg-blue-400/10 text-blue-300">
+            <FileText size={24} />
+          </span>
+          {articleId ? (t.editArticle || ui('编辑文章', 'Edit Article')) : (t.newArticle || ui('新建文章', 'New Article'))}
+        </h2>
+      </div>
 
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -118,12 +121,12 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder={t.articleTitle || ui('文章标题...', 'Article title...')}
-          className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
+          className="lumi-field min-w-0 flex-1 focus:border-blue-500/40"
         />
         <select
           value={category}
           onChange={e => setCategory(e.target.value)}
-          className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/70 text-sm focus:outline-none"
+          className="lumi-field text-sm text-white/70"
         >
           <option value="general">{t.catGeneral || ui('通用', 'General')}</option>
           <option value="policy">{t.catPolicy || ui('制度', 'Policy')}</option>
@@ -136,7 +139,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         <select
           value={status}
           onChange={e => setStatus(e.target.value as any)}
-          className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/70 text-sm focus:outline-none"
+          className="lumi-field text-sm text-white/70"
         >
           <option value="draft">{t.draftStatus || ui('草稿', 'Draft')}</option>
           <option value="published">{t.publishedStatus || ui('已发布', 'Published')}</option>
@@ -149,7 +152,7 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
           value={tags}
           onChange={e => setTags(e.target.value)}
           placeholder={t.tagsCommaSeparated || ui('标签（用逗号分隔）', 'Tags (comma separated)')}
-          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40"
+          className="lumi-field min-w-0 flex-1 rounded-lg text-sm focus:border-blue-500/40"
         />
       </div>
 
@@ -157,24 +160,24 @@ export function KnowledgeBaseEditor({ articleId, onSaved }: Props) {
         value={content}
         onChange={e => setContent(e.target.value)}
         placeholder={t.writeArticleContent || ui('在这里编写文章内容，支持 Markdown。', 'Write your article content here... Markdown supported.')}
-        className="w-full h-64 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/45 focus:outline-none focus:border-blue-500/40 resize-y font-mono"
+        className="lumi-field h-64 w-full resize-y font-mono text-sm focus:border-blue-500/40"
       />
 
       <div className="flex items-center gap-3">
-        <Button
+        <button
           onClick={handleSave}
           disabled={saving || !title.trim() || !content.trim()}
-          className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2"
+          className="lumi-button-primary border-blue-400/25 bg-blue-500/15 text-blue-200 hover:bg-blue-500/25"
         >
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {articleId ? (t.updateArticle || ui('更新文章', 'Update Article')) : (t.createArticle || ui('创建文章', 'Create Article'))}
-        </Button>
-        <Button
+        </button>
+        <button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'kb' } }))}
-          className="bg-white/10 hover:bg-white/20 text-white/70 rounded-lg flex items-center gap-2"
+          className="lumi-button"
         >
           <BookOpen size={16} /> {t.backToKB || ui('返回知识库', 'Back to KB')}
-        </Button>
+        </button>
       </div>
     </div>
   );

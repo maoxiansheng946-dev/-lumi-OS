@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Users, UserPlus, Shield, UserMinus, Loader2, Crown, User, AlertCircle, CheckCircle } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 import { useApp } from '../../contexts/AppContext';
 import { appConfirm } from '../../lib/appConfirm';
@@ -124,13 +123,17 @@ export function OrgMembers() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Users size={24} className="text-green-400" />
-          {t.orgMembers}
+    <div className="space-y-6 p-6">
+      <div className="lumi-panel flex items-center justify-between gap-4 p-5">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-green-300/15 bg-green-400/10 text-green-300">
+              <Users size={24} />
+            </span>
+            {t.orgMembers}
         </h2>
-        <p className="text-white/40 text-sm">{ui(`${members.length} 位成员`, `${members.length} member(s)`)}</p>
+          <p className="mt-1 text-sm text-white/40">{ui(`${members.length} 位成员`, `${members.length} member(s)`)}</p>
+        </div>
       </div>
 
       {error && (
@@ -147,14 +150,14 @@ export function OrgMembers() {
       )}
 
       {/* Invite */}
-      <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-end gap-3">
+      <div className="lumi-panel flex items-end gap-3 p-4">
         <div className="flex-1">
           <label className="text-white/55 text-xs mb-1 block">{ui('按用户 ID 邀请', 'Invite User by ID')}</label>
           <input
             value={inviteUserId}
             onChange={e => setInviteUserId(e.target.value)}
             placeholder={ui('用户 ID...', 'User ID...')}
-            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/45 focus:outline-none"
+            className="lumi-field h-10 w-full rounded-lg text-sm"
           />
         </div>
         <div>
@@ -162,26 +165,30 @@ export function OrgMembers() {
           <select
             value={inviteRole}
             onChange={e => setInviteRole(e.target.value)}
-            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white/70 text-sm"
+            className="lumi-field h-10 rounded-lg text-sm text-white/70"
           >
             <option value="member">{t.orgRoleMember}</option>
             <option value="admin">{t.orgRoleAdmin}</option>
             <option value="viewer">{t.orgRoleViewer}</option>
           </select>
         </div>
-        <Button
+        <button
           onClick={handleInvite}
           disabled={inviting || !inviteUserId.trim()}
-          className="bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-1"
+          className="lumi-button-primary h-10 border-green-400/25 bg-green-500/15 text-green-200 hover:bg-green-500/25"
         >
           {inviting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
           {ui('添加', 'Add')}
-        </Button>
+        </button>
       </div>
 
       {/* Members list */}
       {loading ? (
-        <div className="text-center py-12 text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
+        <div className="lumi-panel py-12 text-center text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
+      ) : members.length === 0 ? (
+        <div className="lumi-panel py-12 text-center text-sm text-white/35">
+          {ui('暂无成员。可以通过用户 ID 添加成员。', 'No members yet. Add members by user ID.')}
+        </div>
       ) : (
         <div className="space-y-2">
           {members.map(member => (
@@ -189,10 +196,10 @@ export function OrgMembers() {
               key={member.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between hover:bg-white/[0.07]"
+              className="lumi-panel flex items-center justify-between p-4 transition-colors hover:border-white/15 hover:bg-white/[0.07]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/10">
                   <User size={16} className="text-white/60" />
                 </div>
                 <div>

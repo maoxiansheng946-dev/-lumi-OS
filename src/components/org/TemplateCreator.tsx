@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Package, Send, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 
 export function TemplateCreator() {
@@ -60,33 +59,35 @@ export function TemplateCreator() {
 
   if (done) {
     return (
-      <div className="p-6 text-center space-y-4">
+      <div className="mx-auto max-w-md space-y-4 p-6 text-center">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
           <Send size={48} className="mx-auto text-green-400" />
         </motion.div>
         <h3 className="text-xl font-bold text-white">{t.templateSubmitted || ui('模板已提交', 'Template Submitted!')}</h3>
         <p className="text-white/40 text-sm">{t.templatePendingReview || ui('你的模板正在等待管理员审核。', 'Your template is pending review by an admin.')}</p>
-        <Button
+        <button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'templates' } }))}
-          className="bg-white/10 hover:bg-white/20 text-white rounded-lg"
+          className="lumi-button mx-auto"
         >
           <ArrowLeft size={16} className="mr-1" /> {t.backToMarketplace || ui('返回模板市场', 'Back to Marketplace')}
-        </Button>
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-2xl mx-auto">
-      <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-2xl space-y-4 p-6">
+      <div className="lumi-panel flex items-center gap-2 p-5">
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'templates' } }))}
-          className="text-white/40 hover:text-white"
+          className="lumi-icon-button h-8 w-8"
         >
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Package size={24} className="text-purple-400" />
+        <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-300/15 bg-purple-400/10 text-purple-300">
+            <Package size={24} />
+          </span>
           {t.submitTemplate || ui('提交模板', 'Submit a Template')}
         </h2>
       </div>
@@ -104,13 +105,13 @@ export function TemplateCreator() {
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder={t.templateName || ui('模板名称', 'Template name')}
-          className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/45 focus:outline-none focus:border-purple-500/40"
+          className="lumi-field min-w-0 flex-1 focus:border-purple-500/40"
         />
         <input
           value={icon}
           onChange={e => setIcon(e.target.value)}
           placeholder={t.iconLabel || 'Icon'}
-          className="w-20 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/45 focus:outline-none text-center"
+          className="lumi-field w-20 text-center"
         />
       </div>
 
@@ -118,13 +119,13 @@ export function TemplateCreator() {
         value={description}
         onChange={e => setDescription(e.target.value)}
         placeholder={t.briefDescription || ui('简单描述这个智能体能做什么...', 'Brief description of what this agent does...')}
-        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/45 focus:outline-none focus:border-purple-500/40"
+        className="lumi-field w-full focus:border-purple-500/40"
       />
 
       <select
         value={category}
         onChange={e => setCategory(e.target.value)}
-        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/70 text-sm focus:outline-none"
+        className="lumi-field w-full text-sm text-white/70"
       >
         <option value="productivity">{t.categoryProductivity || 'Productivity'}</option>
         <option value="data-analysis">{t.categoryDataAnalysis || 'Data Analysis'}</option>
@@ -141,18 +142,18 @@ export function TemplateCreator() {
         <textarea
           value={configStr}
           onChange={e => setConfigStr(e.target.value)}
-          className="w-full h-48 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-xs placeholder:text-white/45 focus:outline-none focus:border-purple-500/40 resize-y font-mono"
+          className="lumi-field h-48 w-full resize-y font-mono text-xs focus:border-purple-500/40"
         />
       </div>
 
-      <Button
+      <button
         onClick={handleSubmit}
         disabled={submitting || !name.trim() || !description.trim()}
-        className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-xl py-3 flex items-center justify-center gap-2"
+        className="lumi-button-primary w-full border-purple-400/25 bg-purple-500/15 py-3 text-purple-200 hover:bg-purple-500/25"
       >
         {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         {t.submitForReview || ui('提交审核', 'Submit for Review')}
-      </Button>
+      </button>
     </div>
   );
 }

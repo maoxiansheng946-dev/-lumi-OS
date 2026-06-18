@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ClipboardCheck, CheckCircle, XCircle, Loader2, Eye, AlertCircle } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 import { useSocket } from '../../hooks/useSocket';
 
@@ -103,13 +102,15 @@ export function TemplateReviewQueue() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <ClipboardCheck size={24} className="text-amber-400" />
+    <div className="space-y-6 p-6">
+      <div className="lumi-panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
+            <ClipboardCheck size={24} />
+          </span>
           {t.templateReviewQueue || ui('模板审核队列', 'Template Review Queue')}
         </h2>
-        <p className="text-white/40 text-sm">{ui(`${queue.length} 个模板等待审核`, `${queue.length} ${t.templatesPendingReview || 'template(s) pending review'}`)}</p>
+        <p className="mt-1 text-sm text-white/40">{ui(`${queue.length} 个模板等待审核`, `${queue.length} ${t.templatesPendingReview || 'template(s) pending review'}`)}</p>
       </div>
 
       {feedback && (
@@ -124,9 +125,9 @@ export function TemplateReviewQueue() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
+        <div className="lumi-panel py-12 text-center text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
       ) : queue.length === 0 ? (
-        <div className="text-center py-12 text-white/55">
+        <div className="lumi-panel py-12 text-center text-white/55">
           <CheckCircle size={32} className="mx-auto mb-2 text-green-400/50" />
           {t.allTemplatesReviewed || ui('所有模板都已审核完成', 'All templates have been reviewed!')}
         </div>
@@ -137,8 +138,8 @@ export function TemplateReviewQueue() {
               key={template.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className={`bg-white/5 border rounded-xl p-4 transition-all ${
-                selected?.id === template.id ? 'border-amber-500/30' : 'border-white/10 hover:bg-white/[0.07]'
+              className={`lumi-panel p-4 transition-colors ${
+                selected?.id === template.id ? 'border-amber-500/30 bg-amber-500/5' : 'hover:border-white/15 hover:bg-white/[0.07]'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -158,31 +159,31 @@ export function TemplateReviewQueue() {
                         value={comment}
                         onChange={e => setComment(e.target.value)}
                         placeholder={t.reviewComment || ui('审核备注...', 'Review comment...')}
-                        className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder:text-white/45 focus:outline-none"
+                        className="lumi-field h-8 rounded-lg py-1.5 text-xs"
                       />
-                      <Button
+                      <button
                         onClick={() => handleAction(template.id, 'approve')}
                         disabled={actionLoading === template.id}
-                        className="bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg px-3 py-1.5 flex items-center gap-1"
+                        className="lumi-button-primary h-8 border-green-400/25 bg-green-500/15 px-3 text-xs text-green-200 hover:bg-green-500/25"
                       >
                         {actionLoading === template.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
                         {t.approveAndPublish || ui('通过并发布', 'Approve & Publish')}
-                      </Button>
-                      <Button
+                      </button>
+                      <button
                         onClick={() => handleAction(template.id, 'reject')}
                         disabled={actionLoading === template.id || !comment.trim()}
-                        className="bg-red-600 hover:bg-red-500 text-white text-xs rounded-lg px-3 py-1.5 flex items-center gap-1"
+                        className="lumi-button h-8 border-red-400/20 bg-red-500/10 px-3 text-xs text-red-200 hover:bg-red-500/20"
                       >
                         <XCircle size={12} /> {t.reject || ui('拒绝', 'Reject')}
-                      </Button>
+                      </button>
                     </>
                   ) : (
-                    <Button
+                    <button
                       onClick={() => setSelected(template)}
-                      className="bg-white/10 hover:bg-white/20 text-white/70 text-xs rounded-lg flex items-center gap-1"
+                      className="lumi-button h-8 text-xs"
                     >
                       <Eye size={12} /> {t.review || ui('审核', 'Review')}
-                    </Button>
+                    </button>
                   )}
                 </div>
               </div>
