@@ -94,6 +94,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const [githubResults, setGithubResults] = useState<ExternalResult[]>([]);
   const [searchingExternal, setSearchingExternal] = useState(false);
   const [externalError, setExternalError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [installProgress, setInstallProgress] = useState<{ skillId: string; stage: string } | null>(null);
   const [detailSkill, setDetailSkill] = useState<MarketplaceSkill | InstalledSkill | null>(null);
   const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({});
@@ -110,26 +111,33 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const fetchMarketplace = useCallback(async () => {
     try {
       const res = await fetch(`/api/marketplace/skills?lang=${lang}`, { credentials: 'include' });
-      if (res.ok) setMarketSkills(await res.json());
-    } catch {}
+      if (!res.ok) throw new Error(`Marketplace failed (${res.status})`);
+      setMarketSkills(await res.json());
+    } catch (err: any) {
+      setLoadError(err.message || 'Marketplace failed to load');
+    }
   }, [lang]);
 
   const fetchInstalled = useCallback(async () => {
     try {
       const res = await fetch('/api/skills', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setInstalledSkills(data.skills || []);
-      }
-    } catch {}
+      if (!res.ok) throw new Error(`Installed skills failed (${res.status})`);
+      const data = await res.json();
+      setInstalledSkills(data.skills || []);
+    } catch (err: any) {
+      setLoadError(err.message || 'Installed skills failed to load');
+    }
     setLoading(false);
   }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch(`/api/marketplace/categories?lang=${lang}`, { credentials: 'include' });
-      if (res.ok) setCategories((await res.json()).map((c: any) => c.name));
-    } catch {}
+      if (!res.ok) throw new Error(`Categories failed (${res.status})`);
+      setCategories((await res.json()).map((c: any) => c.name));
+    } catch (err: any) {
+      setLoadError(err.message || 'Categories failed to load');
+    }
   }, [lang]);
 
   // External search (npm + GitHub) — debounced
@@ -305,16 +313,20 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     if (!value.trim()) return;
     setSavingKey(envKey);
     try {
-      await fetch('/api/settings/keys', {
+      const res = await fetch('/api/settings/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys: { [envKey]: value.trim() } }),
         credentials: 'include',
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to save ${envKey}`);
+      }
       setSavedKeys(prev => ({ ...prev, [envKey]: true }));
       setKeyInputs(prev => { const n = { ...prev }; delete n[envKey]; return n; });
       toast.success(`${envKey} saved`);
-    } catch { toast.error('Failed to save key'); }
+    } catch (err: any) { toast.error(err.message || 'Failed to save key'); }
     finally { setSavingKey(null); }
   };
 
@@ -388,6 +400,20 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     (!!skill.healthStatus && ['crashed', 'failed', 'restarting'].includes(skill.healthStatus)) ||
     (skill.enabled && !skill.connected);
   const shouldOfferRepair = (skill: InstalledSkill) => hasSkillRuntimeIssue(skill);
+  const getFeaturedSkill = useCallback((skill: typeof FEATURED_SKILLS[number]): MarketplaceSkill => (
+    marketSkills.find(s => s.id === `skill-${skill.id}`) || {
+      id: `skill-${skill.id}`,
+      name: skill.name,
+      description: skill.desc,
+      author: 'Lumi Official',
+      downloads: 0,
+      rating: 0,
+      category: 'Featured',
+      icon: skill.icon,
+      installSource: 'bundled' as const,
+      installed: false,
+    }
+  ), [marketSkills]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -400,8 +426,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
         <div className="flex items-center gap-2">
           <span className="text-xs text-white/45 font-mono">{sortedMarket.length} {t.available || 'available'}</span>
           <button
-            onClick={() => { fetchMarketplace(); fetchInstalled(); }}
+            onClick={() => { setLoadError(''); fetchMarketplace(); fetchInstalled(); fetchCategories(); }}
             className="p-2 rounded-lg hover:bg-white/5 text-white/55 hover:text-white/60 transition-all"
+            title={t.refresh || 'Refresh'}
           >
             <RefreshCw size={14} />
           </button>
@@ -411,6 +438,21 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       <p className="text-sm text-white/40 max-w-xl">
         {t.skillMarketDesc || 'Browse, install and generate MCP skills. Each skill expands Lumi\'s capabilities with new tools, APIs, and automations. Installed skills appear in your MCP ecosystem.'}
       </p>
+
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-400/15 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/80">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-amber-300" />
+            {lang === 'zh' ? `技能大厅加载异常：${loadError}` : `Skill Center load issue: ${loadError}`}
+          </span>
+          <button
+            onClick={() => { setLoadError(''); fetchMarketplace(); fetchInstalled(); fetchCategories(); }}
+            className="rounded-lg bg-amber-300/10 px-3 py-1.5 font-semibold text-amber-200 hover:bg-amber-300/18"
+          >
+            {lang === 'zh' ? '重试' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
@@ -443,7 +485,8 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
               {/* Hero cards: first 2 skills */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {FEATURED_SKILLS.slice(0, 2).map((skill, idx) => {
-                  const isInstalled = marketSkills.find(s => s.id === `skill-${skill.id}`)?.installed;
+                  const featuredSkill = getFeaturedSkill(skill);
+                  const isInstalled = featuredSkill.installed;
                   const isInstalling = installing === `skill-${skill.id}`;
                   return (
                     <motion.div
@@ -451,19 +494,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => {
-                        const skillData = marketSkills.find(s => s.id === `skill-${skill.id}`);
-                        setDetailSkill(skillData || {
-                          id: `skill-${skill.id}`,
-                          name: skill.name,
-                          description: skill.desc,
-                          author: 'Lumi Official',
-                          downloads: 0,
-                          rating: 0,
-                          category: '',
-                          icon: skill.icon,
-                          installSource: 'bundled' as const,
-                          installed: false,
-                        });
+                        setDetailSkill(featuredSkill);
                       }}
                       className={`relative p-8 rounded-[2.5rem] border border-white/10 overflow-hidden group cursor-pointer ${
                         idx === 0 ? 'bg-gradient-to-br from-purple-500/10 via-transparent to-pink-500/5' : 'bg-gradient-to-br from-amber-500/10 via-transparent to-yellow-500/5'
@@ -485,8 +516,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
-                              const skillData = marketSkills.find(s => s.id === `skill-${skill.id}`);
-                              if (skillData && !skillData.installed) handleInstall(skillData);
+                              if (!featuredSkill.installed) handleInstall(featuredSkill);
                             }}
                             disabled={isInstalled || isInstalling}
                             className={`text-xs font-bold px-5 py-2.5 h-auto rounded-xl transition-all ${
@@ -506,7 +536,8 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
               {/* Remaining 4 skills in a 2x2 grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {FEATURED_SKILLS.slice(2).map(skill => {
-                  const isInstalled = marketSkills.find(s => s.id === `skill-${skill.id}`)?.installed;
+                  const featuredSkill = getFeaturedSkill(skill);
+                  const isInstalled = featuredSkill.installed;
                   const isInstalling = installing === `skill-${skill.id}`;
                   return (
                     <motion.div
@@ -514,19 +545,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => {
-                        const skillData = marketSkills.find(s => s.id === `skill-${skill.id}`);
-                        setDetailSkill(skillData || {
-                          id: `skill-${skill.id}`,
-                          name: skill.name,
-                          description: skill.desc,
-                          author: 'Lumi Official',
-                          downloads: 0,
-                          rating: 0,
-                          category: '',
-                          icon: skill.icon,
-                          installSource: 'bundled' as const,
-                          installed: false,
-                        });
+                        setDetailSkill(featuredSkill);
                       }}
                       className="p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-white/10 transition-all group flex items-center gap-4 cursor-pointer"
                     >
@@ -540,8 +559,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const skillData = marketSkills.find(s => s.id === `skill-${skill.id}`);
-                          if (skillData && !skillData.installed) handleInstall(skillData);
+                          if (!featuredSkill.installed) handleInstall(featuredSkill);
                         }}
                         disabled={isInstalled || isInstalling}
                         className={`text-xs font-bold px-3 py-1.5 h-auto rounded-lg shrink-0 transition-all ${

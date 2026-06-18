@@ -857,7 +857,7 @@ export function registerChatHandler(
                     ? { toolPolicy: clientActionToolPolicy }
                   : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
               ),
-              ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn || selfRepairTurn ? {
+              ...(source === 'canvas' || operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn || selfRepairTurn ? {
                 requestConfirmation: async (toolName: string, args: Record<string, any>): Promise<boolean> => {
                   return new Promise((resolve) => {
                     const cid = crypto.randomUUID();
@@ -955,7 +955,7 @@ export function registerChatHandler(
                     error: record.error,
                   });
                 },
-                1,
+                source === 'canvas' ? 8 : 1,
                 llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
                 undefined,
                 {
@@ -971,13 +971,15 @@ export function registerChatHandler(
                       arguments: call.arguments,
                     });
                   },
-                  ...(selfRepairToolPolicy
-                    ? { toolPolicy: selfRepairToolPolicy }
-                    : clientActionToolPolicy
-                    ? { toolPolicy: clientActionToolPolicy }
-                    : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
+                  ...(source === 'canvas'
+                    ? { toolPolicy: { allowedTools: ['*'], requireConfirmation: ['file_delete', 'delete_file', 'rm', 'unlink', 'format', 'rmdir', 'uninstall'], forbiddenTools: [], maxIterations: 25 } }
+                    : selfRepairToolPolicy
+                      ? { toolPolicy: selfRepairToolPolicy }
+                      : clientActionToolPolicy
+                        ? { toolPolicy: clientActionToolPolicy }
+                        : (opModeConfig ? { toolPolicy: opModeConfig.toolPolicy } : {})
                   ),
-                  ...(operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn || selfRepairTurn ? {
+                  ...(source === 'canvas' || operationMode === 'assistant' || operationMode === 'autonomous' || clientActionOnlyTurn || selfRepairTurn ? {
                     requestConfirmation: async (toolName: string, args: Record<string, any>): Promise<boolean> => {
                       return new Promise((resolve) => {
                         const cid = crypto.randomUUID();
