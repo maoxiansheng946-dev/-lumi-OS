@@ -207,9 +207,9 @@ export function Settings({
   };
 
   return (
-    <div className="flex h-full bg-black/40 backdrop-blur-3xl overflow-hidden border border-white/10 shadow-2xl rounded-[2.5rem]">
+    <div className="lumi-surface flex h-full overflow-hidden">
       {/* Sidebar — fixed height, scrollable */}
-      <div className="w-56 flex-shrink-0 bg-white/[0.03] border-r border-white/5 flex flex-col min-h-0">
+      <div className="w-56 flex-shrink-0 border-r border-white/[0.08] bg-white/[0.025] flex flex-col min-h-0">
         <div className="px-4 pt-5 pb-3">
           <h2 className="text-xs font-black uppercase tracking-widest text-white/60">{t.settings || ui('设置', 'Settings')}</h2>
         </div>
@@ -221,7 +221,7 @@ export function Settings({
               <div key={group.label} className="mb-1">
                 <button
                   onClick={() => toggleGroup(group.label)}
-                  className="w-full flex items-center gap-1 px-2 py-1 text-xs font-black uppercase tracking-widest text-white/45 hover:text-white/40 transition-colors"
+                  className="flex w-full items-center gap-1 px-2 py-1 text-xs font-black uppercase tracking-widest text-white/45 transition-colors hover:text-white/70"
                 >
                   <ChevronDown size={9} className={`transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
                   {group.label}
@@ -244,7 +244,7 @@ export function Settings({
           })}
         </div>
 
-        <div className="px-2 pb-4 pt-2 border-t border-white/5">
+        <div className="px-2 pb-4 pt-2 border-t border-white/[0.08]">
           <button
             onClick={async () => {
               try {
@@ -256,7 +256,7 @@ export function Settings({
                 window.location.reload();
               }
             }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400/60 hover:text-red-300 hover:bg-red-500/10 transition-all"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-red-400/60 transition-all hover:bg-red-500/10 hover:text-red-300"
           >
             <LogOut size={14} />
             {t?.signOut || ui('退出登录', 'Sign Out')}
@@ -266,7 +266,7 @@ export function Settings({
 
       {/* Content — absolute positioned to prevent layout shift during transitions */}
       <div className="flex-1 min-w-0 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-5 md:p-6">
           <AnimatePresence mode="popLayout">
             <motion.div
               key={visibleSection}
@@ -416,11 +416,11 @@ function SidebarItem({ active, onClick, icon, label }: { active: boolean, onClic
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 w-full text-left relative ${active ? 'bg-white/10 text-white' : 'text-white/55 hover:bg-white/5 hover:text-white/50'}`}
+      className={`relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors duration-150 ${active ? 'border border-white/10 bg-white/[0.075] text-white' : 'border border-transparent text-white/55 hover:bg-white/[0.045] hover:text-white/75'}`}
     >
       <div className={`flex-shrink-0 w-4 h-4 flex items-center justify-center ${active ? 'text-celestial-saturn' : 'text-current'}`}>{icon}</div>
       <span className="text-[12px] font-bold uppercase tracking-tight truncate">{label}</span>
-      {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-celestial-saturn rounded-full" />}
+      {active && <div className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-celestial-saturn" />}
     </button>
   );
 }

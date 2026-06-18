@@ -209,7 +209,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-1">
       <div className="space-y-5">
-        <section className="rounded-2xl bg-red-500/[0.04] border border-red-400/10 p-5 space-y-4">
+        <section className="lumi-panel border-red-400/10 bg-red-500/[0.04] p-5 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -224,14 +224,14 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-xl text-white/35 hover:text-white hover:bg-white/10 transition-colors"
+              className="lumi-icon-button h-8 w-8 border-transparent"
               title={t?.close || ui('关闭', 'Close')}
             >
               <X size={16} />
             </button>
           </div>
 
-          <div className="rounded-2xl bg-black/30 border border-white/5 p-4">
+          <div className="lumi-panel bg-black/30 p-4">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-base font-bold text-white/85 truncate">
@@ -246,7 +246,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
                 className={`h-9 px-3 rounded-xl border transition-colors flex items-center gap-2 text-xs font-bold ${
                   player.visible
                     ? 'bg-red-500/20 border-red-400/30 text-red-200'
-                    : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10'
+                    : 'bg-white/[0.045] border-white/10 text-white/55 hover:text-white hover:bg-white/10'
                 }`}
                 title={player.visible ? (t?.hideMusicLayer || ui('隐藏氛围层', 'Hide mood layer')) : (t?.showMusicLayer || ui('显示氛围层', 'Show mood layer'))}
               >
@@ -256,7 +256,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             </div>
 
             <div className="mt-4 flex items-center gap-3">
-              <button onClick={player.prev} className="w-9 h-9 rounded-xl bg-white/5 text-white/45 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors">
+              <button onClick={player.prev} className="lumi-icon-button">
                 <SkipBack size={16} />
               </button>
               <button
@@ -265,7 +265,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
               >
                 {player.isPlaying ? <Pause size={18} /> : <Play size={18} />}
               </button>
-              <button onClick={player.next} className="w-9 h-9 rounded-xl bg-white/5 text-white/45 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors">
+              <button onClick={player.next} className="lumi-icon-button">
                 <SkipForward size={16} />
               </button>
               <div className="flex-1 min-w-0">
@@ -305,7 +305,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2">
+            <div className="lumi-panel flex flex-1 items-center gap-2 px-3 py-2">
               <Search size={15} className="text-white/30" />
               <input
                 ref={promptInputRef}
@@ -319,14 +319,14 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             <button
               onClick={askLumiToPlay}
               disabled={!musicPrompt.trim()}
-              className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-400/25 text-xs font-bold text-red-300 hover:bg-red-500/25 disabled:opacity-30 transition-colors"
+              className="lumi-button h-10 border-red-400/25 bg-red-500/15 px-4 text-red-300 hover:bg-red-500/25"
             >
               {t?.play || ui('播放', 'Play')}
             </button>
           </div>
         </section>
 
-        <section className="rounded-2xl bg-white/[0.025] border border-white/5 p-5 space-y-4">
+        <section className="lumi-panel bg-white/[0.025] p-5 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -414,7 +414,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <section className="rounded-2xl bg-white/[0.02] border border-white/5 p-5 flex flex-col gap-3">
+          <section className="lumi-panel bg-white/[0.02] p-5 flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">{ui('API 凭据', 'API Credentials')}</span>
               {configured && <span className="text-[9px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">OK</span>}
@@ -425,23 +425,23 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             <input
               type="text" placeholder={ui('App ID', 'App ID')}
               value={appId} onChange={e => setAppId(e.target.value)}
-              className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-xs text-white/70 placeholder:text-white/20 outline-none focus:border-red-500/40"
+              className="lumi-field w-full py-2 text-xs focus:border-red-500/40"
             />
             <input
               type="password" placeholder={ui('Private Key', 'Private Key')}
               value={privateKey} onChange={e => setPrivateKey(e.target.value)}
-              className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-xs text-white/70 placeholder:text-white/20 outline-none focus:border-red-500/40"
+              className="lumi-field w-full py-2 text-xs focus:border-red-500/40"
             />
             <button
               onClick={saveCreds} disabled={cfgBusy || !appId.trim() || !privateKey.trim()}
-              className="w-full py-2 rounded-lg bg-white/[0.04] border border-white/10 text-white/55 text-xs hover:bg-white/[0.08] transition-all disabled:opacity-20"
+              className="lumi-button w-full"
             >
               {cfgBusy ? (t?.saving || ui('保存中...', 'Saving...')) : (t?.saveCredentials || ui('保存凭据', 'Save credentials'))}
             </button>
             {cfgMsg && <p className="text-[10px] text-center text-white/40">{cfgMsg}</p>}
           </section>
 
-          <section className="rounded-2xl bg-white/[0.02] border border-white/5 p-5 flex flex-col items-center gap-4">
+          <section className="lumi-panel bg-white/[0.02] p-5 flex flex-col items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">{ui('网易云音乐', 'NetEase Cloud')}</span>
               {loginDone && (
@@ -455,7 +455,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             {qrImgSrc ? (
               <img src={qrImgSrc} alt={ui('二维码', 'QR Code')} className="w-40 h-40 rounded-xl bg-white" />
             ) : (
-              <div className="w-40 h-40 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-xs text-white/25">
+              <div className="lumi-panel flex h-40 w-40 items-center justify-center rounded-xl bg-white/[0.03] text-xs text-white/25">
                 {loginDone ? ui('已连接', 'Connected') : ui('扫码登录', 'QR Login')}
               </div>
             )}
@@ -463,7 +463,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
             <button
               onClick={startLogin}
               disabled={loading}
-              className="w-full py-2.5 rounded-xl bg-red-500/15 border border-red-500/25 text-red-400 text-sm font-medium hover:bg-red-500/25 transition-all disabled:opacity-30"
+              className="lumi-button w-full border-red-500/25 bg-red-500/15 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/25"
             >
               {loading ? (t?.loading || ui('加载中...', 'Loading...')) : loginDone ? (t?.musicConnected || ui('已连接', 'Connected')) : (t?.scanToLogin || ui('扫码登录', 'Scan to login'))}
             </button>
