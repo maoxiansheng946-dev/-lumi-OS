@@ -10,6 +10,7 @@ import { ToolContext } from '../tools/types';
 import { Server as SocketIOServer } from 'socket.io';
 import type { AutonomousTask } from './task_queue';
 import { getUserPreferredLLMConfig } from '../llm/user_preferences';
+import { formatLumiConstitutionForPrompt } from '../personality/constitution';
 
 interface LLMGetters {
   getDeepSeek: () => any;
@@ -146,7 +147,11 @@ export async function executeNextAutonomousTask(
     };
 
     const messages = [
-      { role: 'system' as const, content: `You are Lumi executing an autonomous background task. You work independently without user interaction. Be efficient and direct. Current task mode: ${task.mode}.` },
+      { role: 'system' as const, content: [
+        `You are Lumi executing an autonomous background task. You work independently without user interaction. Be efficient and direct. Current task mode: ${task.mode}.`,
+        formatLumiConstitutionForPrompt(),
+        'For concrete deliverables, define the work product with work_product_plan, verify it with work_product_verify or domain-specific verification tools, repair failed criteria, and only then mark the task complete. If confirmation or missing input blocks progress, report the blocker.',
+      ].join('\n\n') },
       { role: 'user' as const, content: task.description },
     ];
 

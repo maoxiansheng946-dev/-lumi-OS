@@ -33,6 +33,7 @@ import { registerSleepTools } from './sleep_tools';
 import { registerAdapterTools } from './adapter_tools';
 import { registerSelfExtensionTools } from './self_extension_tools';
 import { registerUsageTools } from './usage_tools';
+import { registerWorkProductTools } from './work_product_tools';
 
 export function registerAllTools(
   registry: ToolRegistry,
@@ -78,6 +79,7 @@ export function registerAllTools(
   registerAdapterTools(registry);
   registerSelfExtensionTools(registry);
   registerUsageTools(registry);
+  registerWorkProductTools(registry);
   if (llmGetters) {
     setSkillLLMGetters(llmGetters);
   }

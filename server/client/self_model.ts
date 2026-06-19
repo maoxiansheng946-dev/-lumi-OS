@@ -4,6 +4,7 @@ import { formatLAPSelfPrompt } from '../lap/policy';
 import { getMemoryFirewallPolicy } from '../memory/firewall';
 import { formatMusicProfileForPrompt, getCachedMusicProfile } from '../music/library_profile';
 import { getAdapterRegistry } from '../adapters/registry';
+import { formatLumiConstitutionForPrompt } from '../personality/constitution';
 import { getActionConstitutionPolicy } from '../tools/action_constitution';
 
 export type ClientMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
@@ -370,6 +371,22 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     stateKeys: ['tools'],
   },
   {
+    id: 'system.personality_constitution',
+    label: 'Lumi personality constitution',
+    kind: 'system',
+    actions: ['lumi_constitution'],
+    notes: 'Stable constitution for Lumi identity, truth about work, owner sovereignty, memory firewall, action boundaries, work-product supervision, self-extension consent, growth stability, and bounded collaboration.',
+    stateKeys: ['permissions', 'tools', 'runtime'],
+  },
+  {
+    id: 'system.work_product_supervision',
+    label: 'Work product supervision loop',
+    kind: 'system',
+    actions: ['work_product_plan', 'work_product_verify'],
+    notes: 'Defines deliverables, acceptance criteria, checkpoints, verification actions, repair cycles, and stop conditions before Lumi claims a real task is complete.',
+    stateKeys: ['tools', 'canvas', 'files', 'runtime'],
+  },
+  {
     id: 'external.browser',
     label: 'Browser and web work adapter',
     kind: 'external_app',
@@ -645,6 +662,7 @@ export function formatClientSelfPrompt(userId: string): string {
     'Use adapter_registry_list when you need a complete map of your client abilities and external adapters. Use adapter_health_check before promising that a specific adapter, CAD/BIM path, music route, messaging route, or desktop-control route is usable.',
     'When the user asks for a capability you do not have, do not simply fail. Use self_extension_plan to inspect existing coverage and choose the next safe path: use an existing tool, repair/install a skill, research an adapter, generate a skill draft with confirmation, or escalate to core code work.',
     'When the user asks which model/provider was used, how many tokens were consumed, or whether a provider is unexpectedly spending tokens, call usage_get_summary before answering.',
+    'For tasks that produce an artifact, client action, report, drawing, code change, research result, or other concrete deliverable, use work_product_plan early and work_product_verify before saying the work is complete. Repair failed criteria and verify again until pass, blocked, cancelled, or repair cycles are exhausted.',
     'Ask for explicit user confirmation before changing wallpaper mode, starting autonomous execution, starting/stopping meeting capture, or requesting sensor/permission changes.',
     'For 24-hour availability: Lumi can stay ready only while the desktop client/server is running. Use launch-at-login and close-to-background for resident desktop behavior; autonomous background work still requires auto processing plus time, idle, token, and confirmed-workflow gates.',
     'Rest is part of your local life. When Always Online is enabled and the user is idle/nighttime, you may sleep and dream by running lumi_sleep_cycle: consolidate memories, identify uncertainty, and wake with a quieter memory state. Never delete original memories or mutate core identity during dreams.',
@@ -660,6 +678,8 @@ export function formatClientSelfPrompt(userId: string): string {
     '',
     '### Client Capabilities',
     ...capabilityLines,
+    '',
+    formatLumiConstitutionForPrompt(),
     '',
     '### Client Adapter Registry',
     `- Summary: total=${adapterRegistry.summary.total}, usable=${adapterRegistry.summary.readyCount}, setupRequired=${adapterRegistry.summary.setupRequiredCount}, attention=${adapterRegistry.summary.attentionCount}, planned=${adapterRegistry.summary.plannedCount}`,

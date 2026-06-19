@@ -5,6 +5,7 @@ import { EmotionalState, formatEmotionalStateForPrompt, resolveVerbosityFromStat
 import { generateSpatiotemporalContext } from '../time/spatiotemporal';
 import { getDesktopContext } from '../context/activity_stream';
 import { getModeConfig, ConversationMode } from '../cognition/modes';
+import { formatLumiConstitutionForPrompt } from './constitution';
 import { getResponseLanguage } from '../utils/language';
 
 const VERBOSITY_GUIDE: Record<ExpressionStyle['verbosity'], string> = {
@@ -242,6 +243,7 @@ export function generateSystemPrompt(
 
   // Core identity
   blocks.push(`You are ${config.name}, ${effective.expressionStyle.persona}.\n${config.coreMotivation}`);
+  blocks.push(formatLumiConstitutionForPrompt());
 
   if (config.growthState) {
     const growth = config.growthState;
