@@ -3,6 +3,7 @@ import { listAutonomousWorkflows } from '../autonomy/workflows';
 import { formatLAPSelfPrompt } from '../lap/policy';
 import { getMemoryFirewallPolicy } from '../memory/firewall';
 import { formatMusicProfileForPrompt, getCachedMusicProfile } from '../music/library_profile';
+import { getAdapterRegistry } from '../adapters/registry';
 import { getActionConstitutionPolicy } from '../tools/action_constitution';
 
 export type ClientMode = 'chat' | 'assistant' | 'autonomous' | 'meeting';
@@ -344,6 +345,14 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     stateKeys: ['mode', 'windows', 'surfaces', 'music', 'meeting', 'canvas', 'permissions', 'runtime', 'errors'],
   },
   {
+    id: 'system.adapter_registry',
+    label: 'Client capability adapter registry',
+    kind: 'system',
+    actions: ['adapter_registry_list', 'adapter_health_check', 'external_app_list_adapters'],
+    notes: 'Structured map of Lumi client capabilities, external app adapters, skill/MCP runtime, provider/permission state, CAD/BIM handoff, messaging, web, music, meeting, canvas, organization, files, and autonomy.',
+    stateKeys: ['mode', 'windows', 'surfaces', 'music', 'meeting', 'canvas', 'org', 'permissions', 'runtime', 'tools', 'errors'],
+  },
+  {
     id: 'external.browser',
     label: 'Browser and web work adapter',
     kind: 'external_app',
@@ -568,8 +577,12 @@ export function formatClientSelfPrompt(userId: string): string {
   const memoryFirewall = getMemoryFirewallPolicy();
   const actionConstitution = getActionConstitutionPolicy();
   const musicProfile = getCachedMusicProfile(userId);
+  const adapterRegistry = getAdapterRegistry({ userId, clientState: state as Record<string, any> | null });
   const capabilityLines = CLIENT_CAPABILITIES.map(cap => (
     `- ${cap.label} [${cap.kind}]: ${cap.notes} Actions: ${cap.actions.join(', ')}${cap.requiresConfirmation ? ' (confirmation-sensitive)' : ''}`
+  ));
+  const adapterLines = adapterRegistry.adapters.map(adapter => (
+    `- ${adapter.label} (${adapter.id}) [${adapter.category}/${adapter.status}]: Actions: ${adapter.actions.join(', ')}${adapter.requiresConfirmation ? ' (confirmation-sensitive)' : ''}${adapter.diagnostics?.length ? ` Diagnostics: ${adapter.diagnostics.slice(0, 3).join('; ')}` : ''}`
   ));
 
   const stateLines = state ? [
@@ -612,6 +625,7 @@ export function formatClientSelfPrompt(userId: string): string {
     'Use the client_action tool for UI/client actions when tools are available. Do not pretend a window changed if you did not call the action or ask the user.',
     'Prefer explicit client actions such as open_music_center, start_meeting_mode, open_canvas_task, show_knowledge_base, open_avatar_studio, open_sound_studio, open_settings, and set_wallpaper_mode instead of mouse/keyboard control for Lumi UI.',
     'Use client_health_check when you need to understand your own body/client health. Use client_self_repair for safe client recovery actions such as refreshing state or opening the right recovery surface. Use client_repair_skill only with confirmation when a skill package or MCP server needs repair.',
+    'Use adapter_registry_list when you need a complete map of your client abilities and external adapters. Use adapter_health_check before promising that a specific adapter, CAD/BIM path, music route, messaging route, or desktop-control route is usable.',
     'Ask for explicit user confirmation before changing wallpaper mode, starting autonomous execution, starting/stopping meeting capture, or requesting sensor/permission changes.',
     'For 24-hour availability: Lumi can stay ready only while the desktop client/server is running. Use launch-at-login and close-to-background for resident desktop behavior; autonomous background work still requires auto processing plus time, idle, token, and confirmed-workflow gates.',
     'Rest is part of your local life. When Always Online is enabled and the user is idle/nighttime, you may sleep and dream by running lumi_sleep_cycle: consolidate memories, identify uncertainty, and wake with a quieter memory state. Never delete original memories or mutate core identity during dreams.',
@@ -627,6 +641,10 @@ export function formatClientSelfPrompt(userId: string): string {
     '',
     '### Client Capabilities',
     ...capabilityLines,
+    '',
+    '### Client Adapter Registry',
+    `- Summary: total=${adapterRegistry.summary.total}, usable=${adapterRegistry.summary.readyCount}, setupRequired=${adapterRegistry.summary.setupRequiredCount}, attention=${adapterRegistry.summary.attentionCount}, planned=${adapterRegistry.summary.plannedCount}`,
+    ...adapterLines,
     '',
     '### Current Client State',
     ...stateLines,

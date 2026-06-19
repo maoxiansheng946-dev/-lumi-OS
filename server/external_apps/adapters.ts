@@ -1,3 +1,5 @@
+import { getAdapterRegistry, AdapterCapability } from '../adapters/registry';
+
 export type ExternalAppAdapterId = 'browser' | 'wechat' | 'cad' | 'ai_apps';
 
 export interface ExternalAppAdapter {
@@ -9,7 +11,14 @@ export interface ExternalAppAdapter {
   notes: string;
 }
 
-export const EXTERNAL_APP_ADAPTERS: ExternalAppAdapter[] = [
+const LEGACY_ADAPTER_IDS: Record<ExternalAppAdapterId, string> = {
+  browser: 'web.browser',
+  wechat: 'messaging.wechat_feishu',
+  cad: 'cad_bim.drafting',
+  ai_apps: 'ai.external_agents',
+};
+
+const FALLBACK_EXTERNAL_APP_ADAPTERS: ExternalAppAdapter[] = [
   {
     id: 'browser',
     label: 'Browser and web work',
@@ -45,5 +54,29 @@ export const EXTERNAL_APP_ADAPTERS: ExternalAppAdapter[] = [
 ];
 
 export function getExternalAppAdapters(): ExternalAppAdapter[] {
-  return EXTERNAL_APP_ADAPTERS;
+  const registry = getAdapterRegistry({ includePlanned: false });
+  return (Object.entries(LEGACY_ADAPTER_IDS) as Array<[ExternalAppAdapterId, string]>)
+    .map(([legacyId, registryId]) => {
+      const adapter = registry.adapters.find(item => item.id === registryId);
+      if (!adapter) return FALLBACK_EXTERNAL_APP_ADAPTERS.find(item => item.id === legacyId);
+      return toExternalAppAdapter(legacyId, adapter);
+    })
+    .filter(Boolean) as ExternalAppAdapter[];
+}
+
+function toExternalAppAdapter(id: ExternalAppAdapterId, adapter: AdapterCapability): ExternalAppAdapter {
+  return {
+    id,
+    label: adapter.label,
+    status: toLegacyStatus(adapter),
+    actions: adapter.actions,
+    safety: adapter.safety || 'Use explicit Lumi tools and ask for confirmation before external side effects.',
+    notes: adapter.notes || '',
+  };
+}
+
+function toLegacyStatus(adapter: AdapterCapability): ExternalAppAdapter['status'] {
+  if (adapter.status === 'draft_only') return 'draft_only';
+  if (adapter.status === 'requires_setup' || adapter.status === 'blocked' || adapter.status === 'planned') return 'requires_setup';
+  return 'ready';
 }

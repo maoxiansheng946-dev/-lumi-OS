@@ -5,6 +5,8 @@ import { ToolRegistry } from '../registry';
 import { ToolContext } from '../types';
 import { getDataPath } from '../../config/data_path';
 import { getExternalAppAdapters } from '../../external_apps/adapters';
+import { getAdapterRegistry } from '../../adapters/registry';
+import { getClientState } from '../../client/self_model';
 import { isExternalAppAutomationAllowed, isMessagingSendConfirmationRequired } from '../../autonomy/safety_gate';
 
 function requireDesktopRelay(context?: ToolContext) {
@@ -710,11 +712,17 @@ export function registerExternalAppTools(registry: ToolRegistry): void {
       properties: {},
       required: [],
     },
-    handler: async () => JSON.stringify({
-      externalAppAutomationEnabled: isExternalAppAutomationAllowed(),
-      messagingSendRequiresConfirmation: isMessagingSendConfirmationRequired(),
-      adapters: getExternalAppAdapters(),
-    }, null, 2),
+    handler: async (_args, context) => {
+      const userId = context?.userId || 'anonymous';
+      const adapterRegistry = getAdapterRegistry({ userId, clientState: getClientState(userId) as Record<string, any> | null });
+      return JSON.stringify({
+        externalAppAutomationEnabled: isExternalAppAutomationAllowed(),
+        messagingSendRequiresConfirmation: isMessagingSendConfirmationRequired(),
+        adapters: getExternalAppAdapters(),
+        adapterRegistrySummary: adapterRegistry.summary,
+        adapterRegistry: adapterRegistry.adapters.filter(adapter => ['web', 'messaging', 'cad_bim', 'ai', 'automation'].includes(adapter.category)),
+      }, null, 2);
+    },
     permission: 'user',
     securityLevel: 'safe',
   });
