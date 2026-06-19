@@ -80,8 +80,11 @@ const SKILL_TEMPLATE = `/**
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createRequire } from 'module';
 import { z } from 'zod';
 import fs from 'fs/promises';
+
+const require = createRequire(import.meta.url);
 
 // ── Generated Handler ──
 {handlerCode}
@@ -276,14 +279,14 @@ ${topTools(allTools).map(t => `- ${t.name} (${t.count}x)`).join('\n')}
     let indexTs = SKILL_TEMPLATE
       .replace(/{skillName}/g, skillName)
       .replace(/{toolName}/g, parsed.toolName)
-      .replace(/{toolDescription}/g, (parsed.toolDescription || parsed.toolName).replace(/"/g, '\\"'))
+      .replace(/{toolDescription}/g, escapeTsSingleQuoted(parsed.toolDescription || parsed.toolName))
       .replace(/{timestamp}/g, now)
       .replace('{handlerCode}', handlerCode)
       .replace('{inputSchema}', schemaLiteral);
 
     const packageJson = PACKAGE_TEMPLATE
       .replace(/{skillName}/g, skillName)
-      .replace(/{toolDescription}/g, (parsed.toolDescription || '').replace(/"/g, '\\"'))
+      .replace(/{toolDescription}/g, escapeJsonString(parsed.toolDescription || ''))
       .replace(/{generatedFrom}/g, generatedFrom)
       .replace(/{installedAt}/g, now);
 
@@ -356,7 +359,7 @@ Return ONLY a JSON object with "handlerCode" (the fixed code body).`;
             const fixedIndexTs = SKILL_TEMPLATE
               .replace(/{skillName}/g, skillName)
               .replace(/{toolName}/g, parsed.toolName)
-              .replace(/{toolDescription}/g, (parsed.toolDescription || parsed.toolName).replace(/"/g, '\\"'))
+              .replace(/{toolDescription}/g, escapeTsSingleQuoted(parsed.toolDescription || parsed.toolName))
               .replace(/{timestamp}/g, now)
               .replace('{handlerCode}', fixedHandler)
               .replace('{inputSchema}', schemaLiteral);
@@ -558,13 +561,16 @@ function buildHandlerFunction(handlerCode: string, inputSchema: any): string {
     : '  // No parameters defined';
 
   // Indent the LLM-generated body code to match the function body
-  const indentedBody = handlerCode
+  const sanitizedBody = sanitizeHandlerBody(handlerCode, paramNames);
+
+  const indentedBody = sanitizedBody
     .split('\n')
     .map(line => line.trim() ? `  ${line}` : '')
     .join('\n');
 
   return `async function handler(args: Record<string, any>): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
 ${destructure}
+  let result = '';
 
   // ── Generated implementation ──
 ${indentedBody}
@@ -573,6 +579,30 @@ ${indentedBody}
     content: [{ type: 'text', text: result }],
   };
 }`;
+}
+
+function sanitizeHandlerBody(handlerCode: string, paramNames: string[]): string {
+  const duplicateDestructure = paramNames.length
+    ? new RegExp(`^\\s*const\\s*\\{\\s*${paramNames.map(escapeRegExp).join('\\s*,\\s*')}\\s*\\}\\s*=\\s*args\\s*;\\s*$`)
+    : null;
+
+  return String(handlerCode || '')
+    .replace(/^```(?:ts|typescript|js|javascript)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .split('\n')
+    .filter(line => !duplicateDestructure?.test(line))
+    .map(line => {
+      const trimmed = line.trim();
+      if (/^return\s+result\s*;?$/.test(trimmed)) return '';
+      const valueReturn = trimmed.match(/^return\s+(.+);$/);
+      if (valueReturn && !trimmed.includes('content:')) {
+        const indent = line.match(/^\s*/)?.[0] || '';
+        return `${indent}result = String(${valueReturn[1]});\n${indent}return { content: [{ type: 'text', text: result }] };`;
+      }
+      return line;
+    })
+    .join('\n')
+    .trim();
 }
 
 function buildSchemaLiteral(schema: any): string {
@@ -584,7 +614,7 @@ function buildSchemaLiteral(schema: any): string {
   const required = schema.required || [];
 
   const propEntries = Object.entries(props).map(([key, prop]: [string, any]) => {
-    return `  ${key}: z.${mapJsonTypeToZod(prop.type || 'string')}()${prop.description ? `.describe('${prop.description.replace(/'/g, "\\'")}')` : ''}`;
+    return `  ${key}: ${mapJsonTypeToZod(prop)}${prop.description ? `.describe('${prop.description.replace(/'/g, "\\'")}')` : ''}`;
   });
 
   if (propEntries.length === 0) {
@@ -594,14 +624,27 @@ function buildSchemaLiteral(schema: any): string {
   return `z.object({\n${propEntries.join(',\n')}\n})`;
 }
 
-function mapJsonTypeToZod(jsonType: string): string {
+function mapJsonTypeToZod(prop: any): string {
+  const jsonType = prop?.type || 'string';
   switch (jsonType) {
-    case 'string': return 'string';
-    case 'number': return 'number';
-    case 'integer': return 'number';
-    case 'boolean': return 'boolean';
-    case 'array': return 'array(z.any())';
-    case 'object': return 'object({})';
-    default: return 'string';
+    case 'string': return 'z.string()';
+    case 'number': return 'z.number()';
+    case 'integer': return 'z.number()';
+    case 'boolean': return 'z.boolean()';
+    case 'array': return 'z.array(z.any())';
+    case 'object': return 'z.record(z.any())';
+    default: return 'z.string()';
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeTsSingleQuoted(value: string): string {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function escapeJsonString(value: string): string {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
