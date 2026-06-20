@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Scale, FileText, Search, Crosshair, Shield, Brain, CheckCircle, Upload,
-  Calendar, Mic, ClipboardList, Plus, FolderOpen, Gavel, AlertTriangle, RefreshCw,
+  Calendar, Mic, ClipboardList, Plus, FolderOpen, Gavel, AlertTriangle, RefreshCw, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LegalBidWorkbench } from './LegalBidWorkbench';
@@ -608,7 +608,7 @@ function LegalCaseWorkspace({
                   onClick={() => onSelectCase(item.id)}
                   className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                     item.id === activeCaseId
-                      ? 'border-amber-400/20 bg-amber-500/12 text-amber-200'
+                      ? 'border-amber-400/20 bg-amber-500/[0.12] text-amber-200'
                       : 'border-transparent bg-white/[0.03] text-white/58 hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white/75'
                   }`}
                 >
@@ -754,8 +754,8 @@ function LegalCaseWorkspace({
               {documentStatus && (
                 <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
                   /失败|错误|empty|failed|Error/i.test(documentStatus)
-                    ? 'border-red-400/20 bg-red-500/8 text-red-200/80'
-                    : 'border-emerald-400/18 bg-emerald-500/8 text-emerald-200/78'
+                    ? 'border-red-400/20 bg-red-500/[0.08] text-red-200/80'
+                    : 'border-emerald-400/[0.18] bg-emerald-500/[0.08] text-emerald-200/78'
                 }`}>
                   {documentStatus}
                 </div>
@@ -835,7 +835,7 @@ function LegalActionButton({ icon, title, desc, onClick }: { icon: React.ReactNo
       onClick={onClick}
       className="lumi-panel group p-4 text-left transition-colors hover:border-amber-400/25 hover:bg-amber-400/[0.045]"
     >
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.08] text-amber-300 group-hover:bg-amber-400/12">
+      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.08] text-amber-300 group-hover:bg-amber-400/[0.12]">
         {icon}
       </div>
       <div className="text-sm font-bold text-white/82">{title}</div>
@@ -894,29 +894,53 @@ function LegalStrategyView({ caseFile }: { caseFile?: LegalCaseFile | null }) {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h2 className="text-xl font-bold text-white">{t.legalCaseStrategyTitle}</h2>
-      <p className="text-white/50 text-sm">{t.legalCaseStrategyDesc}</p>
-      <textarea
-        value={facts}
-        onChange={e => setFacts(e.target.value)}
-        placeholder={t.legalCaseStrategyPlaceholder}
-        rows={8}
-        className="lumi-field min-h-48 w-full resize-none focus:border-amber-500/50"
-      />
-      <button
-        onClick={analyze}
-        disabled={loading || !facts.trim()}
-        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
-      >
-        <Brain size={16} />
-        {loading ? ui('分析中...', 'Analyzing...') : t.legalCaseStrategyAnalyze}
-      </button>
-      {result && (
-        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
-          {result}
-        </div>
-      )}
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/20 bg-amber-500/10 text-amber-300">
+              <Brain size={22} />
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold text-white">{t.legalCaseStrategyTitle}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">{t.legalCaseStrategyDesc}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid min-h-[520px] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <label className="mb-2 text-sm font-medium text-white">{ui('案件事实', 'Case facts')}</label>
+            <textarea
+              value={facts}
+              onChange={e => setFacts(e.target.value)}
+              placeholder={t.legalCaseStrategyPlaceholder}
+              className="min-h-[360px] flex-1 resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-amber-400/35"
+            />
+            <button
+              onClick={analyze}
+              disabled={loading || !facts.trim()}
+              className="mt-3 inline-flex items-center justify-center gap-2 self-end rounded-lg border border-amber-400/20 bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Brain size={16} />}
+              {loading ? ui('分析中...', 'Analyzing...') : t.legalCaseStrategyAnalyze}
+            </button>
+          </div>
+
+          <div className="min-h-0 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            {result ? (
+              <pre className="h-full min-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-7 text-white/76 custom-scrollbar">
+                {result}
+              </pre>
+            ) : (
+              <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+                <Brain size={32} className="text-white/20" />
+                <span>{ui('策略分析结果会显示在这里。', 'Strategy analysis will appear here.')}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -953,31 +977,55 @@ function LegalVerifyView() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h2 className="text-xl font-bold text-white">{t.legalVerifyCitationTitle}</h2>
-      <p className="text-white/50 text-sm">{t.legalVerifyCitationDesc}</p>
-      <textarea
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder={t.legalVerifyCitationPlaceholder}
-        rows={6}
-        className="lumi-field min-h-40 w-full resize-none focus:border-amber-500/50"
-      />
-      <button
-        onClick={verify}
-        disabled={loading || !text.trim()}
-        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
-      >
-        <CheckCircle size={16} />
-        {loading ? ui('校验中...', 'Verifying...') : t.legalVerifyCitationVerify}
-      </button>
-      {results && results.length > 0 && (
-        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
-          {results.map((r: any, i: number) => (
-            <div key={i} className={r.error ? 'text-red-400' : ''}>{r.content || r.error}</div>
-          ))}
-        </div>
-      )}
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300">
+              <CheckCircle size={22} />
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold text-white">{t.legalVerifyCitationTitle}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">{t.legalVerifyCitationDesc}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid min-h-[500px] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <label className="mb-2 text-sm font-medium text-white">{ui('待校验文本', 'Text to verify')}</label>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={t.legalVerifyCitationPlaceholder}
+              className="min-h-[340px] flex-1 resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-emerald-400/35"
+            />
+            <button
+              onClick={verify}
+              disabled={loading || !text.trim()}
+              className="mt-3 inline-flex items-center justify-center gap-2 self-end rounded-lg border border-emerald-400/20 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+              {loading ? ui('校验中...', 'Verifying...') : t.legalVerifyCitationVerify}
+            </button>
+          </div>
+
+          <div className="min-h-0 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            {results && results.length > 0 ? (
+              <div className="h-full min-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-7 text-white/76 custom-scrollbar">
+                {results.map((r: any, i: number) => (
+                  <div key={i} className={r.error ? 'text-red-300' : 'whitespace-pre-wrap'}>{r.content || r.error}</div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-full min-h-[400px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+                <CheckCircle size={32} className="text-white/20" />
+                <span>{ui('引用校验结果会显示在这里。', 'Citation verification results will appear here.')}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -1028,29 +1076,53 @@ function LegalImportView({
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h2 className="text-xl font-bold text-white">{t.legalImportJudgmentTitle}</h2>
-      <p className="text-white/50 text-sm">{t.legalImportJudgmentDesc}</p>
-      <textarea
-        value={content}
-        onChange={e => setContent(e.target.value)}
-        placeholder={ui('粘贴裁判文书正文，或在聊天窗口上传 PDF/DOCX 文件后让 Lumi 导入...', 'Paste judgment document content here, or upload PDF/DOCX files in chat and ask Lumi to import them...')}
-        rows={12}
-        className="lumi-field min-h-72 w-full resize-none font-mono text-sm focus:border-amber-500/50"
-      />
-      <button
-        onClick={importJudgment}
-        disabled={loading || !content.trim()}
-        className="lumi-button-primary border-amber-400/25 bg-amber-500/15 px-6 py-3 text-amber-200 hover:bg-amber-500/25"
-      >
-        <Upload size={16} />
-        {loading ? ui('导入中...', 'Importing...') : t.legalImportJudgment}
-      </button>
-      {status && (
-        <div className="lumi-panel custom-scrollbar max-h-[520px] overflow-y-auto p-4 text-sm whitespace-pre-wrap text-white/80">
-          {status}
-        </div>
-      )}
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-400/20 bg-blue-500/10 text-blue-300">
+              <Upload size={22} />
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold text-white">{t.legalImportJudgmentTitle}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">{t.legalImportJudgmentDesc}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid min-h-[560px] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <label className="mb-2 text-sm font-medium text-white">{ui('裁判文书正文', 'Judgment document content')}</label>
+            <textarea
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              placeholder={ui('粘贴裁判文书正文，或在聊天窗口上传 PDF/DOCX 文件后让 Lumi 导入...', 'Paste judgment document content here, or upload PDF/DOCX files in chat and ask Lumi to import them...')}
+              className="min-h-[420px] flex-1 resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 font-mono text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-blue-400/35"
+            />
+            <button
+              onClick={importJudgment}
+              disabled={loading || !content.trim()}
+              className="mt-3 inline-flex items-center justify-center gap-2 self-end rounded-lg border border-blue-400/20 bg-blue-500/15 px-4 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-blue-500/25 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              {loading ? ui('导入中...', 'Importing...') : t.legalImportJudgment}
+            </button>
+          </div>
+
+          <div className="min-h-0 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            {status ? (
+              <pre className="h-full min-h-[460px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-7 text-white/76 custom-scrollbar">
+                {status}
+              </pre>
+            ) : (
+              <div className="flex h-full min-h-[460px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+                <Upload size={32} className="text-white/20" />
+                <span>{ui('导入结果和归档状态会显示在这里。', 'Import result and archive status will appear here.')}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

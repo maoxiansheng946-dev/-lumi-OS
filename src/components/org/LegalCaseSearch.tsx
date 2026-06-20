@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { AlertCircle, FileText, Hash, Loader2, MapPin, Search, Scale } from 'lucide-react';
 import { useT } from '../../lib/useT';
-import { Search, Loader2, FileText, MapPin, Hash } from 'lucide-react';
 
 interface CaseResult {
   articleId: string;
@@ -40,31 +40,8 @@ export function LegalCaseSearch() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ui('类案检索失败', 'Case search failed'));
       const text = data.text || data.response || data.reply || data.message || '';
-
-      // Parse structured results from LLM output
-      const lines = text.split('\n');
-      const parsed: CaseResult[] = [];
-      let current: Partial<CaseResult> = {};
-      for (const line of lines) {
-        const match = line.match(/^\d+\.\s*\*\*(.+?)\*\*\s*\[相似度:\s*([\d.]+)\]/);
-        if (match) {
-          if (current.title) parsed.push(current as CaseResult);
-          current = { title: match[1].trim(), score: parseFloat(match[2]), articleId: '', chunk: '' };
-        } else if (line.includes('案号:')) {
-          current.caseNumber = line.split('案号:')[1]?.split('|')[0]?.trim() || '';
-        } else if (line.includes('法院:')) {
-          current.court = line.split('法院:')[1]?.split('|')[0]?.trim() || '';
-        } else if (line.includes('摘要:')) {
-          current.chunk = line.split('摘要:')[1]?.trim() || '';
-        }
-      }
-      if (current.title) parsed.push(current as CaseResult);
-
-      if (parsed.length > 0) {
-        setResults(parsed);
-      } else {
-        setResults([{ articleId: 'raw', title: t.legalCaseSearchResults, chunk: text, score: 0 }]);
-      }
+      const parsed = parseCaseResults(text);
+      setResults(parsed.length > 0 ? parsed : [{ articleId: 'raw', title: t.legalCaseSearchResults || ui('检索结果', 'Search Results'), chunk: text, score: 0 }]);
     } catch (e: any) {
       setResults([{ articleId: 'error', title: ui('检索失败', 'Error'), chunk: e.message, score: 0 }]);
     } finally {
@@ -72,90 +49,160 @@ export function LegalCaseSearch() {
     }
   };
 
+  const active = selected || results[0] || null;
+
   return (
-    <div className="p-6 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-white mb-2">{t.legalCaseSearchTitle}</h2>
-      <p className="text-white/50 text-sm mb-4">{t.legalCaseSearchDesc}</p>
-
-      <div className="flex gap-3 mb-6">
-        <input
-          type="text"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') search(); }}
-          placeholder={t.legalCaseSearchPlaceholder}
-          className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50"
-        />
-        <button
-          onClick={search}
-          disabled={loading || !query.trim()}
-          className="px-5 py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-medium transition-colors flex items-center gap-2"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          {t.legalCaseSearchSearch}
-        </button>
-      </div>
-
-      <div className="flex-1 flex gap-4 min-h-0">
-        {/* Results list */}
-        <div className="w-72 flex-shrink-0 overflow-y-auto space-y-2">
-          {searched && results.length === 0 && !loading && (
-            <p className="text-white/35 text-sm">{t.legalCaseSearchNoResults}</p>
-          )}
-          {results.map((r, i) => (
-            <button
-              key={i}
-              onClick={() => setSelected(r)}
-              className={`w-full text-left p-3 rounded-xl transition-all ${
-                selected?.articleId === r.articleId && selected?.title === r.title
-                  ? 'bg-amber-500/10 border border-amber-500/30'
-                  : 'bg-white/5 border border-white/5 hover:border-white/10'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 text-white/90 text-sm font-medium truncate">
-                <FileText size={12} className="text-white/50 flex-shrink-0" />
-                {r.title}
-              </div>
-              {r.caseNumber && (
-                <div className="flex items-center gap-1 mt-1 text-white/35 text-xs">
-                  <Hash size={10} /> {r.caseNumber}
-                </div>
-              )}
-              {r.court && (
-                <div className="flex items-center gap-1 text-white/35 text-xs">
-                  <MapPin size={10} /> {r.court}
-                </div>
-              )}
-              {r.score > 0 && (
-                <div className="mt-1 text-xs text-amber-400">
-                  {t.legalScore}: {(r.score * 100).toFixed(1)}%
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Detail view */}
-        <div className="flex-1 bg-white/5 border border-white/10 rounded-xl p-4 overflow-y-auto min-w-0">
-          {selected ? (
-            <div className="space-y-3">
-              <h3 className="text-white font-bold">{selected.title}</h3>
-              <div className="flex flex-wrap gap-3 text-xs text-white/40">
-                {selected.caseNumber && <span className="flex items-center gap-1"><Hash size={10} /> {selected.caseNumber}</span>}
-                {selected.court && <span className="flex items-center gap-1"><MapPin size={10} /> {selected.court}</span>}
-                {selected.score > 0 && <span>{t.legalScore}: {(selected.score * 100).toFixed(1)}%</span>}
-              </div>
-              <div className="border-t border-white/5 pt-3 text-white/75 text-sm whitespace-pre-wrap leading-relaxed">
-                {selected.chunk}
-              </div>
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/20 bg-amber-500/10 text-amber-300">
+              <Scale size={22} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold text-white">{t.legalCaseSearchTitle || ui('类案检索', 'Similar Case Search')}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">
+                {t.legalCaseSearchDesc || ui('基于事实、案由或争议焦点检索组织裁判文书库，辅助律师形成判断。', 'Search the organization judgment library by facts, cause, or issues to support lawyer review.')}
+              </p>
             </div>
-          ) : (
-            <p className="text-white/25 text-sm italic">
-              Select a case from the list to view details
-            </p>
-          )}
-        </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45" />
+              <input
+                type="text"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter') search(); }}
+                placeholder={t.legalCaseSearchPlaceholder || ui('输入案由、事实经过、争议焦点...', 'Enter cause, facts, or disputed issues...')}
+                className="w-full rounded-lg border border-white/10 bg-black/20 py-2.5 pl-9 pr-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-amber-400/35"
+              />
+            </div>
+            <button
+              onClick={search}
+              disabled={loading || !query.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              {t.legalCaseSearchSearch || ui('检索', 'Search')}
+            </button>
+          </div>
+        </section>
+
+        <section className="grid min-h-[440px] gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+            {loading ? (
+              <div className="flex h-full min-h-[300px] items-center justify-center text-white/55">
+                <Loader2 size={24} className="animate-spin" />
+              </div>
+            ) : searched && results.length === 0 ? (
+              <EmptyState text={t.legalCaseSearchNoResults || ui('没有找到类案', 'No cases found')} />
+            ) : !searched ? (
+              <EmptyState text={ui('输入案件事实后开始检索。', 'Enter case facts to start searching.')} />
+            ) : (
+              <div className="space-y-2">
+                {results.map((result, index) => {
+                  const isActive = active === result;
+                  return (
+                    <button
+                      key={`${result.articleId}-${index}`}
+                      onClick={() => setSelected(result)}
+                      className={`w-full rounded-lg border p-3 text-left transition ${
+                        isActive
+                          ? 'border-amber-400/30 bg-amber-500/10'
+                          : 'border-white/5 bg-white/[0.03] hover:border-white/10 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <FileText size={14} className="mt-0.5 shrink-0 text-amber-200/70" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white">{result.title}</p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">{result.chunk}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/45">
+                        {result.caseNumber && <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-1"><Hash size={10} />{result.caseNumber}</span>}
+                        {result.court && <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-1"><MapPin size={10} />{result.court}</span>}
+                        {result.score > 0 && <span className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-200">{t.legalScore || ui('相似度', 'Score')}: {(result.score * 100).toFixed(1)}%</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+            {active ? (
+              <article className="h-full overflow-y-auto custom-scrollbar">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-white">{active.title}</h3>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/45">
+                      {active.caseNumber && <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-1"><Hash size={10} />{active.caseNumber}</span>}
+                      {active.court && <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-1"><MapPin size={10} />{active.court}</span>}
+                      {active.score > 0 && <span className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-200">{(active.score * 100).toFixed(1)}%</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className={`rounded-lg border p-4 text-sm leading-7 whitespace-pre-wrap ${
+                  active.articleId === 'error'
+                    ? 'border-red-400/20 bg-red-500/10 text-red-200'
+                    : 'border-white/10 bg-black/15 text-white/72'
+                }`}>
+                  {active.articleId === 'error' && <AlertCircle size={16} className="mb-2 text-red-200" />}
+                  {active.chunk || ui('暂无摘要内容。', 'No summary available.')}
+                </div>
+              </article>
+            ) : (
+              <EmptyState text={ui('选择左侧类案查看摘要和相似度。', 'Select a case to view details and similarity.')} />
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+      <FileText size={30} className="text-white/20" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function parseCaseResults(text: string): CaseResult[] {
+  const lines = text.split('\n');
+  const parsed: CaseResult[] = [];
+  let current: Partial<CaseResult> = {};
+
+  for (const line of lines) {
+    const titleMatch = line.match(/^\d+\.\s*\*\*(.+?)\*\*\s*(?:\[相似度[:：]?\s*([\d.]+)\])?/);
+    if (titleMatch) {
+      if (current.title) parsed.push(current as CaseResult);
+      current = {
+        title: titleMatch[1].trim(),
+        score: titleMatch[2] ? parseFloat(titleMatch[2]) : 0,
+        articleId: '',
+        chunk: '',
+      };
+      continue;
+    }
+    if (line.includes('案号:') || line.includes('案号：')) {
+      current.caseNumber = line.split(/案号[:：]/)[1]?.split('|')[0]?.trim() || '';
+    } else if (line.includes('法院:') || line.includes('法院：')) {
+      current.court = line.split(/法院[:：]/)[1]?.split('|')[0]?.trim() || '';
+    } else if (line.includes('摘要:') || line.includes('摘要：')) {
+      current.chunk = line.split(/摘要[:：]/)[1]?.trim() || '';
+    } else if (current.title && line.trim()) {
+      current.chunk = [current.chunk, line.trim()].filter(Boolean).join('\n');
+    }
+  }
+  if (current.title) parsed.push(current as CaseResult);
+  return parsed;
 }

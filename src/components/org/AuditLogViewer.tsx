@@ -1,8 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  ScrollText, Search, Download, Filter, Loader2,
-  Clock, User, FileText, AlertCircle, CheckCircle,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Download,
+  FileText,
+  Filter,
+  Loader2,
+  ScrollText,
+  Search,
+  User,
 } from 'lucide-react';
 import { useT } from '../../lib/useT';
 
@@ -16,51 +24,60 @@ interface AuditEntry {
   timestamp: string;
 }
 
+type Feedback = { type: 'success' | 'error'; text: string };
+
 export function AuditLogViewer() {
   const t = useT();
   const isZh = t.langCode !== 'en';
-  const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const ui = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ userId: '', action: '', resourceType: '' });
   const [showFilters, setShowFilters] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  useEffect(() => {
-    loadEntries();
-  }, []);
-
-  const loadEntries = useCallback(async (withFilters?: typeof filters) => {
+  const loadEntries = useCallback(async (withFilters = filters) => {
     setLoading(true);
     setFeedback(null);
     try {
       const params = new URLSearchParams();
       params.set('limit', '100');
-      if (withFilters) {
-        if (withFilters.userId) params.set('userId', withFilters.userId);
-        if (withFilters.action) params.set('action', withFilters.action);
-        if (withFilters.resourceType) params.set('resourceType', withFilters.resourceType);
-      }
+      if (withFilters.userId.trim()) params.set('userId', withFilters.userId.trim());
+      if (withFilters.action.trim()) params.set('action', withFilters.action.trim());
+      if (withFilters.resourceType.trim()) params.set('resourceType', withFilters.resourceType.trim());
       const res = await fetch(`/api/org/audit?${params.toString()}`, { credentials: 'include' });
       const data = await res.json().catch(() => []);
       if (!res.ok) throw new Error((data as any).error || ui(`审计日志加载失败（${res.status}）`, `Audit log load failed (${res.status})`));
       setEntries(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setFeedback({ type: 'error', text: err.message || String(err) });
-    } finally { setLoading(false); }
-  }, []);
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, ui]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, []); // initial load only; explicit filter button controls filtered reload
 
   const handleFilter = () => {
-    loadEntries(filters);
+    void loadEntries(filters);
+  };
+
+  const handleClear = () => {
+    const empty = { userId: '', action: '', resourceType: '' };
+    setFilters(empty);
+    void loadEntries(empty);
   };
 
   const handleExport = async () => {
     setFeedback(null);
     try {
       const params = new URLSearchParams();
-      if (filters.userId) params.set('userId', filters.userId);
-      if (filters.action) params.set('action', filters.action);
-      if (filters.resourceType) params.set('resourceType', filters.resourceType);
+      if (filters.userId.trim()) params.set('userId', filters.userId.trim());
+      if (filters.action.trim()) params.set('action', filters.action.trim());
+      if (filters.resourceType.trim()) params.set('resourceType', filters.resourceType.trim());
       const res = await fetch(`/api/org/audit/export?${params.toString()}`, { credentials: 'include' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -68,10 +85,12 @@ export function AuditLogViewer() {
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `audit-export-${Date.now()}.csv`;
-      a.click();
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `audit-export-${Date.now()}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
       setFeedback({ type: 'success', text: ui('审计 CSV 已导出', 'Audit CSV exported') });
     } catch (err: any) {
@@ -79,135 +98,176 @@ export function AuditLogViewer() {
     }
   };
 
-  const parseDetails = (detailsStr: string): Record<string, any> => {
-    try { return JSON.parse(detailsStr); } catch { return {}; }
+  const parseDetails = (details: string): Record<string, any> => {
+    try { return JSON.parse(details); } catch { return {}; }
   };
 
   const actionColor = (action: string): string => {
-    if (action.includes('create') || action.includes('submit') || action.includes('publish')) return 'text-green-400';
-    if (action.includes('delete') || action.includes('reject') || action.includes('remove')) return 'text-red-400';
-    if (action.includes('update') || action.includes('approve')) return 'text-blue-400';
-    if (action.includes('login') || action.includes('register')) return 'text-purple-400';
-    return 'text-white/50';
+    if (action.includes('create') || action.includes('submit') || action.includes('publish')) return 'text-emerald-300';
+    if (action.includes('delete') || action.includes('reject') || action.includes('remove')) return 'text-red-300';
+    if (action.includes('update') || action.includes('approve')) return 'text-blue-300';
+    if (action.includes('login') || action.includes('register')) return 'text-violet-300';
+    return 'text-white/60';
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="lumi-panel flex items-center justify-between gap-4 p-5">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-black uppercase tracking-[0.08em] text-white/90">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
-              <ScrollText size={24} />
-            </span>
-            {t.orgAudit}
-          </h2>
-          <p className="mt-1 text-sm text-white/40">{ui(`${entries.length} 条记录`, `${entries.length} entries`)}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`lumi-button h-9 text-sm ${showFilters ? 'border-amber-400/25 bg-amber-500/15 text-amber-200' : ''}`}
-          >
-            <Filter size={14} /> {ui('筛选', 'Filters')}
-          </button>
-          <button
-            onClick={handleExport}
-            className="lumi-button h-9 text-sm"
-          >
-            <Download size={14} /> {ui('导出 CSV', 'Export CSV')}
-          </button>
-        </div>
-      </div>
-
-      {feedback && (
-        <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
-          feedback.type === 'success'
-            ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
-            : 'border-red-500/20 bg-red-500/10 text-red-300'
-        }`}>
-          {feedback.type === 'success' ? <CheckCircle size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
-          <span>{feedback.text}</span>
-        </div>
-      )}
-
-      {/* Filter bar */}
-      {showFilters && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          className="lumi-panel flex items-end gap-3 p-4"
-        >
-          <div className="flex-1">
-            <label className="text-white/55 text-xs block mb-1">{ui('用户 ID', 'User ID')}</label>
-            <input
-              value={filters.userId}
-              onChange={e => setFilters(f => ({ ...f, userId: e.target.value }))}
-              placeholder={ui('按用户筛选...', 'Filter by user...')}
-              className="lumi-field h-10 w-full rounded-lg text-sm"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-white/55 text-xs block mb-1">{ui('操作', 'Action')}</label>
-            <input
-              value={filters.action}
-              onChange={e => setFilters(f => ({ ...f, action: e.target.value }))}
-              placeholder={ui('例如 template.create...', 'e.g. template.create...')}
-              className="lumi-field h-10 w-full rounded-lg text-sm"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-white/55 text-xs block mb-1">{ui('资源类型', 'Resource Type')}</label>
-            <input
-              value={filters.resourceType}
-              onChange={e => setFilters(f => ({ ...f, resourceType: e.target.value }))}
-              placeholder={ui('例如 agent_template...', 'e.g. agent_template...')}
-              className="lumi-field h-10 w-full rounded-lg text-sm"
-            />
-          </div>
-          <button onClick={handleFilter} className="lumi-button-primary h-10 border-amber-400/25 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25">
-            <Search size={14} /> {ui('搜索', 'Search')}
-          </button>
-        </motion.div>
-      )}
-
-      {/* Entries */}
-      {loading ? (
-        <div className="lumi-panel py-12 text-center text-white/55"><Loader2 size={24} className="mx-auto animate-spin" /></div>
-      ) : entries.length === 0 ? (
-        <div className="lumi-panel py-12 text-center text-white/55">
-          <ScrollText size={32} className="mx-auto mb-2 opacity-30" />
-          {ui('未找到审计记录', 'No audit entries found')}
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {entries.map(entry => {
-            const details = parseDetails(entry.details);
-            return (
-              <div
-                key={entry.id}
-                className="lumi-panel flex items-center gap-4 rounded-xl px-4 py-3 transition-colors hover:border-white/15 hover:bg-white/[0.07]"
-              >
-                <Clock size={12} className="text-white/45 flex-shrink-0" />
-                <span className="text-white/45 text-xs font-mono min-w-[140px]">
-                  {new Date(entry.timestamp).toLocaleString(isZh ? 'zh-CN' : undefined)}
-                </span>
-                <span className={`text-xs font-medium min-w-[160px] ${actionColor(entry.action)}`}>
-                  {entry.action}
-                </span>
-                <div className="flex items-center gap-1 text-white/55 text-xs min-w-[120px]">
-                  <User size={10} /> {entry.userId.slice(0, 10)}...
-                </div>
-                <div className="flex items-center gap-1 text-white/55 text-xs min-w-[120px]">
-                  <FileText size={10} /> {entry.resourceType}
-                </div>
-                <span className="text-white/45 text-xs font-mono flex-1 truncate">
-                  {Object.keys(details).length > 0 ? JSON.stringify(details).slice(0, 60) : '-'}
-                </span>
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-400/20 bg-amber-500/10 text-amber-300">
+                <ScrollText size={22} />
+              </span>
+              <div>
+                <h2 className="text-xl font-semibold text-white">{t.orgAudit || ui('审计日志', 'Audit Log')}</h2>
+                <p className="mt-1 text-sm text-white/50">{ui(`${entries.length} 条记录`, `${entries.length} entries`)}</p>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowFilters(prev => !prev)}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+                  showFilters
+                    ? 'border-amber-400/25 bg-amber-500/15 text-amber-100'
+                    : 'border-white/10 bg-white/5 text-white/65 hover:bg-white/10'
+                }`}
+              >
+                <Filter size={14} />
+                {ui('筛选', 'Filters')}
+              </button>
+              <button
+                onClick={handleExport}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/65 transition hover:bg-white/10 hover:text-white"
+              >
+                <Download size={14} />
+                {ui('导出 CSV', 'Export CSV')}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {feedback && <FeedbackBanner feedback={feedback} />}
+
+        {showFilters && (
+          <motion.section
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-lg border border-white/10 bg-white/[0.04] p-4"
+          >
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
+              <FilterInput
+                label={ui('用户 ID', 'User ID')}
+                value={filters.userId}
+                placeholder={ui('按用户筛选...', 'Filter by user...')}
+                onChange={value => setFilters(prev => ({ ...prev, userId: value }))}
+              />
+              <FilterInput
+                label={ui('操作', 'Action')}
+                value={filters.action}
+                placeholder="template.create"
+                onChange={value => setFilters(prev => ({ ...prev, action: value }))}
+              />
+              <FilterInput
+                label={ui('资源类型', 'Resource Type')}
+                value={filters.resourceType}
+                placeholder="agent_template"
+                onChange={value => setFilters(prev => ({ ...prev, resourceType: value }))}
+              />
+              <button
+                onClick={handleFilter}
+                className="self-end inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25"
+              >
+                <Search size={14} />
+                {ui('搜索', 'Search')}
+              </button>
+              <button
+                onClick={handleClear}
+                className="self-end rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/60 transition hover:bg-white/10"
+              >
+                {ui('清空', 'Clear')}
+              </button>
+            </div>
+          </motion.section>
+        )}
+
+        <section className="min-h-[360px] overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+          {loading ? (
+            <div className="flex h-72 items-center justify-center text-white/55">
+              <Loader2 size={24} className="animate-spin" />
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="flex h-72 flex-col items-center justify-center gap-2 text-center text-sm text-white/45">
+              <ScrollText size={32} className="text-white/20" />
+              <span>{ui('未找到审计记录', 'No audit entries found')}</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/8">
+              {entries.map(entry => {
+                const details = parseDetails(entry.details);
+                const detailPreview = Object.keys(details).length > 0 ? JSON.stringify(details) : '-';
+                return (
+                  <div key={entry.id} className="grid gap-3 p-4 text-xs transition hover:bg-white/[0.04] lg:grid-cols-[150px_170px_140px_140px_minmax(0,1fr)]">
+                    <span className="inline-flex items-center gap-2 text-white/45">
+                      <Clock size={12} />
+                      {new Date(entry.timestamp).toLocaleString(isZh ? 'zh-CN' : undefined)}
+                    </span>
+                    <span className={`font-medium ${actionColor(entry.action)}`}>{entry.action}</span>
+                    <span className="inline-flex min-w-0 items-center gap-1 text-white/55">
+                      <User size={11} />
+                      <span className="truncate">{entry.userId}</span>
+                    </span>
+                    <span className="inline-flex min-w-0 items-center gap-1 text-white/55">
+                      <FileText size={11} />
+                      <span className="truncate">{entry.resourceType}</span>
+                    </span>
+                    <span className="min-w-0 truncate font-mono text-white/40" title={detailPreview}>
+                      {detailPreview}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function FilterInput({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      <span className="mb-1 block text-xs text-white/50">{label}</span>
+      <input
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/35 focus:border-amber-400/35"
+      />
+    </label>
+  );
+}
+
+function FeedbackBanner({ feedback }: { feedback: Feedback }) {
+  return (
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+      feedback.type === 'success'
+        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+        : 'border-red-500/20 bg-red-500/10 text-red-200'
+    }`}>
+      {feedback.type === 'success' ? <CheckCircle size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
+      <span>{feedback.text}</span>
     </div>
   );
 }

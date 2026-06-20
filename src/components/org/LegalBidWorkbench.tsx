@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { FileText, Upload, Download, Loader2 } from 'lucide-react';
-import { useT } from '../../lib/useT';
+import { Download, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { useT } from '../../lib/useT';
 
-export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchView?: (v: any) => void }) {
+export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchView?: (view: any) => void }) {
   const t = useT();
   const isZh = t.langCode !== 'en';
   const ui = (zh: string, en: string) => (isZh ? zh : en);
@@ -14,8 +14,8 @@ export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchVie
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
@@ -66,83 +66,99 @@ export function LegalBidWorkbench({ onSwitchView: _onSwitchView }: { onSwitchVie
   };
 
   const exportBid = () => {
+    if (!result) return;
     const blob = new Blob([result], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${projectName || 'bid'}.md`;
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${projectName || 'bid-proposal'}.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="p-6 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-white mb-2">{t.legalBidGenTitle}</h2>
-      <p className="text-white/50 text-sm mb-6">{t.legalBidGenDesc}</p>
-
-      <div className="flex-1 flex gap-4 min-h-0">
-        <div className="flex-1 flex flex-col space-y-3 min-w-0">
-          <input
-            type="text"
-            value={projectName}
-            onChange={e => setProjectName(e.target.value)}
-            placeholder={ui('项目名称（可选）', 'Project name (optional)')}
-            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50"
-          />
-          <textarea
-            value={requirements}
-            onChange={e => setRequirements(e.target.value)}
-            placeholder={t.legalBidGenPlaceholder}
-            rows={12}
-            className="flex-1 w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/35 focus:outline-none focus:border-amber-500/50 resize-none"
-          />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={generateBid}
-              disabled={loading || !requirements.trim()}
-              className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded-xl font-medium transition-colors flex items-center gap-2"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-              {t.legalBidGenGenerate}
-            </button>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading || loading}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white/80 rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-40"
-            >
-              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t.legalBidGenUpload}
-            </button>
-            <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} className="hidden" />
-          </div>
-          <p className="text-white/30 text-xs">{t.legalBidGenPaste}</p>
-        </div>
-
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-white/70 text-sm font-semibold">{ui('输出', 'Output')}</h3>
-            {result && (
-              <button
-                onClick={exportBid}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white/70 rounded-lg text-xs transition-colors"
-              >
-                <Download size={12} />
-                {t.legalBidGenExport}
-              </button>
-            )}
-          </div>
-          <div className="flex-1 bg-white/5 border border-white/10 rounded-xl p-4 overflow-y-auto">
-            {result ? (
-              <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-white/80 text-sm">
-                {result}
-              </div>
-            ) : (
-              <p className="text-white/25 text-sm italic">
-                {ui('生成的标书内容会显示在这里。', 'Generated bid proposal will appear here.')}
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-400/20 bg-violet-500/10 text-violet-300">
+              <FileText size={22} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold text-white">{t.legalBidGenTitle || ui('标书生成', 'Bid Proposal Workbench')}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">
+                {t.legalBidGenDesc || ui('解析招标要求并生成可编辑的商务标、技术标框架。', 'Parse tender requirements and generate an editable commercial/technical proposal framework.')}
               </p>
-            )}
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-3 grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                type="text"
+                value={projectName}
+                onChange={event => setProjectName(event.target.value)}
+                placeholder={ui('项目名称（可选）', 'Project name (optional)')}
+                className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/35 focus:border-violet-400/35"
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || loading}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/65 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+              >
+                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {t.legalBidGenUpload || ui('上传文件', 'Upload')}
+              </button>
+              <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} className="hidden" />
+            </div>
+            <textarea
+              value={requirements}
+              onChange={event => setRequirements(event.target.value)}
+              placeholder={t.legalBidGenPlaceholder || ui('粘贴招标文件、评分标准、技术要求、合同条款...', 'Paste tender document, scoring rules, technical requirements, and contract terms...')}
+              className="min-h-[420px] flex-1 resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-violet-400/35"
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-white/40">{t.legalBidGenPaste || ui('可粘贴文本，也可上传 PDF/DOCX/TXT 文件。', 'Paste text or upload PDF/DOCX/TXT files.')}</p>
+              <button
+                onClick={generateBid}
+                disabled={loading || !requirements.trim()}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/15 px-4 py-2.5 text-sm font-medium text-violet-100 transition hover:bg-violet-500/25 disabled:opacity-50"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                {t.legalBidGenGenerate || ui('生成标书', 'Generate')}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-white">{ui('输出', 'Output')}</h3>
+              {result && (
+                <button
+                  onClick={exportBid}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/65 transition hover:bg-white/10 hover:text-white"
+                >
+                  <Download size={14} />
+                  {t.legalBidGenExport || ui('导出', 'Export')}
+                </button>
+              )}
+            </div>
+            <div className="min-h-[420px] flex-1 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 custom-scrollbar">
+              {result ? (
+                <article className="whitespace-pre-wrap text-sm leading-7 text-white/78">{result}</article>
+              ) : (
+                <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+                  <FileText size={32} className="text-white/20" />
+                  <span>{ui('生成的标书内容会显示在这里。', 'Generated bid proposal will appear here.')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
