@@ -41,6 +41,18 @@ interface UseWakeWordReturn {
 }
 
 const PICOVOICE_ACCESS_KEY_STORAGE = 'lumi_picovoice_key';
+const WAKE_SERVICE_MISSING_MESSAGE = '语音唤醒需要先在设置 > 语音服务配置豆包语音或 DashScope。';
+
+async function hasServerWakeProvider(): Promise<boolean | null> {
+  try {
+    const response = await fetch('/api/settings/keys', { credentials: 'include' });
+    const status = await response.json().catch(() => ({}));
+    if (!response.ok) return null;
+    return Boolean(status.DOUBAO_SPEECH_KEY || status.DASHSCOPE_API_KEY || status.QWEN_API_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export function useWakeWord({
   socket,
@@ -68,6 +80,7 @@ export function useWakeWord({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const enabledRef = useRef(enabled);
   const socketRef = useRef(socket);
+  const wakeConfigUnavailableRef = useRef(false);
   const wakeHandlersRef = useRef<{
     detected?: (data: { keyword: string; timestamp: string }) => void;
     started?: () => void;
@@ -121,6 +134,22 @@ export function useWakeWord({
     const s = socketRef.current;
     if (!s?.connected) {
       setError('Socket not connected — retrying...');
+      return;
+    }
+
+    if (wakeConfigUnavailableRef.current) {
+      setIsListening(false);
+      setIsSupported(false);
+      setError(WAKE_SERVICE_MISSING_MESSAGE);
+      return;
+    }
+
+    const hasProvider = await hasServerWakeProvider();
+    if (hasProvider === false) {
+      wakeConfigUnavailableRef.current = true;
+      setIsListening(false);
+      setIsSupported(false);
+      setError(WAKE_SERVICE_MISSING_MESSAGE);
       return;
     }
 
@@ -183,6 +212,17 @@ export function useWakeWord({
 
       const onError = (data: { message: string }) => {
         console.warn('[WakeWord-Qwen] Server error:', data.message);
+        const message = data.message || '';
+        if (/required for wake word detection|not configured|no DashScope key/i.test(message)) {
+          wakeConfigUnavailableRef.current = true;
+          setIsListening(false);
+          setIsSupported(false);
+          setError(WAKE_SERVICE_MISSING_MESSAGE);
+          cleanupAudio();
+          try { s.emit('wake:stop'); } catch {}
+          removeWakeHandlers();
+          return;
+        }
         setError(data.message);
       };
 
@@ -198,6 +238,11 @@ export function useWakeWord({
       const msg = err.message || 'Failed to start wake word';
       if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
         setError('Microphone permission denied. Please allow mic access.');
+      } else if (/required for wake word detection|not configured|no DashScope key/i.test(msg)) {
+        wakeConfigUnavailableRef.current = true;
+        setIsListening(false);
+        setIsSupported(false);
+        setError(WAKE_SERVICE_MISSING_MESSAGE);
       } else {
         setError(msg);
       }
@@ -347,10 +392,22 @@ export function useWakeWord({
     };
   }, [socket?.id]);
 
+  useEffect(() => {
+    const onKeysChanged = () => {
+      wakeConfigUnavailableRef.current = false;
+      if (enabledRef.current) {
+        setError(null);
+        setTimeout(() => { void enable(); }, 0);
+      }
+    };
+    window.addEventListener('lumi:keys-changed', onKeysChanged);
+    return () => window.removeEventListener('lumi:keys-changed', onKeysChanged);
+  }, [enable]);
+
   // Auto-start / stop — includes socket state so it retries when connection becomes available
   useEffect(() => {
     console.log('[WakeWord] State change — enabled:', enabled, 'isListening:', isListening, 'socket:', !!socketRef.current?.connected);
-    if (enabled && !isListening) {
+    if (enabled && !isListening && !wakeConfigUnavailableRef.current) {
       enable();
     } else if (!enabled && isListening) {
       disable();
