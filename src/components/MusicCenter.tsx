@@ -3,6 +3,7 @@ import { BarChart3, Heart, Maximize2, Pause, Play, RefreshCw, Search, SkipBack, 
 import { toast } from 'sonner';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 import { useSocket } from '../hooks/useSocket';
+import { apiFetch } from '../services/apiClient';
 
 interface MusicProfileCount {
   name: string;
@@ -56,17 +57,17 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
 
   const loadMusicProfile = async () => {
     try {
-      const res = await fetch('/api/music/profile');
+      const res = await apiFetch('/api/music/profile');
       const data = await res.json();
       if (res.ok) setProfile(data.profile || null);
     } catch {}
   };
 
   useEffect(() => {
-    fetch('/api/ncm/configure/status').then(r => r.json()).then(s => {
+    apiFetch('/api/ncm/configure/status').then(r => r.json()).then(s => {
       setConfigured(s.configured);
     }).catch(() => setConfigured(false));
-    fetch('/api/ncm/login/status').then(r => r.json()).then(s => {
+    apiFetch('/api/ncm/login/status').then(r => r.json()).then(s => {
       setLoginDone(Boolean(s.done));
       setQrImgSrc(s.qrUrl ? `https://quickchart.io/qr?text=${encodeURIComponent(s.qrUrl)}&size=220` : null);
     }).catch(() => {});
@@ -79,7 +80,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
     setProfileBusy(true);
     setProfileError('');
     try {
-      const res = await fetch('/api/music/profile/analyze', {
+      const res = await apiFetch('/api/music/profile/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ maxSongs: 3000 }),
@@ -102,13 +103,18 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
     setCfgBusy(true);
     setCfgMsg('');
     try {
-      const res = await fetch('/api/ncm/configure', {
+      const res = await apiFetch('/api/ncm/configure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appId: appId.trim(), privateKey: privateKey.trim() }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || ui('保存凭据失败', 'Failed to save credentials'));
+      const statusRes = await apiFetch('/api/ncm/configure/status');
+      const status = await statusRes.json().catch(() => ({}));
+      if (!statusRes.ok || !status.configured) {
+        throw new Error(status.error || ui('凭据未被后端确认保存', 'Credentials were not confirmed by the backend'));
+      }
       setConfigured(true);
       setCfgMsg(t?.musicCredentialsSaved || ui('凭据已保存', 'Credentials saved'));
       toast.success(t?.musicCredentialsSaved || ui('凭据已保存', 'Credentials saved'));
@@ -125,7 +131,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
     setLoading(true);
     setQrImgSrc(null);
     try {
-      const res = await fetch('/api/ncm/login', { method: 'POST' });
+      const res = await apiFetch('/api/ncm/login', { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.done) {
         setLoginDone(true);
@@ -139,7 +145,7 @@ export function MusicCenter({ isOpen, onClose, t }: { isOpen: boolean; onClose: 
 
       const interval = setInterval(async () => {
         try {
-          const sr = await fetch('/api/ncm/login/status');
+          const sr = await apiFetch('/api/ncm/login/status');
           const ss = await sr.json();
           setLoginDone(Boolean(ss.done));
           setQrImgSrc(ss.qrUrl ? `https://quickchart.io/qr?text=${encodeURIComponent(ss.qrUrl)}&size=220` : null);

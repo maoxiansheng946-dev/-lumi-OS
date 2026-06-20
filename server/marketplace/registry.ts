@@ -11,13 +11,24 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { readDB, writeDB } from '../../db_layer';
-import { getTranslation } from '../skills/translations';
+import { getTranslation, translateCategory } from '../skills/translations';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const SKILLS_DIR = path.join(os.homedir(), 'lumi_skills');
-const BUNDLED_DIR = path.join(__dirname, '..', 'skills', 'bundled');
+
+function resolveBundledDir(): string {
+  const candidates = [
+    path.join(process.cwd(), 'server', 'skills', 'bundled'),
+    path.join(__dirname, '..', 'skills', 'bundled'),
+    path.join(__dirname, 'server', 'skills', 'bundled'),
+    path.join(__dirname, '..', 'server', 'skills', 'bundled'),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+}
+
+const BUNDLED_DIR = resolveBundledDir();
 
 export interface MarketplaceSkill {
   id: string;
@@ -135,6 +146,7 @@ function applyTranslations(skills: MarketplaceSkill[], lang?: string): Marketpla
       if (t.description) s.description = t.description;
       if (t.setupNote && s.setupNote) s.setupNote = t.setupNote;
     }
+    s.category = translateCategory(s.category, lang);
   }
   return skills;
 }
@@ -183,10 +195,10 @@ export function searchSkills(query: string, lang?: string): MarketplaceSkill[] {
   );
 }
 
-export function getCategories(): string[] {
+export function getCategories(lang?: string): string[] {
   const categories = new Set<string>();
   for (const s of getMarketplaceSkills()) {
-    categories.add(s.category);
+    categories.add(translateCategory(s.category, lang));
   }
   return [...categories].sort();
 }

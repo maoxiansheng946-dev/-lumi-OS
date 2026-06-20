@@ -4,6 +4,7 @@ import { Building2, ArrowRight, CheckCircle, Loader2, AlertCircle } from 'lucide
 import { Button } from '../ui/button';
 import { useT } from '../../lib/useT';
 import { useApp } from '../../contexts/AppContext';
+import { apiFetch } from '../../services/apiClient';
 
 export function JoinOrgPage() {
   const t = useT();
@@ -18,7 +19,7 @@ export function JoinOrgPage() {
   const handleValidate = async () => {
     if (code.length < 6) return;
     try {
-      const res = await fetch(`/api/org/invitations/${code.toUpperCase()}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/org/invitations/${code.toUpperCase()}`);
       const data = await res.json();
       if (data.valid) {
         setOrgInfo(data);
@@ -36,10 +37,9 @@ export function JoinOrgPage() {
   const handleJoin = async () => {
     setStep('joining');
     try {
-      const res = await fetch(`/api/org/invitations/${code.toUpperCase()}/accept`, {
+      const res = await apiFetch(`/api/org/invitations/${code.toUpperCase()}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {

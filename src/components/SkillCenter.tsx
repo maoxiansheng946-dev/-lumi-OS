@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
 import { GitHubMCPBrowser } from './GitHubMCPBrowser';
 import { getSavedKeyStatus, saveServerKeys } from '@/services/settingsKeys';
+import { apiFetch } from '@/services/apiClient';
 
 const ICON_CLASSES: Record<string, string> = {
   CloudSun: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
@@ -182,12 +183,12 @@ export type SkillCenterTab = 'featured' | 'marketplace' | 'installed' | 'mcp' | 
 type SortKey = 'downloads' | 'rating' | 'newest';
 
 const FEATURED_SKILLS = [
-  { id: 'legal-casework', name: 'Legal Casework', icon: 'FileText', iconColor: 'from-blue-500 to-cyan-500', desc: 'Lawyer-facing casework pack. Intake briefs, deadline planning, document outlines, and case analysis support with clear review boundaries.', prompt: '帮我把这段案件事实整理成会谈纪要、争议焦点和待补材料' },
-  { id: 'cad-drafting', name: 'CAD Drafting Pack', icon: 'Monitor', iconColor: 'from-cyan-500 to-sky-500', desc: 'CAD drafting workflow pack. Space programs, editable DXF draft files, and drawing QA checklists for review-ready handoff.', prompt: '根据这个户型需求生成一个可编辑 DXF 草图并列出图纸检查项' },
-  { id: 'messaging-ops', name: 'Feishu WeChat Ops', icon: 'Mail', iconColor: 'from-emerald-500 to-teal-500', desc: 'Remote collaboration pack for Feishu, WeChat, and WeCom. Triage requests, draft replies, handle file intake, and guide setup.', prompt: '帮我把这条飞书消息分诊，判断要查资料还是要回复' },
-  { id: 'finance-office', name: 'Finance Office', icon: 'Calculator', iconColor: 'from-amber-500 to-orange-500', desc: 'Business finance pack. Expense summaries, cash-flow forecasts, reimbursement checks, and management report outlines.', prompt: '帮我把这些报销和发票记录整理成费用汇总和异常项' },
-  { id: 'design-studio-pack', name: 'Design Studio Pack', icon: 'Palette', iconColor: 'from-fuchsia-500 to-rose-500', desc: 'Design workflow pack. Creative briefs, brand directions, UI review checklists, and production handoff planning.', prompt: '帮我为这个品牌做三个视觉方向和设计审查清单' },
-  { id: 'neteasemusic', name: 'Netease Cloud Music', icon: 'Music', iconColor: 'from-rose-500 to-pink-500', desc: 'Music companion pack. Search songs, lyrics, playback control, playlist context, and mood-aware listening workflows.', prompt: '根据我现在聊天的状态，放一首合适的歌并打开氛围层' },
+  { id: 'legal-casework', name: 'Legal Casework', zhName: '法律案件工作包', icon: 'FileText', iconColor: 'from-blue-500 to-cyan-500', desc: 'Lawyer-facing casework pack. Intake briefs, deadline planning, document outlines, and case analysis support with clear review boundaries.', zhDesc: '面向律师办案流程的案件辅助能力，支持会谈纪要、期限规划、文书提纲和案件分析。', prompt: '帮我把这段案件事实整理成会谈纪要、争议焦点和待补材料' },
+  { id: 'cad-drafting', name: 'CAD Drafting Pack', zhName: 'CAD 制图包', icon: 'Monitor', iconColor: 'from-cyan-500 to-sky-500', desc: 'CAD drafting workflow pack. Space programs, editable DXF draft files, and drawing QA checklists for review-ready handoff.', zhDesc: '空间规划、可编辑 DXF 草图生成和图纸检查清单。', prompt: '根据这个户型需求生成一个可编辑 DXF 草图并列出图纸检查项' },
+  { id: 'messaging-ops', name: 'Feishu WeChat Ops', zhName: '飞书/微信协作包', icon: 'Mail', iconColor: 'from-emerald-500 to-teal-500', desc: 'Remote collaboration pack for Feishu, WeChat, and WeCom. Triage requests, draft replies, handle file intake, and guide setup.', zhDesc: '飞书、微信和企业微信消息分诊、文件接收、回复草稿与远程协作。', prompt: '帮我把这条飞书消息分诊，判断要查资料还是要回复' },
+  { id: 'finance-office', name: 'Finance Office', zhName: '财务办公包', icon: 'Calculator', iconColor: 'from-amber-500 to-orange-500', desc: 'Business finance pack. Expense summaries, cash-flow forecasts, reimbursement checks, and management report outlines.', zhDesc: '费用汇总、现金流预测、报销检查和经营报告提纲。', prompt: '帮我把这些报销和发票记录整理成费用汇总和异常项' },
+  { id: 'design-studio-pack', name: 'Design Studio Pack', zhName: '设计工作室包', icon: 'Palette', iconColor: 'from-fuchsia-500 to-rose-500', desc: 'Design workflow pack. Creative briefs, brand directions, UI review checklists, and production handoff planning.', zhDesc: '创意简报、视觉方向、UI/品牌审查和生产交付计划。', prompt: '帮我为这个品牌做三个视觉方向和设计审查清单' },
+  { id: 'neteasemusic', name: 'Netease Cloud Music', zhName: '网易云音乐', icon: 'Music', iconColor: 'from-rose-500 to-pink-500', desc: 'Music companion pack. Search songs, lyrics, playback control, playlist context, and mood-aware listening workflows.', zhDesc: '歌曲搜索、歌词、播放控制、歌单语境和情绪化音乐推荐。', prompt: '根据我现在聊天的状态，放一首合适的歌并打开氛围层' },
 ];
 
 export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang: 'en' | 'zh'; initialTab?: SkillCenterTab }) {
@@ -224,7 +225,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const fetchMarketplace = useCallback(async () => {
     try {
-      const res = await fetch(`/api/marketplace/skills?lang=${lang}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/marketplace/skills?lang=${lang}`);
       if (!res.ok) throw new Error(`Marketplace failed (${res.status})`);
       setMarketSkills(await res.json());
     } catch (err: any) {
@@ -234,7 +235,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const fetchInstalled = useCallback(async () => {
     try {
-      const res = await fetch('/api/skills', { credentials: 'include' });
+      const res = await apiFetch('/api/skills');
       if (!res.ok) throw new Error(`Installed skills failed (${res.status})`);
       const data = await res.json();
       setInstalledSkills(data.skills || []);
@@ -246,7 +247,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch(`/api/marketplace/categories?lang=${lang}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/marketplace/categories?lang=${lang}`);
       if (!res.ok) throw new Error(`Categories failed (${res.status})`);
       setCategories((await res.json()).map((c: any) => c.name));
     } catch (err: any) {
@@ -262,11 +263,11 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     const qClean = encodeURIComponent(q);
     try {
       const [npmRes, ghRes] = await Promise.allSettled([
-        fetch(`/api/marketplace/discover/npm?q=${qClean}`).then(async r => {
+        apiFetch(`/api/marketplace/discover/npm?q=${qClean}`).then(async r => {
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `npm search failed (${r.status})`);
           return r.json();
         }),
-        fetch(`/api/marketplace/discover/github?topic=${qClean}`).then(async r => {
+        apiFetch(`/api/marketplace/discover/github?topic=${qClean}`).then(async r => {
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `GitHub search failed (${r.status})`);
           return r.json();
         }),
@@ -302,7 +303,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   useEffect(() => {
     let cancelled = false;
     if (lang === 'zh' && !translationReady) {
-      fetch('/api/marketplace/translate?lang=zh', { method: 'POST' })
+      apiFetch('/api/marketplace/translate?lang=zh', { method: 'POST' })
         .then(() => { if (!cancelled) { setTranslationReady(true); fetchMarketplace(); } })
         .catch(() => {});
     }
@@ -342,7 +343,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       if ('installPath' in skill && skill.installPath) body.installPath = skill.installPath;
       if ('npmPackage' in skill && skill.npmPackage) body.npmPackage = skill.npmPackage;
       if ('repoUrl' in skill && skill.repoUrl) body.repoUrl = skill.repoUrl;
-      const res = await fetch('/api/marketplace/skills/acquire', {
+      const res = await apiFetch('/api/marketplace/skills/acquire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -363,7 +364,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const handleUninstall = async (name: string) => {
     try {
-      const res = await fetch(`/api/skills/${name}`, { method: 'DELETE', credentials: 'include' });
+      const res = await apiFetch(`/api/skills/${name}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(`"${name}" ${t.skillUninstalledToast}`);
         if (socket) socket.emit('skill:uninstalled', { name });
@@ -378,7 +379,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const handleRepair = async (name: string) => {
     setRepairing(name);
     try {
-      const res = await fetch(`/api/skills/${name}/repair`, { method: 'POST', credentials: 'include' });
+      const res = await apiFetch(`/api/skills/${name}/repair`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.reason || data.error || 'Repair failed');
       toast.success(lang === 'zh' ? `"${name}" 已修复` : `"${name}" repaired`);
@@ -395,7 +396,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const handleCleanupBroken = async () => {
     setCleaningBroken(true);
     try {
-      const res = await fetch('/api/skills/broken', { method: 'DELETE', credentials: 'include' });
+      const res = await apiFetch('/api/skills/broken', { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Cleanup failed');
       const removed = Array.isArray(data.removed) ? data.removed.length : 0;
@@ -410,7 +411,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const handleToggle = async (name: string, enabled: boolean) => {
     try {
-      const res = await fetch(`/api/skills/${name}/${enabled ? 'enable' : 'disable'}`, { method: 'POST', credentials: 'include' });
+      const res = await apiFetch(`/api/skills/${name}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Toggle failed');
@@ -438,7 +439,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     if (!genDescription.trim()) return;
     setGenerating(true);
     try {
-      const res = await fetch('/api/skills/generate', {
+      const res = await apiFetch('/api/skills/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: genDescription }),
@@ -458,7 +459,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     try {
       const installed = installedSkills.find(s => s.name === skillName);
       if (!installed) return;
-      const res = await fetch('/api/marketplace/publish', {
+      const res = await apiFetch('/api/marketplace/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -508,8 +509,8 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const getFeaturedSkill = useCallback((skill: typeof FEATURED_SKILLS[number]): MarketplaceSkill => (
     marketSkills.find(s => s.id === `skill-${skill.id}`) || {
       id: `skill-${skill.id}`,
-      name: skill.name,
-      description: skill.desc,
+      name: lang === 'zh' ? skill.zhName : skill.name,
+      description: lang === 'zh' ? skill.zhDesc : skill.desc,
       author: 'Lumi Official',
       downloads: 0,
       rating: 0,
@@ -518,7 +519,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       installSource: 'bundled' as const,
       installed: false,
     }
-  ), [marketSkills]);
+  ), [lang, marketSkills]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

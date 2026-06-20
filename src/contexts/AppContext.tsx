@@ -5,6 +5,7 @@ import * as agentService from '../services/agentService';
 import * as notificationService from '../services/notificationService';
 import { socketService } from '../services/socketService';
 import { saveServerKeys } from '../services/settingsKeys';
+import { apiFetch } from '../services/apiClient';
 
 interface UserProfile {
   uid: string;
@@ -132,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    fetch('/api/preferences/vision', { credentials: 'include' })
+    apiFetch('/api/preferences/vision')
       .then(r => r.ok ? r.json() : null)
       .then(pref => {
         if (!pref?.provider) return;
@@ -177,7 +178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const switchDomain = async (domain: 'personal' | 'work'): Promise<DomainSwitchResult> => {
     if (domain === 'personal') {
       try {
-        const res = await fetch('/api/auth/switch-org', {
+        const res = await apiFetch('/api/auth/switch-org', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orgId: null }),
@@ -208,7 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let orgName = orgConnection?.orgName || '';
     if (!orgId) {
       try {
-        const orgsRes = await fetch('/api/auth/orgs', { credentials: 'include' });
+        const orgsRes = await apiFetch('/api/auth/orgs');
         if (orgsRes.ok) {
           const { orgs } = await orgsRes.json();
           if (orgs && orgs.length > 0) {
@@ -225,7 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, domain: 'work', message: '当前账号还没有可切换的组织', connection: orgConnection };
     }
     try {
-      const res = await fetch('/api/auth/switch-org', {
+      const res = await apiFetch('/api/auth/switch-org', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orgId, orgRole }),
@@ -264,7 +265,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOperationModeState(normalizedMode);
     localStorage.setItem('lumi_operation_mode', normalizedMode);
     try {
-      await fetch('/api/preferences/operation_mode', {
+      await apiFetch('/api/preferences/operation_mode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: normalizedMode }),
@@ -319,7 +320,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (updated.model && updated.provider) {
           allModels[updated.provider] = updated.model;
         }
-        fetch('/api/preferences/llm', {
+        apiFetch('/api/preferences/llm', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider: updated.provider || prev.provider, models: allModels }),
@@ -375,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         allModels[updated.provider] = updated.model;
         localStorage.setItem('lumi_vision_models', JSON.stringify(allModels));
       }
-      fetch('/api/preferences/vision', {
+      apiFetch('/api/preferences/vision', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: updated.provider, model: updated.model, models: allModels }),
@@ -417,7 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
         // Load tool overrides from server
         try {
-          const toRes = await fetch('/api/settings/tool_overrides', { credentials: 'include' });
+          const toRes = await apiFetch('/api/settings/tool_overrides');
           if (toRes.ok) {
             const serverOverrides = await toRes.json();
             if (serverOverrides && Object.keys(serverOverrides).length > 0) {
@@ -552,7 +553,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (provider) {
       localStorage.setItem('lumi_selected_voice_provider', provider);
       // Auto-switch TTS provider to match the selected voice
-      fetch('/api/voice/provider', {
+      apiFetch('/api/voice/provider', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tts: provider }),
@@ -591,7 +592,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = { ...prev, [name]: override };
       localStorage.setItem('lumi_tool_overrides', JSON.stringify(next));
       // Sync to server for tool registry awareness
-      fetch('/api/settings', {
+      apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

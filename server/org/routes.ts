@@ -53,7 +53,7 @@ export function mountOrgRoutes(router: Router, io?: SocketIOServer) {
     );
     res.cookie('token', newToken, { httpOnly: true, secure: false, sameSite: 'lax', maxAge: 24 * 60 * 60 * 1000 });
     persistRole('org', org.id);
-    res.status(201).json(org);
+    res.status(201).json({ ...org, token: newToken, orgRole: 'owner' });
   });
 
   router.get('/org/org/:orgId', requireAuth, requireOrgMember, (req: Request, res: Response) => {

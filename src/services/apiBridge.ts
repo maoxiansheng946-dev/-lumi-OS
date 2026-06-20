@@ -14,7 +14,17 @@ export function getBackendOrigin(): string {
   if (typeof window === 'undefined') return 'http://127.0.0.1:3000';
   // In Tauri production, WebView2 custom protocol can't reach the backend;
   // always route through the bundled Node.js server.
-  if (isTauriRuntime()) return 'http://127.0.0.1:3000';
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  if (
+    isTauriRuntime()
+    || protocol === 'tauri:'
+    || protocol === 'asset:'
+    || hostname === 'tauri.localhost'
+    || hostname.endsWith('.tauri.localhost')
+  ) {
+    return 'http://127.0.0.1:3000';
+  }
   return window.location.origin;
 }
 

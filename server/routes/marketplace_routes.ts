@@ -51,11 +51,12 @@ export function mountMarketplaceRoutes(
   });
 
   // Marketplace categories
-  router.get("/marketplace/categories", (_req, res) => {
+  router.get("/marketplace/categories", (req, res) => {
     try {
-      const categories = getCategories();
+      const lang = req.query.lang as string | undefined;
+      const categories = getCategories(lang);
       const withCounts = categories.map(cat => {
-        const skills = getMarketplaceSkills().filter(s => s.category === cat);
+        const skills = getMarketplaceSkills(lang).filter(s => s.category === cat);
         return { name: cat, count: skills.length };
       });
       res.json(withCounts);

@@ -8,6 +8,7 @@ import { JoinOrgPage } from './org/JoinOrgPage';
 import { OrgHub } from './org/OrgHub';
 import { useApp } from '../contexts/AppContext';
 import { useT } from '../lib/useT';
+import { apiFetch } from '../services/apiClient';
 
 interface OrgStatus {
   connected: boolean;
@@ -29,6 +30,8 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const [creating, setCreating] = useState(false);
   const [createResult, setCreateResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [createMsg, setCreateMsg] = useState('');
+  const hasServerStatus = status !== null;
+  const isConnected = Boolean(status?.connected || (!hasServerStatus && orgConnection?.orgId));
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -36,9 +39,15 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
     const checkStatus = async (retries = 2) => {
       for (let i = 0; i <= retries; i++) {
         try {
-          const s = await fetch('/api/org/status', { credentials: 'include' }).then(r => r.json());
+          const s = await apiFetch('/api/org/status').then(r => r.json());
           if (!cancelled) {
             setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole });
+            if (!s.orgId) {
+              localStorage.removeItem('lumi_org_connection');
+              if (localStorage.getItem('lumi_work_domain') === 'work') {
+                localStorage.setItem('lumi_work_domain', 'personal');
+              }
+            }
             setLoading(false);
             if (s.orgId) return; // connected, done
           }
@@ -56,14 +65,20 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
     setCreating(true);
     setCreateResult('idle');
     try {
-      const res = await fetch('/api/org/org', {
+      const res = await apiFetch('/api/org/org', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: orgForm.name.trim(), slug: orgForm.slug.trim() }),
-        credentials: 'include',
       });
       const data = await res.json();
       if (res.ok) {
+        if (data.token) localStorage.setItem('lumi_auth_token', data.token);
+        localStorage.setItem('lumi_org_connection', JSON.stringify({
+          orgId: data.id,
+          orgRole: data.orgRole || 'owner',
+          orgName: data.name || orgForm.name.trim(),
+          connected: true,
+        }));
         setCreateResult('success');
         setCreateMsg(ui('组织创建成功，正在刷新会话...', 'Organization created successfully. Refreshing session...'));
         // Refresh user session so JWT picks up the orgId
@@ -71,7 +86,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
         // Re-check org status
         setTimeout(async () => {
           try {
-            const s = await fetch('/api/org/status', { credentials: 'include' }).then(r => r.json());
+            const s = await apiFetch('/api/org/status').then(r => r.json());
             setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole });
           } catch {}
         }, 500);
@@ -107,7 +122,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
   }
 
   // Already connected to an org — show full org workbench inline
-  if ((status?.connected || orgConnection?.orgId) && workDomain !== 'work') {
+  if (isConnected && workDomain !== 'work') {
     return (
       <div className="flex items-center justify-center p-8 h-full">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center space-y-4">
@@ -153,7 +168,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  if (status?.connected || orgConnection?.orgId) {
+  if (isConnected) {
     return <OrgHub />;
   }
 

@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient';
+
 export interface User {
   username: string;
   role: string;
@@ -14,7 +16,7 @@ export function getStoredToken(): string | null {
 
 export async function register(username: string, password: string, phone: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const response = await fetch("/api/auth/register", {
+    const response = await apiFetch("/api/auth/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -33,7 +35,7 @@ export async function register(username: string, password: string, phone: string
 
 export async function login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const response = await fetch("/api/auth/login", {
+    const response = await apiFetch("/api/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -52,7 +54,7 @@ export async function login(username: string, password: string): Promise<{ succe
 
 export async function bootstrap(): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const response = await fetch("/api/auth/bootstrap");
+    const response = await apiFetch("/api/auth/bootstrap");
     const data = await response.json();
     if (data.token) storeToken(data.token);
     return data;
@@ -63,7 +65,7 @@ export async function bootstrap(): Promise<{ success: boolean; user?: User; erro
 
 export async function getMe(): Promise<{ user: User } | null> {
   try {
-    const response = await fetch("/api/auth/me", { credentials: 'include' });
+    const response = await apiFetch("/api/auth/me");
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -72,5 +74,5 @@ export async function getMe(): Promise<{ user: User } | null> {
 }
 
 export async function logout(): Promise<void> {
-  await fetch("/api/auth/logout", { method: "POST" });
+  await apiFetch("/api/auth/logout", { method: "POST" });
 }

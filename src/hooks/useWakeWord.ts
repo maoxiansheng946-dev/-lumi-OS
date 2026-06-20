@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Socket } from 'socket.io-client';
-import { getBackendOrigin } from '@/services/apiBridge';
+import { apiFetch } from '@/services/apiClient';
 
 interface UseWakeWordOptions {
   /** Socket.IO connection for server-side Qwen ASR wake word detection */
@@ -46,7 +46,7 @@ const WAKE_SERVICE_MISSING_MESSAGE = '语音唤醒需要先在设置 > 语音服
 
 async function hasServerWakeProvider(): Promise<boolean | null> {
   try {
-    const response = await fetch(`${getBackendOrigin()}/api/settings/keys`, { credentials: 'include' });
+    const response = await apiFetch('/api/settings/keys');
     const status = await response.json().catch(() => ({}));
     if (!response.ok) return null;
     return Boolean(status.DOUBAO_SPEECH_KEY || status.DASHSCOPE_API_KEY || status.QWEN_API_KEY);
