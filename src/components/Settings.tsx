@@ -32,6 +32,7 @@ import { VoiceProviderSwitch } from './VoiceProviderSwitch';
 import { MCPSettings } from './MCPSettings';
 import { MessagingHub } from './MessagingHub';
 import { getSavedKeyStatus, saveServerKeys } from '@/services/settingsKeys';
+import { getBackendOrigin } from '@/services/apiBridge';
 
 function buildSidebarGroups(t: any, isZh: boolean) {
   const ui = (zh: string, en: string) => (isZh ? zh : en);
@@ -92,7 +93,7 @@ export function Settings({
     let cancelled = false;
     const loadProviderStatus = async () => {
       try {
-        const response = await fetch('/api/llm/providers', { credentials: 'include' });
+        const response = await fetch(`${getBackendOrigin()}/api/llm/providers`, { credentials: 'include' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `Provider status failed (${response.status})`);
         if (!cancelled) setProviderStatus(data.providers || {});

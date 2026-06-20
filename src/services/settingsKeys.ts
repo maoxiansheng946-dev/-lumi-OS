@@ -1,3 +1,5 @@
+import { getBackendOrigin } from './apiBridge';
+
 export type KeyStatus = Record<string, boolean>;
 
 export interface SaveKeysResult {
@@ -22,7 +24,7 @@ async function readJsonSafely(response: Response): Promise<any> {
 }
 
 export async function getSavedKeyStatus(): Promise<KeyStatus> {
-  const response = await fetch('/api/settings/keys', { credentials: 'include' });
+  const response = await fetch(`${getBackendOrigin()}/api/settings/keys`, { credentials: 'include' });
   const data = await readJsonSafely(response);
   if (!response.ok) {
     throw new Error(data.error || `Failed to load key status (${response.status})`);
@@ -31,7 +33,7 @@ export async function getSavedKeyStatus(): Promise<KeyStatus> {
 }
 
 export async function saveServerKeys(keys: Record<string, string>): Promise<SaveKeysResult> {
-  const response = await fetch('/api/settings/keys', {
+  const response = await fetch(`${getBackendOrigin()}/api/settings/keys`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

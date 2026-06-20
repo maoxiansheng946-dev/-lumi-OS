@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
 import { GitHubMCPBrowser } from './GitHubMCPBrowser';
-import { saveServerKeys } from '@/services/settingsKeys';
+import { getSavedKeyStatus, saveServerKeys } from '@/services/settingsKeys';
 
 const ICON_CLASSES: Record<string, string> = {
   CloudSun: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
@@ -286,8 +286,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const fetchSavedKeys = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings/keys', { credentials: 'include' });
-      if (res.ok) setSavedKeys(await res.json());
+      setSavedKeys(await getSavedKeyStatus());
     } catch {}
   }, []);
 
