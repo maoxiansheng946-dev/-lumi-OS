@@ -1571,35 +1571,6 @@ export function DesktopUI({
   const closeToBackgroundSyncRef = useRef(false);
   const wallpaperAutomationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wallpaperWasEnabledBeforeAutomationRef = useRef(false);
-  const [editMode, setEditMode] = useState(false);
-  const [iconPositions, setIconPositions] = useState<Record<string, { x: number; y: number }>>(() => {
-    try {
-      const layoutVersionKey = 'lumi_icon_layout_version';
-      const orgFirstVersion = 'org-first-v1';
-      const positions = JSON.parse(localStorage.getItem('lumi_icon_positions') || '{}') as Record<string, { x: number; y: number }>;
-      if (localStorage.getItem(layoutVersionKey) !== orgFirstVersion) {
-        const firstSlot = { x: 40, y: 0 };
-        const secondSlot = { x: 170, y: 0 };
-        const previousWorkbenchSlot = positions.workbench;
-        const firstSlotEntry = Object.entries(positions).find(([id, pos]) =>
-          id !== 'workbench' && Math.abs(pos.x - firstSlot.x) < 2 && Math.abs(pos.y - firstSlot.y) < 2
-        );
-        const nextPositions = { ...positions, workbench: firstSlot };
-        if (firstSlotEntry) {
-          const targetSlot = previousWorkbenchSlot && (
-            Math.abs(previousWorkbenchSlot.x - firstSlot.x) >= 2 || Math.abs(previousWorkbenchSlot.y - firstSlot.y) >= 2
-          )
-            ? previousWorkbenchSlot
-            : secondSlot;
-          nextPositions[firstSlotEntry[0]] = targetSlot;
-        }
-        localStorage.setItem('lumi_icon_positions', JSON.stringify(nextPositions));
-        localStorage.setItem(layoutVersionKey, orgFirstVersion);
-        return nextPositions;
-      }
-      return positions;
-    } catch { return {}; }
-  });
   const [wallpaper, setWallpaper] = useState<string>(() => localStorage.getItem('lumi_wallpaper_type') || 'celestial');
   const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => localStorage.getItem('lumi_wallpaper_url') || '');
   const wallpaperInputRef = React.useRef<HTMLInputElement>(null);
@@ -1607,6 +1578,11 @@ export function DesktopUI({
   useEffect(() => {
     isWallpaperModeRef.current = isWallpaperMode;
   }, [isWallpaperMode]);
+
+  const getDefaultDesktopIconPosition = useCallback((index: number) => ({
+    x: 40 + (index % 4) * 130,
+    y: Math.floor(index / 4) * 120,
+  }), []);
 
   // Desktop icon layout: absolute positioning, 4 columns, fixed spacing
   const isOrgAdmin = orgConnection?.connected && (orgConnection.orgRole === 'owner' || orgConnection.orgRole === 'admin');
@@ -3602,8 +3578,6 @@ export function DesktopUI({
   );
 
   const tutorialLabel = t.showTutorial || (lang === 'zh' ? '教程' : 'Tutorial');
-  const editDesktopLabel = t.editDesktop || (lang === 'zh' ? '编辑桌面' : 'Edit Desktop');
-  const doneEditingLabel = t.doneEditing || (lang === 'zh' ? '完成编辑' : 'Done Editing');
 
   return (
     <div
@@ -3824,18 +3798,6 @@ export function DesktopUI({
               >
                 <Sparkles size={12} />
                 {tutorialLabel}
-              </button>
-              <button
-                onClick={() => setEditMode((current) => !current)}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-black uppercase tracking-widest transition-colors ${
-                  editMode
-                    ? 'border border-celestial-saturn/30 bg-celestial-saturn/15 text-celestial-saturn'
-                    : 'text-white/50 hover:bg-white/10 hover:text-white'
-                }`}
-                title={editMode ? doneEditingLabel : editDesktopLabel}
-              >
-                <Brush size={12} />
-                {editMode ? doneEditingLabel : editDesktopLabel}
               </button>
             </div>
           </div>
@@ -4245,11 +4207,7 @@ export function DesktopUI({
         <div className="flex flex-col xl:flex-row justify-between items-start gap-12">
             <div className="relative flex-1 w-full min-h-[400px]" style={{ margin: 0, padding: 0 }}>
               {desktopIcons.map((def, i) => {
-                const defaultX = 40 + (i % 4) * 130;
-                const defaultY = 0 + Math.floor(i / 4) * 120;
-                const saved = iconPositions[def.id];
-                const x = saved?.x ?? defaultX;
-                const y = saved?.y ?? defaultY;
+                const { x, y } = getDefaultDesktopIconPosition(i);
                 const label = (t as any)[def.labelKey] || def.labelKey;
                 const isIconOpen =
                   def.windowId === 'org'
@@ -4264,7 +4222,6 @@ export function DesktopUI({
                       ? canvasOpen
                       : focusedWindow === def.windowId;
                 const handleClick = () => {
-                  if (editMode) return;
                   if (def.id === 'files') openNativeFilesWindow();
                   else if (def.id === 'workbench') setActiveTab('org');
                   else toggleWindow(def.windowId);
@@ -4272,45 +4229,29 @@ export function DesktopUI({
                 return (
                   <motion.div
                     key={def.id}
-                    drag={editMode}
-                    dragMomentum={false}
-                    dragElastic={0.1}
                     onDoubleClick={handleClick}
                     onClick={handleClick}
-                    onDragEnd={(_e, info) => {
-                      const nx = defaultX + info.offset.x;
-                      const ny = defaultY + info.offset.y;
-                      const newPos = { ...iconPositions, [def.id]: { x: nx, y: ny } };
-                      setIconPositions(newPos);
-                      localStorage.setItem('lumi_icon_positions', JSON.stringify(newPos));
-                    }}
                     onContextMenu={(e: React.MouseEvent) => {
-                      if (editMode) return;
                       e.preventDefault();
                       e.stopPropagation();
                       showContextMenu(e.clientX, e.clientY, { type: 'icon', targetId: def.windowId });
                     }}
-                    initial={editMode ? false : { opacity: 0, scale: 0.8 }}
-                    animate={editMode ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
                     style={{ position: 'absolute', left: x, top: y }}
-                    className={`desktop-icon group z-10 select-none ${isIconOpen ? 'desktop-icon-open' : ''} ${isIconFocused ? 'desktop-icon-focused' : ''} ${
-                      editMode
-                        ? 'cursor-grab active:cursor-grabbing ring-2 ring-celestial-saturn/50 rounded-xl p-1'
-                        : 'cursor-pointer'
-                    }`}
+                    className={`desktop-icon group z-10 select-none cursor-pointer ${isIconOpen ? 'desktop-icon-open' : ''} ${isIconFocused ? 'desktop-icon-focused' : ''}`}
                     role="button"
-                    tabIndex={editMode ? -1 : 0}
+                    tabIndex={0}
                     onKeyDown={(e: React.KeyboardEvent) => {
-                      if (editMode) return;
                       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); }
                     }}
                   >
-                    <div className={`desktop-icon-img bg-gradient-to-br ${def.colorClass} shadow-[0_10px_20px_-5px_rgba(0,0,0,0.5)] ${editMode ? 'scale-105' : ''}`}>
-                      <div className={`text-white ${editMode ? '' : 'group-hover:rotate-12'} transition-transform`}>
+                    <div className={`desktop-icon-img bg-gradient-to-br ${def.colorClass} shadow-[0_10px_20px_-5px_rgba(0,0,0,0.5)]`}>
+                      <div className="text-white group-hover:rotate-12 transition-transform">
                         {def.icon}
                       </div>
                     </div>
-                    <span className={`desktop-icon-label ${editMode ? 'bg-black/80 text-white px-2 py-0.5 rounded-full text-xs' : ''}`}>{label}</span>
+                    <span className="desktop-icon-label">{label}</span>
                   </motion.div>
                 );
               })}
