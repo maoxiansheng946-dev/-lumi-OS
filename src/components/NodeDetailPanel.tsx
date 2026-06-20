@@ -7,6 +7,8 @@ interface FileEntry {
   id: string;
   name: string;
   displayName?: string;
+  domain?: 'personal' | 'work';
+  orgId?: string;
   size?: string;
   rawSize?: number;
   source?: 'upload' | 'generated' | 'ingested';
@@ -110,6 +112,18 @@ export function NodeDetailPanel({
   const isTextFile = textFileExts.test(fileName);
   const isPreviewable = isImageFile || isAudioFile || isVideoFile || isPdfFile || isTextFile;
 
+  const fileUrl = (path: string, extraQuery = '') => {
+    const domain = node?.fileData?.domain || 'personal';
+    const params = new URLSearchParams();
+    params.set('domain', domain);
+    if (domain === 'work' && node?.fileData?.orgId) params.set('orgId', node.fileData.orgId);
+    if (extraQuery) {
+      const extra = new URLSearchParams(extraQuery.replace(/^\?/, ''));
+      extra.forEach((value, key) => params.set(key, value));
+    }
+    return `${path}?${params.toString()}`;
+  };
+
   const handleTogglePreview = async () => {
     if (!node || node.type !== 'file') return;
     if (previewContent || previewMediaUrl) {
@@ -119,7 +133,7 @@ export function NodeDetailPanel({
     }
     setPreviewLoading(true);
     try {
-      const res = await fetch(`/api/files/download/${encodeURIComponent(node.id)}`);
+      const res = await fetch(fileUrl(`/api/files/download/${encodeURIComponent(node.id)}`), { credentials: 'include' });
       if (!res.ok) throw new Error('');
       if (isImageFile || isAudioFile || isVideoFile) {
         const blob = await res.blob();
@@ -295,7 +309,7 @@ export function NodeDetailPanel({
                           </div>
                           <button
                             onClick={() => {
-                              const url = `/api/files/download/${encodeURIComponent(node.id)}?inline=1`;
+                              const url = fileUrl(`/api/files/download/${encodeURIComponent(node.id)}`, 'inline=1');
                               window.open(url, '_blank');
                             }}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs font-bold text-red-400 transition-colors"
@@ -409,7 +423,7 @@ export function NodeDetailPanel({
                   <button
                     onClick={async () => {
                       try {
-                        const res = await fetch(`/api/files/open-folder/${encodeURIComponent(node.id)}`);
+                        const res = await fetch(fileUrl(`/api/files/open-folder/${encodeURIComponent(node.id)}`), { credentials: 'include' });
                         if (!res.ok) throw new Error('');
                       } catch { /* fall through */ }
                     }}

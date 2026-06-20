@@ -17,9 +17,10 @@ import iconv from 'iconv-lite';
 import { readDB, writeDB } from '../db_layer';
 import { ingestDocument } from '../server/agents/rag';
 import { getDataPath } from '../server/config/data_path';
+import * as OrgKB from '../server/org/kb';
 
-const KNOWLEDGE_DIR = getDataPath('knowledge');
-fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
+const PERSONAL_KNOWLEDGE_DIR = getDataPath('knowledge');
+fs.mkdirSync(PERSONAL_KNOWLEDGE_DIR, { recursive: true });
 
 const router = Router();
 
@@ -44,6 +45,17 @@ function getUserId(req: Request): string {
   return 'anonymous';
 }
 
+function getAuthPayload(req: Request): any | null {
+  try {
+    let token = req.cookies?.token;
+    if (!token && req.headers.authorization?.startsWith('Bearer ')) token = req.headers.authorization.slice(7);
+    if (!token) return null;
+    return jwt.verify(token, JWT_SECRET) as any;
+  } catch {
+    return null;
+  }
+}
+
 // ── Multer: files staged in OS temp, then moved to knowledge dir ──
 const tmpDir = path.join(os.tmpdir(), 'lumi-uploads');
 fs.mkdirSync(tmpDir, { recursive: true });
@@ -62,6 +74,8 @@ interface KnowledgeEntry {
   id: string;
   name: string;
   displayName: string;
+  domain: 'personal' | 'work';
+  orgId?: string;
   size: string;
   rawSize: number;
   type: 'file';
@@ -72,14 +86,39 @@ interface KnowledgeEntry {
   createdAt: string;
 }
 
-const MOJIBAKE_HINT = /[ÃÂ�]|锟|鏂|涓|绾|佹|妗|勭|忚|瀵|嗛|挜|厤|缃|犳|湇|姟/;
+interface FileScope {
+  domain: 'personal' | 'work';
+  orgId?: string;
+  dir: string;
+}
+
+const MOJIBAKE_TOKENS = [
+  '\u00c3',
+  '\u00c2',
+  '\ufffd',
+  '\u951f',
+  '\u93c2',
+  '\u6d93',
+  '\u7f01',
+  '\u7015',
+  '\u6fc2',
+  '\u5a34',
+  '\u6d7c',
+  '\u5fe1',
+  '\u9439',
+  '\u9359',
+];
+
+function looksMojibake(value: string): boolean {
+  return /[\u00c0-\u00ff]{2,}/.test(value) || MOJIBAKE_TOKENS.some(token => value.includes(token));
+}
 
 function textScore(value: string): number {
   let score = 0;
-  const replacement = value.match(/�/g)?.length || 0;
-  const mojibake = value.match(/[ÃÂ]|锟|鏂|涓|绾|佹|妗|勭|忚|瀵|嗛|挜|厤|缃|犳|湇|姟/g)?.length || 0;
-  const cjk = value.match(/[\u4e00-\u9fff]/g)?.length || 0;
-  const ascii = value.match(/[A-Za-z0-9._ -]/g)?.length || 0;
+  const replacement = (value.match(/\ufffd/g) || []).length;
+  const mojibake = MOJIBAKE_TOKENS.reduce((sum, token) => sum + (value.includes(token) ? 1 : 0), 0);
+  const cjk = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+  const ascii = (value.match(/[A-Za-z0-9._ -]/g) || []).length;
   score += cjk * 2 + ascii * 0.15;
   score -= replacement * 8 + mojibake * 2;
   return score;
@@ -87,11 +126,11 @@ function textScore(value: string): number {
 
 function repairFilename(value: string): string {
   const original = String(value || '').normalize('NFC');
-  if (!original || !MOJIBAKE_HINT.test(original)) return original;
+  if (!original || !looksMojibake(original)) return original;
   const candidates = new Set<string>([original]);
   try { candidates.add(Buffer.from(original, 'latin1').toString('utf8').normalize('NFC')); } catch {}
-  try { candidates.add(iconv.encode(original, 'gbk').toString('utf8').normalize('NFC')); } catch {}
-  try { candidates.add(iconv.encode(original, 'gb18030').toString('utf8').normalize('NFC')); } catch {}
+  try { candidates.add(iconv.decode(iconv.encode(original, 'gbk'), 'utf8').normalize('NFC')); } catch {}
+  try { candidates.add(iconv.decode(iconv.encode(original, 'gb18030'), 'utf8').normalize('NFC')); } catch {}
   return [...candidates].sort((a, b) => textScore(b) - textScore(a))[0] || original;
 }
 
@@ -103,8 +142,77 @@ function sanitizeKnowledgeFilename(value: string, fallback = 'untitled'): string
   return path.basename(safe);
 }
 
-function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested', agentIds: string[] = []): KnowledgeEntry {
-  const filePath = path.join(KNOWLEDGE_DIR, filename);
+function normalizeFileDomain(value: unknown): 'personal' | 'work' {
+  return String(value || '').toLowerCase() === 'work' ? 'work' : 'personal';
+}
+
+function getRequestedDomain(req: Request): 'personal' | 'work' {
+  return normalizeFileDomain(req.query.domain || req.body?.domain);
+}
+
+function getFileScope(req: Request): FileScope {
+  const domain = getRequestedDomain(req);
+  if (domain === 'personal') {
+    return { domain: 'personal', dir: PERSONAL_KNOWLEDGE_DIR };
+  }
+
+  const payload = getAuthPayload(req);
+  const orgId = String(req.query.orgId || req.body?.orgId || payload?.orgId || '').trim();
+  if (!payload || !orgId) {
+    const err: any = new Error('Organization context required');
+    err.status = 403;
+    throw err;
+  }
+
+  const dir = getDataPath(path.join('org', orgId, 'knowledge'));
+  fs.mkdirSync(dir, { recursive: true });
+  return { domain: 'work', orgId, dir };
+}
+
+function metaMatchesScope(meta: any, scope: FileScope): boolean {
+  const metaDomain = normalizeFileDomain(meta?.domain || (meta?.orgId ? 'work' : 'personal'));
+  if (metaDomain !== scope.domain) return false;
+  if (scope.domain === 'work') return String(meta?.orgId || '') === scope.orgId;
+  return !meta?.orgId;
+}
+
+function findFileMeta(db: any, filename: string, scope: FileScope): any | undefined {
+  return (db.knowledgeFiles || []).find((m: any) => m.filename === filename && metaMatchesScope(m, scope));
+}
+
+function removeFileMeta(db: any, filename: string, scope: FileScope): void {
+  db.knowledgeFiles = (db.knowledgeFiles || []).filter((m: any) => !(m.filename === filename && metaMatchesScope(m, scope)));
+}
+
+function ensureOrgArticleFromFile(scope: FileScope, userId: string, filename: string, content: string | null, articleId?: string): any | null {
+  if (scope.domain !== 'work' || !scope.orgId) return null;
+  const articleContent = (content && content.trim())
+    ? content
+    : `文件已上传到组织知识库。\n\n文件名：${repairFilename(filename)}`;
+  if (articleId && OrgKB.getArticle(scope.orgId, articleId)) {
+    return OrgKB.updateArticle(scope.orgId, userId, articleId, {
+      title: repairFilename(filename),
+      content: articleContent,
+      category: 'files',
+      tags: ['upload', path.extname(filename).replace(/^\./, '')].filter(Boolean),
+      status: 'published',
+    });
+  }
+  return OrgKB.createArticle(scope.orgId, userId, {
+    title: repairFilename(filename),
+    content: articleContent,
+    category: 'files',
+    tags: ['upload', path.extname(filename).replace(/^\./, '')].filter(Boolean),
+    status: 'published',
+  });
+}
+
+function sendRouteError(res: Response, err: any, fallbackStatus = 400): void {
+  res.status(err?.status || fallbackStatus).json({ error: err?.message || 'Request failed' });
+}
+
+function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested', agentIds: string[] = [], scope: FileScope): KnowledgeEntry {
+  const filePath = path.join(scope.dir, filename);
   const displayName = repairFilename(filename);
   let st: fs.Stats;
   try { st = fs.statSync(filePath); }
@@ -113,6 +221,8 @@ function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested
     id: filename,
     name: displayName,
     displayName,
+    domain: scope.domain,
+    orgId: scope.orgId,
     size: formatSize(st.size),
     rawSize: st.size,
     type: 'file',
@@ -125,29 +235,31 @@ function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested
 }
 
 // ── GET /files/list — list knowledge base files ──
-router.get('/files/list', (_req: Request, res: Response) => {
+router.get('/files/list', (req: Request, res: Response) => {
   try {
+    const scope = getFileScope(req);
     const db = readDB();
-    const fileMeta: Record<string, { source: string; agentIds: string[] }> = {};
+    const fileMeta: Record<string, { source: string; agentIds: string[]; status?: 'ready' | 'indexing' | 'indexed' }> = {};
     if (db.knowledgeFiles) {
       for (const m of db.knowledgeFiles) {
-        fileMeta[m.filename] = { source: m.source || 'upload', agentIds: m.agentIds || [] };
+        if (!metaMatchesScope(m, scope)) continue;
+        fileMeta[m.filename] = { source: m.source || 'upload', agentIds: m.agentIds || [], status: m.status };
       }
     }
 
-    const entries = fs.readdirSync(KNOWLEDGE_DIR);
+    const entries = fs.readdirSync(scope.dir);
     const files: KnowledgeEntry[] = [];
     for (const name of entries) {
       if (name.startsWith('.') || name.startsWith('_')) continue;
       const meta = fileMeta[name] || { source: 'upload' as const, agentIds: [] as string[] };
       const source = (meta.source as 'upload' | 'generated' | 'ingested') || 'upload';
-      files.push(buildEntry(name, source, meta.agentIds));
+      files.push(buildEntry(name, source, meta.agentIds, scope));
     }
 
     files.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     res.json({ files });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    sendRouteError(res, err, 500);
   }
 });
 
@@ -160,6 +272,7 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
     }
 
     const userId = getUserId(req);
+    const scope = getFileScope(req);
     const db = readDB();
     if (!db.knowledgeFiles) db.knowledgeFiles = [];
 
@@ -197,26 +310,31 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
     const saved: any[] = [];
     for (const file of uploadedFiles) {
       const uploadName = sanitizeKnowledgeFilename(file.originalname, 'upload');
-      let dest = path.join(KNOWLEDGE_DIR, uploadName);
+      let dest = path.join(scope.dir, uploadName);
       let counter = 1;
       const ext = path.extname(uploadName);
       const base = path.basename(uploadName, ext);
       while (fs.existsSync(dest)) {
-        dest = path.join(KNOWLEDGE_DIR, `${base} (${counter})${ext}`);
+        dest = path.join(scope.dir, `${base} (${counter})${ext}`);
         counter++;
       }
       fs.renameSync(file.path, dest);
       const finalName = path.basename(dest);
 
       // Track in DB
-      const existing = db.knowledgeFiles.find((m: any) => m.filename === finalName);
+      const existing = findFileMeta(db, finalName, scope);
       const isNew = !existing;
       if (existing) {
         existing.source = 'upload';
+        existing.domain = scope.domain;
+        existing.orgId = scope.orgId || '';
         existing.updatedAt = new Date().toISOString();
       } else {
         db.knowledgeFiles.push({
           filename: finalName,
+          displayName: repairFilename(finalName),
+          domain: scope.domain,
+          orgId: scope.orgId || '',
           source: 'upload',
           agentIds: [],
           createdAt: new Date().toISOString(),
@@ -224,26 +342,54 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
         });
       }
 
-      const entry: any = { name: finalName, type: 'file', path: dest };
+      const entry: any = {
+        id: finalName,
+        name: repairFilename(finalName),
+        displayName: repairFilename(finalName),
+        type: 'file',
+        path: dest,
+        domain: scope.domain,
+        orgId: scope.orgId,
+      };
+      let extractedContent: string | null = null;
 
       // For text files: return content so the chat can use it immediately
       if (textExts.test(ext) || extractableExts.test(ext)) {
-        const content = await extractPreviewContent(dest, ext);
-        if (content) {
-          entry.content = content.slice(0, 50000); // cap at 50KB for chat context
-          entry.preview = content.slice(0, 1000);
+        extractedContent = await extractPreviewContent(dest, ext);
+        if (extractedContent) {
+          entry.content = extractedContent.slice(0, 50000); // cap at 50KB for chat context
+          entry.preview = extractedContent.slice(0, 1000);
           entry.extracted = true;
         }
       }
 
-      // Only auto-ingest if this is a new file (not a re-upload of existing)
-      if (isNew && (textExts.test(ext) || extractableExts.test(ext))) {
+      // Personal files are ingested into personal memory; work files become org KB articles.
+      if (isNew && scope.domain === 'work') {
         try {
-          const content = await extractPreviewContent(dest, ext);
+          const meta = findFileMeta(db, finalName, scope);
+          const article = ensureOrgArticleFromFile(scope, userId, finalName, extractedContent, meta?.orgArticleId);
+          if (meta) {
+            if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+            meta.orgArticleId = article?.id;
+            meta.status = 'indexed';
+            if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
+          }
+          entry.orgArticleId = article?.id;
+          entry.ingested = true;
+        } catch (orgErr: any) {
+          console.warn(`[OrgKB] Failed to sync "${finalName}": ${orgErr.message}`);
+          entry.syncError = orgErr.message;
+        }
+      } else if (isNew && (textExts.test(ext) || extractableExts.test(ext))) {
+        try {
+          const content = extractedContent || await extractPreviewContent(dest, ext);
           if (content) {
             const result = await ingestDocument(userId, 'lumi', finalName, content);
-            const meta = db.knowledgeFiles.find((m: any) => m.filename === finalName);
-            if (meta && !meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
+            const meta = findFileMeta(db, finalName, scope);
+            if (meta) {
+              if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+              if (!meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
+            }
             entry.ingested = true;
             console.log(`[AutoIngest] "${finalName}" → ${result.chunkCount} chunks`);
           }
@@ -257,48 +403,69 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
     writeDB(db);
     res.json({ success: true, files: saved });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
 // ── POST /files/save — save generated content as a file ──
 router.post('/files/save', requireAuth, (req: Request, res: Response) => {
   try {
-      const { name, content } = req.body;
-      if (!name || content === undefined) return res.status(400).json({ error: 'name and content required' });
+    const { name, content } = req.body;
+    if (!name || content === undefined) return res.status(400).json({ error: 'name and content required' });
 
+    const userId = getUserId(req);
+    const scope = getFileScope(req);
     const safeName = sanitizeKnowledgeFilename(name);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
-    fs.writeFileSync(filePath, typeof content === 'string' ? content : JSON.stringify(content, null, 2), 'utf-8');
+    const contentText = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    const filePath = path.join(scope.dir, safeName);
+    fs.writeFileSync(filePath, contentText, 'utf-8');
 
     const db = readDB();
     if (!db.knowledgeFiles) db.knowledgeFiles = [];
-    const existing = db.knowledgeFiles.find((m: any) => m.filename === safeName);
+    const existing = findFileMeta(db, safeName, scope);
     if (existing) {
       existing.source = 'generated';
+      existing.domain = scope.domain;
+      existing.orgId = scope.orgId || '';
       existing.updatedAt = new Date().toISOString();
     } else {
       db.knowledgeFiles.push({
         filename: safeName,
+        displayName: repairFilename(safeName),
+        domain: scope.domain,
+        orgId: scope.orgId || '',
         source: 'generated',
         agentIds: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
     }
+    const meta = findFileMeta(db, safeName, scope);
+    let orgArticleId: string | undefined;
+    if (scope.domain === 'work') {
+      const article = ensureOrgArticleFromFile(scope, userId, safeName, contentText, meta?.orgArticleId);
+      orgArticleId = article?.id;
+      if (meta) {
+        if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+        meta.orgArticleId = orgArticleId;
+        meta.status = 'indexed';
+        if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
+      }
+    }
     writeDB(db);
 
-    res.json({ success: true, filename: safeName, entry: buildEntry(safeName, 'generated', []) });
+    res.json({ success: true, filename: safeName, orgArticleId, entry: buildEntry(safeName, 'generated', meta?.agentIds || [], scope) });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
 // ── GET /files/download/:id — download or preview a file ──
 router.get('/files/download/:id', (req: Request, res: Response) => {
   try {
+    const scope = getFileScope(req);
     const safeName = path.basename(req.params.id);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
+    const filePath = path.join(scope.dir, safeName);
     if (!safeName || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       return res.status(404).json({ error: 'File not found' });
     }
@@ -324,19 +491,20 @@ router.get('/files/download/:id', (req: Request, res: Response) => {
     if (inline) {
       res.setHeader('Content-Disposition', 'inline');
     } else {
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(repairFilename(safeName))}`);
     }
     fs.createReadStream(filePath).pipe(res);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
 // ── GET /files/open-folder/:id — open the file's containing folder in the OS ──
 router.get('/files/open-folder/:id', requireAuth, (req: Request, res: Response) => {
   try {
+    const scope = getFileScope(req);
     const safeName = path.basename(req.params.id);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
+    const filePath = path.join(scope.dir, safeName);
     if (!safeName || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
 
     const folder = path.resolve(path.dirname(filePath));
@@ -354,26 +522,27 @@ router.get('/files/open-folder/:id', requireAuth, (req: Request, res: Response) 
     proc.unref();
     res.json({ success: true, path: folder });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
 // ── DELETE /files/delete/:id ──
 router.delete('/files/delete/:id', requireAuth, (req: Request, res: Response) => {
   try {
+    const scope = getFileScope(req);
     const safeName = path.basename(req.params.id);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
+    const filePath = path.join(scope.dir, safeName);
     if (!safeName || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
     fs.unlinkSync(filePath);
 
     const db = readDB();
     if (db.knowledgeFiles) {
-      db.knowledgeFiles = db.knowledgeFiles.filter((m: any) => m.filename !== safeName);
+      removeFileMeta(db, safeName, scope);
       writeDB(db);
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
@@ -383,9 +552,10 @@ router.post('/files/rename', requireAuth, (req: Request, res: Response) => {
     const { id, newName } = req.body;
     if (!id || !newName) return res.status(400).json({ error: 'id and newName required' });
 
-    const oldPath = path.join(KNOWLEDGE_DIR, path.basename(id));
+    const scope = getFileScope(req);
+    const oldPath = path.join(scope.dir, path.basename(id));
     const safeNewName = sanitizeKnowledgeFilename(newName);
-    const newPath = path.join(KNOWLEDGE_DIR, safeNewName);
+    const newPath = path.join(scope.dir, safeNewName);
 
     if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'Not found' });
     if (fs.existsSync(newPath)) return res.status(409).json({ error: 'Name already taken' });
@@ -394,29 +564,36 @@ router.post('/files/rename', requireAuth, (req: Request, res: Response) => {
 
     const db = readDB();
     if (db.knowledgeFiles) {
-      const meta = db.knowledgeFiles.find((m: any) => m.filename === path.basename(id));
-      if (meta) meta.filename = safeNewName;
+      const meta = findFileMeta(db, path.basename(id), scope);
+      if (meta) {
+        meta.filename = safeNewName;
+        meta.displayName = repairFilename(safeNewName);
+        meta.updatedAt = new Date().toISOString();
+      }
       writeDB(db);
     }
-    res.json({ success: true, id: safeNewName, name: safeNewName });
+    res.json({ success: true, id: safeNewName, name: repairFilename(safeNewName), displayName: repairFilename(safeNewName) });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
 // ── GET /files/info/:id ──
 router.get('/files/info/:id', (req: Request, res: Response) => {
   try {
+    const scope = getFileScope(req);
     const safeName = path.basename(req.params.id);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
+    const filePath = path.join(scope.dir, safeName);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
     const st = fs.statSync(filePath);
     const db = readDB();
-    const meta = db.knowledgeFiles?.find((m: any) => m.filename === safeName);
+    const meta = findFileMeta(db, safeName, scope);
     res.json({
       id: safeName,
       name: repairFilename(safeName),
       displayName: repairFilename(safeName),
+      domain: scope.domain,
+      orgId: scope.orgId,
       size: st.size,
       formattedSize: formatSize(st.size),
       type: 'file',
@@ -426,7 +603,7 @@ router.get('/files/info/:id', (req: Request, res: Response) => {
       createdAt: meta?.createdAt || st.birthtime.toISOString(),
     });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendRouteError(res, err);
   }
 });
 
@@ -434,11 +611,12 @@ router.get('/files/info/:id', (req: Request, res: Response) => {
 router.post('/files/ingest', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
+    const scope = getFileScope(req);
     const { fileId, agentId } = req.body;
     if (!fileId || !agentId) return res.status(400).json({ error: 'fileId and agentId required' });
 
     const safeName = path.basename(fileId);
-    const filePath = path.join(KNOWLEDGE_DIR, safeName);
+    const filePath = path.join(scope.dir, safeName);
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       return res.status(404).json({ error: 'File not found' });
     }
@@ -448,13 +626,33 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
     // Mark as indexing
     const db = readDB();
     if (!db.knowledgeFiles) db.knowledgeFiles = [];
-    let meta = db.knowledgeFiles.find((m: any) => m.filename === safeName);
+    let meta = findFileMeta(db, safeName, scope);
     if (!meta) {
-      meta = { filename: safeName, source: 'upload', agentIds: [], createdAt: new Date().toISOString() };
+      meta = {
+        filename: safeName,
+        displayName: repairFilename(safeName),
+        domain: scope.domain,
+        orgId: scope.orgId || '',
+        source: 'upload',
+        agentIds: [],
+        createdAt: new Date().toISOString(),
+      };
       db.knowledgeFiles.push(meta);
     }
+    if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
     meta.indexingAt = new Date().toISOString();
     writeDB(db);
+
+    if (scope.domain === 'work') {
+      const article = ensureOrgArticleFromFile(scope, userId, safeName, content, meta?.orgArticleId);
+      if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
+      meta.orgArticleId = article?.id;
+      meta.status = 'indexed';
+      delete meta.indexingAt;
+      writeDB(db);
+      res.json({ success: true, orgArticleId: article?.id, memoryIds: [] });
+      return;
+    }
 
     const result = await ingestDocument(userId, agentId, safeName, content);
 
@@ -465,7 +663,7 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
 
     res.json({ success: true, chunkCount: result.chunkCount, memoryIds: result.memoryIds });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    sendRouteError(res, err, 500);
   }
 });
 

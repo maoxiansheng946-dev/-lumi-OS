@@ -50,12 +50,17 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
     return `${path}${separator}domain=${encodeURIComponent(domain)}`;
   }, [domain]);
 
+  const scopedFileUrl = useCallback((path: string) => {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}domain=${encodeURIComponent(domain)}`;
+  }, [domain]);
+
   // Fetch data — parallel, no dependency between files and memory tree
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     const [filesRes, treeRes] = await Promise.allSettled([
-      fetch('/api/files/list'),
+      fetch(scopedFileUrl('/api/files/list'), { credentials: 'include' }),
       fetch(scopedMemoryUrl('/api/memory/tree')),
     ]);
     const errors: string[] = [];
@@ -66,6 +71,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
         setFiles((d.files || []).map((file: FileEntry) => ({
           ...file,
           name: file.displayName || file.name,
+          domain: file.domain || domain,
         })));
       } catch {}
     } else {
@@ -94,7 +100,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
       lastLoadErrorRef.current = null;
     }
     setLoading(false);
-  }, [reportLoadError, scopedMemoryUrl, t.kbFilesLoadFailed, t.kbMemoriesLoadFailed]);
+  }, [domain, reportLoadError, scopedFileUrl, scopedMemoryUrl, t.kbFilesLoadFailed, t.kbMemoriesLoadFailed]);
 
   useEffect(() => { if (isOpen) fetchAll(); }, [isOpen, fetchAll]);
 
@@ -140,8 +146,8 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
     });
     if (!ok) return;
     try {
-      const endpoint = n.type === 'file' ? `/api/files/delete/${encodeURIComponent(id)}` : scopedMemoryUrl(`/api/memories/${id}`);
-      const res = await fetch(endpoint, { method: 'DELETE' });
+      const endpoint = n.type === 'file' ? scopedFileUrl(`/api/files/delete/${encodeURIComponent(id)}`) : scopedMemoryUrl(`/api/memories/${id}`);
+      const res = await fetch(endpoint, { method: 'DELETE', credentials: 'include' });
       if (res.ok) { toast.success(t.kbDeleted || 'Deleted'); fetchAll(); setSelectedId(null); }
       else toast.error(t.kbDeleteFailed || 'Delete failed');
     } catch { toast.error(t.kbDeleteFailed || 'Delete failed'); }
@@ -149,7 +155,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
 
   const handleDownload = async (id: string) => {
     try {
-      const res = await fetch(`/api/files/download/${encodeURIComponent(id)}`);
+      const res = await fetch(scopedFileUrl(`/api/files/download/${encodeURIComponent(id)}`), { credentials: 'include' });
       if (!res.ok) throw new Error('');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -165,9 +171,10 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
     const agentId = prompt(t.kbEnterAgentId || 'Enter agent ID:');
     if (!agentId) return;
     try {
-      const res = await fetch('/api/files/ingest', {
+      const res = await fetch(scopedFileUrl('/api/files/ingest'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: id, agentId }),
+        credentials: 'include',
+        body: JSON.stringify({ fileId: id, agentId, domain }),
       });
       if (res.ok) { toast.success(t.kbIngested || 'Ingested'); fetchAll(); }
       else toast.error(t.kbIngestFailed || 'Ingest failed');
@@ -225,7 +232,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
     try {
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
-      const res = await fetch('/api/files/upload', { method: 'POST', body: formData, credentials: 'include' });
+      const res = await fetch(scopedFileUrl('/api/files/upload'), { method: 'POST', body: formData, credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         toast.success(`${t.kbUploadedFiles || 'Uploaded'}: ${d.files?.length || files.length}`);

@@ -60,6 +60,14 @@ export function saveKeys(keys: Partial<KeyStore>): void {
   }
   fs.writeFileSync(KEYS_FILE, JSON.stringify(merged, null, 2));
 
+  for (const [key, value] of Object.entries(keys)) {
+    if (value && typeof value === 'string' && value.trim().length > 0) {
+      process.env[key] = value.trim();
+    } else {
+      delete process.env[key];
+    }
+  }
+
   // Reset circuit breakers for affected providers so updated keys take effect immediately
   try {
     const { resetCircuit } = require('../cloud/circuit_breaker');

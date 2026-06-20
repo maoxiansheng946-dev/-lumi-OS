@@ -36,5 +36,17 @@ export async function saveServerKeys(keys: Record<string, string>): Promise<Save
   }
   const saved = Array.isArray(data.saved) ? data.saved : [];
   const deleted = Array.isArray(data.deleted) ? data.deleted : [];
+
+  const status = await getSavedKeyStatus();
+  for (const [name, value] of Object.entries(keys)) {
+    const shouldExist = value.trim().length > 0;
+    if (shouldExist && !status[name]) {
+      throw new Error(`${name} was not persisted by the backend`);
+    }
+    if (!shouldExist && status[name]) {
+      throw new Error(`${name} is still configured after removal`);
+    }
+  }
+
   return { success: true, saved, deleted };
 }
