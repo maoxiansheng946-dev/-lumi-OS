@@ -23,6 +23,7 @@ import { personalityRegistry } from "../personality";
 import { recordTokenUsage } from "../llm/token_tracker";
 import { executeExternalAgent, validateExternalCommand } from "./external_runtime";
 import { ToolExecutionRecord } from "../tools/types";
+import { buildResponseLanguageInstruction } from "../utils/language";
 
 type LLMProvider = 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto';
 
@@ -937,11 +938,14 @@ export async function aggregateWithLLM(
     .replace('{workerOutputs}', workerOutputs);
 
   try {
-    const messages: NormalizedMessage[] = [{ role: 'user', content: prompt }];
+    const messages: NormalizedMessage[] = [
+      { role: 'system', content: buildResponseLanguageInstruction(originalTask) },
+      { role: 'user', content: prompt },
+    ];
     const result = await makeLLMCall(
       messages,
       [],
-      { provider: llmConfig.provider, model: llmConfig.model, maxTokens: 4000 },
+      { provider: llmConfig.provider, model: llmConfig.model, maxTokens: 4000, userId },
       llmGetters.getDeepSeek,
       llmGetters.getGemini,
       llmGetters.getOpenAI,

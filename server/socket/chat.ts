@@ -35,6 +35,7 @@ import { getMember } from "../org/db";
 import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflows";
 import { buildProfessionOverlay } from "../autonomy/professions";
 import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
+import { buildResponseLanguageInstruction } from "../utils/language";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
@@ -457,6 +458,9 @@ export function registerChatHandler(
         effectiveSystemPrompt += '\n\n## Canvas File Verification\nFor any task that creates or modifies CAD drawings, documents, images, code, or other files, verify the final file path before saying the task is complete. Use desktop_path_info for exact desktop paths, desktop_list_files for Desktop/Documents/user folders and Chinese filenames, and read_file or the creating tool result for server-side files. For image-based floor-plan/CAD drafting tasks, locate the image first, prefer floorplan_extract_geometry, then pass extracted geometry into cad_generate_dxf. Use ocr_image_file for non-floor-plan images or as fallback. Do not claim a desktop file exists unless you verified it. If verification fails, say what failed and keep working.';
         effectiveSystemPrompt += '\n\n## Canvas Workbench\nYou are working inside the Canvas Workbench — a visual workspace where the user sees your thought process as cards.\n- You have FULL access to all tools including desktop control, file system, commands, mouse/keyboard.\n- Before executing destructive or desktop-modifying actions, show a plan card first so the user can see what you intend to do.\n- After each major step, summarize the result as a card.\n- When generating code, assets, or analysis, put the final output in the canvas as well.\n- The canvas is your visual trace — not a sandbox.';
       }
+
+      // Keep this late so English system/tool context cannot pull the reply language.
+      effectiveSystemPrompt += '\n\n' + buildResponseLanguageInstruction(text);
 
       // Read user's LLM prefs from settings (synced from API Matrix)
       const userLLMPrefs = (() => {

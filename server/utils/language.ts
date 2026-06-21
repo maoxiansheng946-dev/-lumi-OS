@@ -5,6 +5,17 @@
 
 export type DetectedLanguage = 'zh' | 'en' | 'mixed';
 
+const CHINESE_CONTEXT_HINTS = [
+  '我', '你', '他', '她', '它', '们',
+  '的', '了', '吗', '呢', '吧', '是', '在', '有', '和',
+  '怎么', '如何', '为什么', '为啥', '帮我', '请', '能不能', '可以',
+  '修复', '报错', '问题', '中文', '英文', '回复', '消息',
+];
+
+function containsChineseContextHint(text: string): boolean {
+  return CHINESE_CONTEXT_HINTS.some(hint => text.includes(hint));
+}
+
 /** Detect dominant language from raw user input text */
 export function detectLanguage(text: string): DetectedLanguage {
   const stripped = text.replace(/[\s\d\p{P}]/gu, '');
@@ -30,16 +41,29 @@ export function detectLanguage(text: string): DetectedLanguage {
   if (total === 0) return 'en';
 
   const cjkRatio = cjk / total;
-  if (cjkRatio > 0.7) return 'zh';
-  if (cjkRatio < 0.3) return 'en';
+  if (cjk > 0 && containsChineseContextHint(text)) return 'zh';
+  if (cjk >= 2 && cjkRatio >= 0.2) return 'zh';
+  if (cjkRatio > 0.55) return 'zh';
+  if (cjkRatio < 0.15) return 'en';
   return 'mixed';
 }
 
 /** Get the recommended response language based on input */
 export function getResponseLanguage(userText?: string): string {
-  if (!userText) return 'zh, en';
+  if (!userText) return 'Simplified Chinese by default, unless the user explicitly asks for another language';
   const lang = detectLanguage(userText);
-  if (lang === 'zh') return 'zh';
-  if (lang === 'en') return 'en';
-  return 'zh, en';
+  if (lang === 'zh') return 'Simplified Chinese';
+  if (lang === 'en') return 'English';
+  return 'the same language as the user, preferring Simplified Chinese when Chinese appears in the message';
+}
+
+/** Prompt overlay that keeps the assistant's answer language aligned with the user. */
+export function buildResponseLanguageInstruction(userText?: string): string {
+  const responseLang = getResponseLanguage(userText);
+  return [
+    '## Response Language',
+    `The latest user message should be answered in ${responseLang}.`,
+    'If the latest user message contains Chinese, reply in natural Simplified Chinese unless the user explicitly requests another language.',
+    'Do not switch to English just because system, tool, memory, or file context is written in English.',
+  ].join('\n');
 }

@@ -6,7 +6,7 @@ import { generateSpatiotemporalContext } from '../time/spatiotemporal';
 import { getDesktopContext } from '../context/activity_stream';
 import { getModeConfig, ConversationMode } from '../cognition/modes';
 import { formatLumiConstitutionForPrompt } from './constitution';
-import { getResponseLanguage } from '../utils/language';
+import { buildResponseLanguageInstruction } from '../utils/language';
 
 const VERBOSITY_GUIDE: Record<ExpressionStyle['verbosity'], string> = {
   concise: 'Keep responses short and direct. One or two sentences when possible.',
@@ -299,8 +299,7 @@ export function generateSystemPrompt(
     const directives = vectorOperatingDirectives(effectiveVector);
     if (directives) blocks.push(directives);
   }
-  const responseLang = getResponseLanguage(options?.userText);
-  blocks.push(`Respond in: ${responseLang}.`);
+  blocks.push(buildResponseLanguageInstruction(options?.userText));
 
   // 4. Emotional state — dynamic self-awareness
   if (options?.emotionalState) {
