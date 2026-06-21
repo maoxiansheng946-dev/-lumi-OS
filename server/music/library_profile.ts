@@ -1,7 +1,7 @@
-import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDataPath } from '../config/data_path';
+import { runNcmCliAsync } from './ncm_cli';
 
 export interface MusicCountItem {
   name: string;
@@ -48,43 +48,13 @@ interface LikedPlaylistInfo {
   trackCount: number;
 }
 
-function quoteCmdArg(value: string): string {
-  const raw = String(value);
-  if (/^[A-Za-z0-9_./:=@-]+$/.test(raw)) return raw;
-  return `"${raw.replace(/"/g, '\\"').replace(/([&|<>^%])/g, '^$1')}"`;
-}
-
-function runNcmCli(args: string[], timeout = 25000): Promise<string> {
-  return new Promise((resolve) => {
-    const finish = (err: Error | null, stdout: string | Buffer, stderr: string | Buffer) => {
-      const out = stdout?.toString() || '';
-      if (err && !out) {
-        console.warn('[MusicProfile] ncm-cli error:', stderr?.toString() || err.message);
-        resolve('');
-        return;
-      }
-      resolve(out);
-    };
-
-    if (process.platform === 'win32') {
-      const cmdline = ['npx.cmd', '@music163/ncm-cli', ...args, '--output', 'json']
-        .map(quoteCmdArg)
-        .join(' ');
-      execFile('cmd.exe', ['/d', '/c', cmdline], {
-        timeout,
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 8 * 1024 * 1024,
-      }, finish);
-      return;
-    }
-
-    execFile('npx', ['@music163/ncm-cli', ...args, '--output', 'json'], {
-      timeout,
-      encoding: 'utf8',
-      maxBuffer: 8 * 1024 * 1024,
-    }, finish);
-  });
+async function runNcmCli(args: string[], timeout = 25000): Promise<string> {
+  const result = await runNcmCliAsync(args, timeout, 8 * 1024 * 1024);
+  if (!result.ok && !result.stdout) {
+    console.warn('[MusicProfile] ncm-cli error:', result.stderr || result.error || 'unknown error');
+    return '';
+  }
+  return result.stdout;
 }
 
 function tryParse(text: string): any {

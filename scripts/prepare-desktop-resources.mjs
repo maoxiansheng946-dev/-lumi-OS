@@ -10,6 +10,7 @@ const includeLocalVoice = process.env.LUMI_DESKTOP_WITH_LOCAL_VOICE === '1';
 
 const runtimeNodeModules = ['sqlite3', 'bindings', 'file-uri-to-path', 'sharp', 'detect-libc', 'semver'];
 const runtimeScopedNodeModules = {
+  '@music163': ['ncm-cli'],
   '@img': [
     'colour',
     'sharp-win32-x64',

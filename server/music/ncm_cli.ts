@@ -99,13 +99,13 @@ export function runNcmCliSync(args: string[], timeout = 15000): NcmCliResult {
   }
 }
 
-export async function runNcmCliAsync(args: string[], timeout = 15000): Promise<NcmCliResult> {
+export async function runNcmCliAsync(args: string[], timeout = 15000, maxBuffer = 1024 * 1024): Promise<NcmCliResult> {
   try {
     const command = getNcmCliExec(args);
     const result = await execFileP(command.file, command.args, {
       timeout,
       windowsHide: true,
-      maxBuffer: 1024 * 1024,
+      maxBuffer,
       encoding: 'utf8',
     } as any);
     return { ok: true, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') };
