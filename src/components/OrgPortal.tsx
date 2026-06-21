@@ -14,6 +14,8 @@ interface OrgStatus {
   connected: boolean;
   orgId: string | null;
   orgRole: string | null;
+  orgName?: string;
+  sessionConnected?: boolean;
 }
 
 export function OrgPortal({ onBack }: { onBack?: () => void }) {
@@ -32,24 +34,64 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const [createMsg, setCreateMsg] = useState('');
   const hasServerStatus = status !== null;
   const isConnected = Boolean(status?.connected || (!hasServerStatus && orgConnection?.orgId));
+  const hasActiveOrgSession = Boolean(status?.sessionConnected || (!hasServerStatus && orgConnection?.orgId && workDomain === 'work'));
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     let cancelled = false;
+    const discoverExistingOrg = async (): Promise<boolean> => {
+      try {
+        const orgsRes = await apiFetch('/api/auth/orgs');
+        if (!orgsRes.ok) return false;
+        const data = await orgsRes.json().catch(() => ({}));
+        const orgs = Array.isArray(data?.orgs) ? data.orgs : (Array.isArray(data) ? data : []);
+        const org = orgs[0];
+        const orgId = org?.id || org?.orgId;
+        if (!orgId) return false;
+
+        const orgRole = org?.role || org?.orgRole || (org?.ownerUid === (user as any)?.uid ? 'owner' : 'member');
+        const orgName = org?.name || org?.orgName || '';
+        localStorage.setItem('lumi_org_connection', JSON.stringify({
+          orgId,
+          orgRole,
+          orgName,
+          connected: true,
+        }));
+        if (!cancelled) {
+          setStatus({ connected: true, orgId, orgRole, orgName, sessionConnected: false });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    };
     const checkStatus = async (retries = 2) => {
       for (let i = 0; i <= retries; i++) {
         try {
           const s = await apiFetch('/api/org/status').then(r => r.json());
           if (!cancelled) {
-            setStatus({ connected: !!s.orgId, orgId: s.orgId, orgRole: s.orgRole });
-            if (!s.orgId) {
+            if (s.orgId) {
+              setStatus({
+                connected: true,
+                orgId: s.orgId,
+                orgRole: s.orgRole,
+                orgName: orgConnection?.orgName || '',
+                sessionConnected: true,
+              });
+              setLoading(false);
+              return;
+            }
+
+            const discovered = await discoverExistingOrg();
+            if (!discovered) {
+              setStatus({ connected: false, orgId: null, orgRole: null, sessionConnected: false });
               localStorage.removeItem('lumi_org_connection');
               if (localStorage.getItem('lumi_work_domain') === 'work') {
                 localStorage.setItem('lumi_work_domain', 'personal');
               }
             }
             setLoading(false);
-            if (s.orgId) return; // connected, done
+            return;
           }
         } catch {}
         if (i < retries) await new Promise(r => setTimeout(r, 800));
@@ -122,7 +164,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
   }
 
   // Already connected to an org — show full org workbench inline
-  if (isConnected && workDomain !== 'work') {
+  if (isConnected && (workDomain !== 'work' || !hasActiveOrgSession)) {
     return (
       <div className="flex items-center justify-center p-8 h-full">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center space-y-4">
@@ -146,6 +188,8 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
                   connected: true,
                   orgId: result.connection?.orgId || orgConnection?.orgId || null,
                   orgRole: result.connection?.orgRole || orgConnection?.orgRole || null,
+                  orgName: result.connection?.orgName || orgConnection?.orgName || '',
+                  sessionConnected: true,
                 });
               } else {
                 setSwitchMsg(result.message || ui('工作域切换失败', 'Failed to switch to work domain'));

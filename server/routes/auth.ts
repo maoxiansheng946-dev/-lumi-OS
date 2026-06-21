@@ -383,7 +383,16 @@ export function mountAuthRoutes(router: Router, jwtSecret: string, getCookieOpti
 
     try {
       const decoded: any = jwt.verify(token, jwtSecret);
-      const orgs = listUserOrgs(decoded.uid);
+      const orgs = listUserOrgs(decoded.uid).map((org: any) => {
+        const membership = getMember(org.id, decoded.uid);
+        return {
+          ...org,
+          orgId: org.id,
+          role: membership?.role || 'member',
+          orgRole: membership?.role || 'member',
+          connected: membership?.status === 'active',
+        };
+      });
       res.json({ orgs });
     } catch (e) {
       res.status(401).json({ error: "Invalid token" });
