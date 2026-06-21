@@ -13,6 +13,9 @@ import { requireAuth } from "../middleware/auth";
 import { getLatencyStats } from "../monitor/latency_store";
 import { mcpManager, getMCPConfig } from "../mcp";
 import { DEFAULT_VISION_MODELS } from "../llm/vision_preferences";
+import { getVoicePreference, setVoicePreference, type VoicePreference } from "../config/voice_preference";
+import { getActiveSTTProvider } from "../stt/adapter";
+import { getActiveProvider as getActiveTTSProvider } from "../tts/adapter";
 
 // Cached GPU detection — queried once
 let _cachedGPU: { name?: string; util?: number } | null | undefined;
@@ -86,6 +89,43 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
   // Cloud provider health — circuit breaker + fallback status
   router.get("/cloud/health", (_req, res) => {
     try { res.json(getCloudHealth()); } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  router.get("/voice/active-provider", (_req, res) => {
+    const pref = getVoicePreference();
+    res.json({
+      pref,
+      active: {
+        stt: getActiveSTTProvider(),
+        tts: getActiveTTSProvider(),
+      },
+    });
+  });
+
+  router.post("/voice/provider", (req, res) => {
+    const { stt, tts } = req.body || {};
+    const allowedStt = new Set<VoicePreference['stt']>(['auto', 'local-whisper', 'qwen', 'ark', 'deepgram', 'whisper']);
+    const allowedTts = new Set<VoicePreference['tts']>(['auto', 'gptsovits', 'cosyvoice', 'ark']);
+    const next: Partial<VoicePreference> = {};
+
+    if (stt !== undefined) {
+      if (!allowedStt.has(stt)) return res.status(400).json({ error: 'Invalid STT provider' });
+      next.stt = stt;
+    }
+    if (tts !== undefined) {
+      if (!allowedTts.has(tts)) return res.status(400).json({ error: 'Invalid TTS provider' });
+      next.tts = tts;
+    }
+
+    const pref = setVoicePreference(next);
+    res.json({
+      success: true,
+      pref,
+      active: {
+        stt: getActiveSTTProvider(),
+        tts: getActiveTTSProvider(),
+      },
+    });
   });
 
   // Tool list for security config
