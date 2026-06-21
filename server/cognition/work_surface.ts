@@ -79,8 +79,6 @@ export function resolveWorkSurfaceRoute(text: string): WorkSurfaceRoute {
       ? {
           allowedTools: ['*'],
           requireConfirmation: [
-            'desktop_run_command',
-            'run_command',
             'write_file',
             'web_search',
             'url_fetch',
@@ -89,8 +87,8 @@ export function resolveWorkSurfaceRoute(text: string): WorkSurfaceRoute {
             'search_files',
             'grep_files',
           ],
-          forbiddenTools: ['computer_use'],
-          maxIterations: 25,
+          forbiddenTools: ['computer_use', 'desktop_run_command', 'run_command'],
+          maxIterations: 12,
         }
       : undefined,
   };

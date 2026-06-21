@@ -16,22 +16,22 @@ interface CompletionGuardInput {
 }
 
 const EXTERNAL_WORK_TASK_RE =
-  /\b(cad|dxf|dwg|pptx?|powerpoint|freecad|autocad|file|folder|desktop|browser|search|open|launch|save|export|install|run|execute|play|music|ocr)\b|(?:CAD|DXF|DWG|PPT|PowerPoint|FreeCAD|AutoCAD|文件|文件夹|路径|桌面|图纸|户型|平面图|装修|图片|照片|识别|提取|打开|加载|保存|导出|输出到|放到桌面|安装|运行|执行|播放|音乐)/i;
+  /\b(cad|dxf|dwg|pptx?|powerpoint|freecad|autocad|file|folder|desktop|browser|search|open|launch|save|export|install|run|execute|play|music|ocr)\b|(?:文件|路径|桌面|图纸|户型|平面图|装修|图片|照片|识别|提取|打开|加载|保存|导出|输出|安装|运行|执行|播放|音乐|生成|创建|方案|PPT|CAD|DXF)/i;
 
 const COMPLETION_CLAIM_RE =
-  /(?:任务|工作|全部|都|已经|已).{0,18}(?:完成|搞定|做好|做完)|(?:已|已经).{0,18}(?:生成|创建|保存|输出|写入|打开|加载|导出)|(?:生成好了|创建好了|保存好了|输出好了|打开了|加载好了|搞定了)|\b(?:task complete|completed successfully|created|saved|opened|exported)\b/i;
+  /(?:任务|工作|全部|都)?(?:已经|已)?[^。！？\n]{0,18}(?:完成|搞定|做好|做完)|(?:已经|已)[^。！？\n]{0,18}(?:生成|创建|保存|输出|写入|打开|加载|导出)|(?:生成好了|创建好了|保存好了|输出好了|打开了|加载好了|搞定了)|\b(?:task complete|completed successfully|created|saved|opened|exported|generated)\b/i;
 
 const OPEN_CLAIM_RE =
-  /(?:已|已经|都).{0,12}(?:打开|加载)|(?:打开了|加载好了)|\b(?:opened|launched)\b/i;
+  /(?:已经|已|都)?[^。！？\n]{0,12}(?:打开|加载)|(?:打开了|加载好了)|\b(?:opened|launched)\b/i;
 
 const FILE_CREATION_CLAIM_RE =
-  /(?:已|已经|都).{0,18}(?:生成|创建|保存|输出|写入|导出)|(?:生成好了|创建好了|保存好了|输出好了)|\b(?:created|saved|exported|generated)\b/i;
+  /(?:已经|已|都)?[^。！？\n]{0,18}(?:生成|创建|保存|输出|写入|导出)|(?:生成好了|创建好了|保存好了|输出好了)|\b(?:created|saved|exported|generated)\b/i;
 
 const INSPECTION_ONLY_TOOL_RE =
   /^(read_|list_|search_|grep_|desktop_path_info|desktop_list_files|client_get_state|adapter_health_check|usage_get_summary|calendar_|lumi_constitution|agent_list|get_|path_info)/i;
 
 const FILE_PRODUCER_TOOL_RE =
-  /(write_file|create_ppt|ppt|cad_generate|generate_.*(?:dxf|ppt|file)|export|save|document|docx|pdf|image|floorplan_extract_geometry)/i;
+  /^(write_file|create_ppt|create_docx|create_pdf|cad_generate_dxf|generate_.*(?:dxf|ppt|file)|export_|save_|document_)/i;
 
 const OPEN_TOOL_RE =
   /^(desktop_open|client_action|computer_use|external_app_.*open|open_)/i;
@@ -92,7 +92,7 @@ export function guardCompletionClaims(input: CompletionGuardInput): CompletionGu
 function extractLocalPaths(text: string): string[] {
   const matches = text.match(/[A-Za-z]:\\[^\n\r"'<>|]+?\.(?:dxf|dwg|svg|pdf|docx|xlsx|pptx|md|txt|json|csv|png|jpe?g|webp|html)/gi) || [];
   return matches
-    .map(item => path.normalize(item.trim()))
+    .map(item => path.normalize(item.trim().replace(/[),.;，。；]+$/g, '')))
     .slice(0, 12);
 }
 

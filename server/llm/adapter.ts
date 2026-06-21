@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { ToolRegistry } from '../tools/registry';
 import { ToolExecutionRecord, ToolContext, LLMUsage } from '../tools/types';
 import { NormalizedMessage, makeLLMCall, makeLLMCallStreaming, StreamCallback } from './providers';
@@ -169,6 +171,162 @@ function buildIterationLimitSummary(executionLog: ToolExecutionRecord[]): string
     ...Array.from(artifacts).map(ref => `- ${ref}`),
     '',
     'The task can be continued from these files/results instead of starting over.',
+  ].filter(Boolean).join('\n');
+}
+
+interface ReadyArtifact {
+  path: string;
+  kind: 'cad' | 'ppt' | 'document' | 'image' | 'preview' | 'other';
+  size: number;
+  sourceTool: string;
+}
+
+const ARTIFACT_PATH_RE =
+  /[A-Za-z]:\\[^\n\r"'<>|]+?\.(?:dxf|dwg|svg|pdf|docx|xlsx|pptx|md|txt|json|csv|png|jpe?g|webp|html)/gi;
+
+const ARTIFACT_PRODUCER_TOOL_RE =
+  /^(write_file|create_ppt|create_docx|create_pdf|cad_generate_dxf|generate_.*(?:dxf|ppt|file)|export_|save_|document_)/i;
+
+function normalizeArtifactPath(raw: string): string {
+  return path.normalize(String(raw || '').trim().replace(/[)\].,;，。；]+$/g, ''));
+}
+
+function artifactKind(filePath: string): ReadyArtifact['kind'] {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.dxf' || ext === '.dwg') return 'cad';
+  if (ext === '.pptx' || ext === '.ppt') return 'ppt';
+  if (ext === '.svg') return 'preview';
+  if (ext === '.pdf' || ext === '.docx' || ext === '.xlsx' || ext === '.md' || ext === '.txt' || ext === '.csv') return 'document';
+  if (['.png', '.jpg', '.jpeg', '.webp', '.html'].includes(ext)) return 'image';
+  return 'other';
+}
+
+function collectPathStrings(value: unknown, out: Set<string>, depth = 0): void {
+  if (depth > 5 || value == null || out.size > 40) return;
+
+  if (typeof value === 'string') {
+    for (const match of value.match(ARTIFACT_PATH_RE) || []) {
+      out.add(normalizeArtifactPath(match));
+    }
+    if (/^[A-Za-z]:\\/.test(value) && path.extname(value)) {
+      out.add(normalizeArtifactPath(value));
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectPathStrings(item, out, depth + 1);
+    return;
+  }
+
+  if (typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof nested === 'string' && /(path|file|output|artifact)/i.test(key)) {
+        out.add(normalizeArtifactPath(nested));
+      }
+      collectPathStrings(nested, out, depth + 1);
+    }
+  }
+}
+
+function collectExistingArtifacts(executionLog: ToolExecutionRecord[]): ReadyArtifact[] {
+  const byPath = new Map<string, ReadyArtifact>();
+  for (const record of executionLog) {
+    if (record.error || !record.result) continue;
+    if (!ARTIFACT_PRODUCER_TOOL_RE.test(record.name) && !/work_product_verify/i.test(record.name)) continue;
+
+    const paths = new Set<string>();
+    try {
+      collectPathStrings(JSON.parse(record.result), paths);
+    } catch {
+      collectPathStrings(record.result, paths);
+    }
+
+    for (const candidate of paths) {
+      try {
+        const stat = fs.statSync(candidate);
+        if (!stat.isFile() || stat.size <= 0) continue;
+        if (!byPath.has(candidate)) {
+          byPath.set(candidate, {
+            path: candidate,
+            kind: artifactKind(candidate),
+            size: stat.size,
+            sourceTool: record.name,
+          });
+        }
+      } catch {}
+    }
+  }
+  return Array.from(byPath.values());
+}
+
+function isOnDesktop(filePath: string): boolean {
+  const normalized = path.normalize(filePath).toLowerCase();
+  return /\\desktop\\/.test(normalized) || /\\桌面\\/.test(normalized);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function artifactLabel(artifact: ReadyArtifact): string {
+  if (artifact.kind === 'cad') return 'CAD图纸';
+  if (artifact.kind === 'ppt') return 'PPT装修方案';
+  if (artifact.kind === 'preview') return '预览图';
+  if (artifact.kind === 'document') return '文档';
+  if (artifact.kind === 'image') return '图片';
+  return '文件';
+}
+
+function buildReadyWorkProductSummary(messages: NormalizedMessage[], executionLog: ToolExecutionRecord[]): string | null {
+  const task = getPrimaryUserText(messages);
+  const wantsCad = /\b(cad|dxf|dwg)\b|(?:CAD|DXF|DWG|图纸|平面图|户型图|建筑平面)/i.test(task);
+  const wantsPpt = /\b(pptx?|powerpoint)\b|(?:PPT|PowerPoint)/i.test(task);
+  const wantsDesktop = /\bdesktop\b|桌面/i.test(task);
+  const wantsArtifact = wantsCad || wantsPpt || /\b(file|save|export|output)\b|(?:文件|保存|导出|输出|生成|创建)/i.test(task);
+  if (!wantsArtifact) return null;
+
+  const artifacts = collectExistingArtifacts(executionLog);
+  const hasCad = artifacts.some(artifact => artifact.kind === 'cad');
+  const hasPpt = artifacts.some(artifact => artifact.kind === 'ppt');
+  if (wantsCad && !hasCad) return null;
+  if (wantsPpt && !hasPpt) return null;
+  if (!wantsCad && !wantsPpt && artifacts.length === 0) return null;
+
+  const requiredArtifacts = artifacts.filter(artifact =>
+    (wantsCad && artifact.kind === 'cad') ||
+    (wantsPpt && artifact.kind === 'ppt') ||
+    (!wantsCad && !wantsPpt)
+  );
+  if (wantsDesktop && requiredArtifacts.some(artifact => !isOnDesktop(artifact.path))) return null;
+
+  const displayArtifacts = artifacts
+    .filter(artifact =>
+      artifact.kind === 'cad' ||
+      artifact.kind === 'ppt' ||
+      artifact.kind === 'preview' ||
+      (!wantsCad && !wantsPpt)
+    )
+    .slice(0, 8);
+  const failedCount = executionLog.filter(record => record.error).length;
+  const isZh = /[\u3400-\u9fff]/.test(task);
+
+  if (!isZh) {
+    return [
+      'Generated and verified these files exist:',
+      ...displayArtifacts.map(artifact => `- ${artifactLabel(artifact)}: ${artifact.path} (${formatBytes(artifact.size)})`),
+      failedCount ? `${failedCount} failed tool call(s) were ignored because they were not completion evidence.` : '',
+      'Stopping the tool loop now because the requested work product is present.',
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    '已生成并确认这些文件存在：',
+    ...displayArtifacts.map(artifact => `- ${artifactLabel(artifact)}：${artifact.path}（${formatBytes(artifact.size)}）`),
+    failedCount ? `另有 ${failedCount} 个工具调用失败，未作为完成依据。` : '',
+    '我已在产物满足后停止继续调用工具，避免重复执行。',
   ].filter(Boolean).join('\n');
 }
 
@@ -369,9 +527,27 @@ export async function runWithTools(
         name: tc.name,
       });
     }
+
+    const readyWorkProduct = buildReadyWorkProductSummary(messages, executionLog);
+    if (readyWorkProduct) {
+      recordWorkflowIfToolsUsed(executionLog, messages, config.userId);
+      return {
+        text: readyWorkProduct,
+        toolCalls: executionLog,
+        usageRecords,
+      };
+    }
   }
 
   recordWorkflowIfToolsUsed(executionLog, messages, config.userId);
+  const readyWorkProduct = buildReadyWorkProductSummary(messages, executionLog);
+  if (readyWorkProduct) {
+    return {
+      text: readyWorkProduct,
+      toolCalls: executionLog,
+      usageRecords,
+    };
+  }
   return {
     text: buildIterationLimitSummary(executionLog),
     toolCalls: executionLog,
