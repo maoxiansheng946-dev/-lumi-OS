@@ -1133,6 +1133,8 @@ function LLMProvidersPage({ t, providerStatus }: { t: any; providerStatus: Recor
               <option value="kimi">Kimi / 月之暗面</option>
               <option value="glm">GLM / 智谱</option>
               <option value="relay">中转站 (API Relay)</option>
+              <option value="ollama">Ollama (Local)</option>
+              <option value="lmstudio">LM Studio (Local)</option>
             </select>
             <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/45" />
           </div>
