@@ -9,8 +9,8 @@ const outDir = path.join(root, 'desktop-resources');
 const includeLocalVoice = process.env.LUMI_DESKTOP_WITH_LOCAL_VOICE === '1';
 
 const runtimeNodeModules = ['sqlite3', 'bindings', 'file-uri-to-path', 'sharp', 'detect-libc', 'semver'];
+const runtimePackageTrees = ['@music163/ncm-cli'];
 const runtimeScopedNodeModules = {
-  '@music163': ['ncm-cli'],
   '@img': [
     'colour',
     'sharp-win32-x64',
@@ -56,9 +56,84 @@ async function copyDir(src, dest, filter = shouldCopy) {
   });
 }
 
+function packagePath(nodeModulesDir, packageName) {
+  return path.join(nodeModulesDir, ...packageName.split('/'));
+}
+
+function resolvePackage(packageName, searchEntries) {
+  for (const entry of searchEntries) {
+    const packageSrc = packagePath(entry.srcNodeModules, packageName);
+    if (existsSync(packageSrc)) {
+      return {
+        src: packageSrc,
+        dest: packagePath(entry.destNodeModules, packageName),
+      };
+    }
+  }
+  return null;
+}
+
+async function readPackageJson(packageDir) {
+  try {
+    const manifest = await fs.readFile(path.join(packageDir, 'package.json'), 'utf8');
+    return JSON.parse(manifest);
+  } catch {
+    return null;
+  }
+}
+
+async function copyPackageDependencyTree(packageName, searchEntries, seen = new Set(), optional = false) {
+  const resolved = resolvePackage(packageName, searchEntries);
+  if (!resolved) {
+    if (optional) return;
+    throw new Error(`Missing runtime package "${packageName}". Run npm install before preparing desktop resources.`);
+  }
+
+  const seenKey = path.resolve(resolved.dest);
+  if (seen.has(seenKey)) return;
+  seen.add(seenKey);
+
+  await copyDir(resolved.src, resolved.dest);
+
+  const manifest = await readPackageJson(resolved.src);
+  if (!manifest) return;
+
+  const dependencies = manifest.dependencies ?? {};
+  const optionalDependencies = manifest.optionalDependencies ?? {};
+  const dependencyNames = new Set([
+    ...Object.keys(dependencies),
+    ...Object.keys(optionalDependencies),
+  ]);
+
+  const nestedSearchEntry = {
+    srcNodeModules: path.join(resolved.src, 'node_modules'),
+    destNodeModules: path.join(resolved.dest, 'node_modules'),
+  };
+
+  for (const dependencyName of dependencyNames) {
+    await copyPackageDependencyTree(
+      dependencyName,
+      [nestedSearchEntry, ...searchEntries],
+      seen,
+      Object.prototype.hasOwnProperty.call(optionalDependencies, dependencyName),
+    );
+  }
+}
+
 async function prepareServer() {
   const src = path.join(root, 'dist-server');
   const dest = path.join(outDir, 'dist-server');
+  const destNodeModules = path.join(dest, 'node_modules');
+  const runtimePackageSearchEntries = [
+    {
+      srcNodeModules: path.join(src, 'node_modules'),
+      destNodeModules,
+    },
+    {
+      srcNodeModules: path.join(root, 'node_modules'),
+      destNodeModules,
+    },
+  ];
 
   await fs.mkdir(dest, { recursive: true });
   const nodeBinaryName = process.platform === 'win32' ? 'node.exe' : 'node';
@@ -94,6 +169,10 @@ async function prepareServer() {
       const moduleSrc = existsSync(srcPath) ? srcPath : fallbackPath;
       await copyDir(moduleSrc, path.join(dest, 'node_modules', scopeName, packageName));
     }
+  }
+
+  for (const packageName of runtimePackageTrees) {
+    await copyPackageDependencyTree(packageName, runtimePackageSearchEntries);
   }
 }
 
