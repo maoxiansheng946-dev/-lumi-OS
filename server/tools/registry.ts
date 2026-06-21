@@ -165,17 +165,22 @@ export class ToolRegistry {
           isCancelled: () => timedOut || context.isCancelled?.() === true,
         }
       : context;
-    const result = await Promise.race([
-      tool.handler(args, executionContext),
-      new Promise<string>((_, reject) =>
-        setTimeout(() => {
-          timedOut = true;
-          reject(new Error(`Tool "${name}" timed out after ${timeoutMs / 1000}s`));
-        }, timeoutMs)
-      ),
-    ]);
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const result = await Promise.race([
+        tool.handler(args, executionContext),
+        new Promise<string>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`Tool "${name}" timed out after ${timeoutMs / 1000}s`));
+          }, timeoutMs);
+        }),
+      ]);
 
-    return result;
+      return result;
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   }
 }
 

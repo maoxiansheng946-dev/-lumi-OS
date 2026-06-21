@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import { readDB, writeDB } from "../../db_layer";
 import { pushNotification } from "../routes/notifications";
 import { NormalizedMessage, makeLLMCall, makeLLMCallStreaming, StreamCallback } from "../llm/providers";
-import { LLMUsage } from "../tools/types";
+import { LLMUsage, ToolExecutionRecord } from "../tools/types";
 import { toolRegistry } from "../tools/registry";
 import { runWithTools } from "../llm/adapter";
 import { getOperationModeConfig, parseStoredOperationMode } from "../cognition/operation_modes";
@@ -36,6 +36,7 @@ import { getWorkflow, recordWorkflowRun, listWorkflows } from "../agents/workflo
 import { buildProfessionOverlay } from "../autonomy/professions";
 import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
 import { buildResponseLanguageInstruction } from "../utils/language";
+import { guardCompletionClaims, needsCompletionEvidence } from "../work_product/completion_guard";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
@@ -674,6 +675,8 @@ export function registerChatHandler(
 
       let responseText = '';
       let llmWasCalled = false;
+      const allToolRecords: ToolExecutionRecord[] = [];
+      const deferCompletionStream = needsCompletionEvidence(text);
       const prefersSequentialCanvasWorkflow =
         shouldChainTask(text) &&
         (eventSource === 'canvas' || (workSurfaceRoute.artifactFirst && !workSurfaceRoute.directDesktop));
@@ -718,6 +721,13 @@ export function registerChatHandler(
             llmGetters,
             exposeAgentWork ? (msg) => emitAgent("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
             (record, meta) => {
+              allToolRecords.push({
+                id: record.id,
+                name: record.name,
+                arguments: record.arguments || {},
+                result: record.result || '',
+                error: record.error,
+              });
               const payload: Record<string, any> = {
                 correlationId: record.id,
                 toolCallId: record.id,
@@ -756,8 +766,6 @@ export function registerChatHandler(
         }
       }
 
-      const allToolRecords: { name: string; args: string; result?: string; error?: string }[] = [];
-
       // Path B2: NL Task Chainer — for office workflows that chain tools (search→read→create etc.)
       if (!responseText && allowToolUseForTurn && !clientActionOnlyTurn && !selfRepairTurn && shouldChainTask(text)) {
         // Pre-flight: auto-install any matching uninstalled/outdated skills
@@ -774,6 +782,7 @@ export function registerChatHandler(
               desktopRelay,
               context: { isCancelled: () => abortController.signal.aborted, toolPolicy: routedToolPolicy || personality.toolPolicy },
               onTool: (record) => {
+                allToolRecords.push(record);
                 const payload: Record<string, any> = {
                   correlationId: record.id,
                   toolCallId: record.id,
@@ -832,7 +841,9 @@ export function registerChatHandler(
           const streamChunks: string[] = [];
           const onChunk: StreamCallback = (chunk) => {
             streamChunks.push(chunk);
-            emitAgent("agent:chunk", { text: chunk, agentName: personality.name });
+            if (!deferCompletionStream) {
+              emitAgent("agent:chunk", { text: chunk, agentName: personality.name });
+            }
           };
 
           // Sanctuary agents get zero tool access — they can only talk
@@ -886,7 +897,7 @@ export function registerChatHandler(
             toolRegistry,
             { provider: activeProvider, model: activeModel, userId: uid },
             isSanctuary ? undefined : (record) => {
-              allToolRecords.push({ name: record.name, args: JSON.stringify(record.arguments || {}), result: record.result?.slice(0, 500), error: record.error });
+              allToolRecords.push(record);
               if (isDirectDesktopTool(record.name)) return;
               const toolPayload = {
                 correlationId: record.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -906,6 +917,7 @@ export function registerChatHandler(
               userId: uid,
               desktopRelay,
               llmGetters,
+              source: source === 'canvas' ? 'canvas' : 'chat',
               isCancelled: () => abortController.signal.aborted,
               onToolStart: (call) => {
                 if (isDirectDesktopTool(call.name)) return;
@@ -1007,7 +1019,7 @@ export function registerChatHandler(
                 messages, toolRegistry,
                 { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid },
                 (record) => {
-                  allToolRecords.push({ name: record.name, args: JSON.stringify(record.arguments || {}), result: record.result?.slice(0, 500), error: record.error });
+                  allToolRecords.push(record);
                   if (isDirectDesktopTool(record.name)) return;
                   emitToolLifecycle({
                     correlationId: record.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1024,6 +1036,7 @@ export function registerChatHandler(
                   userId: uid,
                   desktopRelay,
                   llmGetters,
+                  source: source === 'canvas' ? 'canvas' : 'chat',
                   isCancelled: () => abortController.signal.aborted,
                   onToolStart: (call) => {
                     if (isDirectDesktopTool(call.name)) return;
@@ -1075,6 +1088,18 @@ export function registerChatHandler(
         }
       }
 
+      const completionGuard = guardCompletionClaims({
+        task: text,
+        response: responseText,
+        toolCalls: allToolRecords,
+        source: source === 'canvas' ? 'canvas' : 'chat',
+      });
+      if (completionGuard.blocked) {
+        console.warn('[ChatHandler] Completion claim blocked:', completionGuard.reason);
+        responseText = completionGuard.text;
+        emitAgent("agent:notification", { type: 'work_product_guard', level: 'warning', message: completionGuard.reason });
+      }
+
       // Save to conversation via conversation manager (reuse conversationId from setup)
 
       if (conversationId) {
@@ -1086,7 +1111,7 @@ export function registerChatHandler(
             : `[Tool: ${tc.name}] Done`;
           addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'tool', content: tcSummary, domain: resolvedDomain, orgId: resolvedOrgId });
         }
-        addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: responseText, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+        addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: responseText, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId, toolCalls: allToolRecords.length ? allToolRecords : undefined });
         // (conversation_updated NOW emitted AFTER agent:response — see below)
 
         // Topic tracking — extract and record topics for cross-session continuity

@@ -52,8 +52,25 @@ function simpleGlobToRegex(pattern: string): RegExp {
   return new RegExp('^' + regexStr + '$');
 }
 
+function firstStringArg(args: Record<string, any>, keys: string[]): string {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return '';
+}
+
+function requirePathArg(args: Record<string, any>, keys: string[], toolName: string): string {
+  const value = firstStringArg(args, keys);
+  if (!value) {
+    throw new Error(`${toolName} requires a file path. Accepted keys: ${keys.join(', ')}.`);
+  }
+  return value;
+}
+
 async function readFileHandler(args: Record<string, any>, context?: { cwd?: string }): Promise<string> {
-  const targetPath = resolveSafePath(args.path || '.', context?.cwd);
+  const inputPath = requirePathArg(args, ['path', 'filePath', 'filepath', 'targetPath', 'target'], 'read_file');
+  const targetPath = resolveSafePath(inputPath, context?.cwd);
   const stat = fs.statSync(targetPath);
   if (stat.isDirectory()) {
     throw new Error(`"${targetPath}" is a directory, not a file.`);
@@ -65,7 +82,8 @@ async function readFileHandler(args: Record<string, any>, context?: { cwd?: stri
 }
 
 async function writeFileHandler(args: Record<string, any>, context?: { cwd?: string }): Promise<string> {
-  const targetPath = resolveSafePath(args.path || '.', context?.cwd);
+  const inputPath = requirePathArg(args, ['path', 'filePath', 'filepath', 'targetPath', 'target'], 'write_file');
+  const targetPath = resolveSafePath(inputPath, context?.cwd);
 
   const blockedPaths = ['/etc', '/sys', '/proc', '/dev', 'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)'];
   const normalizedTarget = path.normalize(targetPath);
@@ -231,7 +249,7 @@ async function grepFilesHandler(args: Record<string, any>, context?: { cwd?: str
 }
 
 async function readFilesBatchHandler(args: Record<string, any>, context?: { cwd?: string }): Promise<string> {
-  const paths: string[] = args.paths || [];
+  const paths: string[] = args.paths || args.filePaths || args.filepaths || [];
   if (!paths.length) throw new Error('At least one file path is required.');
   if (paths.length > 10) throw new Error('Maximum 10 files per batch request.');
 
@@ -266,8 +284,9 @@ export function registerFileOpsTools(registry: ToolRegistry): void {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Absolute or relative path to the file to read' },
+        filePath: { type: 'string', description: 'Alias for path, accepted for compatibility with chained workflows' },
       },
-      required: ['path'],
+      required: [],
     },
     handler: readFileHandler,
     permission: 'user',
@@ -281,9 +300,10 @@ export function registerFileOpsTools(registry: ToolRegistry): void {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Path to the file to write' },
+        filePath: { type: 'string', description: 'Alias for path, accepted for compatibility with chained workflows' },
         content: { type: 'string', description: 'Content to write to the file' },
       },
-      required: ['path', 'content'],
+      required: ['content'],
     },
     handler: writeFileHandler,
     permission: 'user',
@@ -348,8 +368,9 @@ export function registerFileOpsTools(registry: ToolRegistry): void {
       type: 'object',
       properties: {
         paths: { type: 'array', items: { type: 'string' }, description: 'Array of file paths to read (max 10).' },
+        filePaths: { type: 'array', items: { type: 'string' }, description: 'Alias for paths, accepted for compatibility with chained workflows.' },
       },
-      required: ['paths'],
+      required: [],
     },
     handler: readFilesBatchHandler,
     permission: 'user',

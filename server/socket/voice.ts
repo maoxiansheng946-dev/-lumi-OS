@@ -8,6 +8,7 @@ import { logger } from "../../logger";
 import { NormalizedMessage, makeLLMCallStreaming, makeLLMCall } from "../llm/providers";
 import { compactToolResultForModel } from "../llm/adapter";
 import { toolRegistry } from "../tools/registry";
+import { ToolExecutionRecord } from "../tools/types";
 import { personalityRegistry } from "../personality";
 import { loadEmotionalState, updateEmotionalState, saveEmotionalState, loadHIMState, saveHIMState } from "../personality/state";
 import { himTick } from "../personality/him";
@@ -29,6 +30,7 @@ import { getVoiceprints } from "../biometrics/store";
 import { formatClientSelfPrompt } from "../client/self_model";
 import { adjustMusicPlayback, getMusicFailureMessage, isMusicAdjustmentRequest, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
 import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnalysisRequest } from "../music/library_profile";
+import { guardCompletionClaims, needsCompletionEvidence } from "../work_product/completion_guard";
 
 interface AudioSession {
   sttSession: ReturnType<typeof createStreamingSession> | null;
@@ -525,6 +527,7 @@ async function processVoiceInput(
   const toolContext = {
     desktopRelay,
     llmGetters,
+    source: 'voice',
     ...(effectiveOperationMode === 'assistant' || effectiveOperationMode === 'autonomous' || clientActionOnlyTurn || selfRepairTurn ? { requestConfirmation } : {}),
     isCancelled: () => pipelineAbort?.signal.aborted ?? false,
     toolPolicy: routedToolPolicy,
@@ -539,11 +542,12 @@ async function processVoiceInput(
     return { voiceId: session.currentVoiceId || 'longxiaochun_v3' };
   })();
   let responseText = '';
-  let toolResults: any[] = [];
+  let toolResults: ToolExecutionRecord[] = [];
   let sentenceBuffer = '';
   let sentenceIdx = 0;
   const ttsPromises: Promise<void>[] = [];
   let previousToolSig: string | null = null;
+  const deferCompletionSpeech = needsCompletionEvidence(userText);
 
   // ── Generation gating: only latest command gets TTS output ──
   session.bgGeneration++;
@@ -865,15 +869,38 @@ async function processVoiceInput(
             getQwen: llmGetters.getQwen,
           },
           exposeAgentWork ? (msg) => socket.emit("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
+          (record, meta) => {
+            toolResults.push({
+              id: record.id,
+              name: record.name,
+              arguments: record.arguments || {},
+              result: record.result || '',
+              error: record.error,
+            });
+            socket.emit("agent:tool_call", {
+              correlationId: record.id,
+              toolCallId: record.id,
+              name: record.name,
+              arguments: record.arguments,
+              args: record.arguments,
+              subTaskId: meta.subTaskId,
+              workerAgentId: meta.agentId,
+              workerAgentName: meta.agentName,
+              result: record.result?.slice(0, 500),
+              error: record.error,
+            });
+          },
         );
         if (orchResult) {
           usedOrchestrator = true;
           responseText = orchResult.responseText;
-          // Flush orchestrator result to TTS sentence by sentence
           const rawSentences = responseText.split(/(?<=[。！？.!?\n])/);
-          for (const s of rawSentences) {
-            if (pipelineAbort?.signal.aborted) break;
-            flushSentence(s);
+          if (!deferCompletionSpeech) {
+            // Flush orchestrator result to TTS sentence by sentence
+            for (const s of rawSentences) {
+              if (pipelineAbort?.signal.aborted) break;
+              flushSentence(s);
+            }
           }
           logger.info(`[Audio] Orchestrator response: "${responseText.slice(0, 80)}" (${rawSentences.length} sentences)`);
         }
@@ -919,12 +946,14 @@ async function processVoiceInput(
         { provider, model: effectiveModel, signal: pipelineAbort?.signal },
         (chunk: string) => {
           responseText += chunk;
-          sentenceBuffer += chunk;
-          socket.emit("agent:chunk", { text: chunk, agentName: "Lumi" });
-          const match = sentenceBuffer.match(/^([\s\S]*?[。！？.!?\n])/);
-          if (match) {
-            sentenceBuffer = sentenceBuffer.slice(match[1].length);
-            flushSentence(match[1]);
+          if (!deferCompletionSpeech) {
+            sentenceBuffer += chunk;
+            socket.emit("agent:chunk", { text: chunk, agentName: "Lumi" });
+            const match = sentenceBuffer.match(/^([\s\S]*?[。！？.!?\n])/);
+            if (match) {
+              sentenceBuffer = sentenceBuffer.slice(match[1].length);
+              flushSentence(match[1]);
+            }
           }
         },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
@@ -945,7 +974,6 @@ async function processVoiceInput(
       const toolSig = JSON.stringify(streamResult.toolCalls.map(tc => ({ n: tc.name, a: tc.arguments })));
       if (toolSig === previousToolSig) { logger.info('[Audio] Duplicate tools, breaking'); break; }
       previousToolSig = toolSig;
-      toolResults.push(...streamResult.toolCalls);
 
       for (const tc of streamResult.toolCalls) {
         if (pipelineAbort?.signal.aborted) break;
@@ -960,6 +988,14 @@ async function processVoiceInput(
           execResult = '';
           execError = execErr.message?.slice(0, 200) || 'Tool execution failed';
         }
+
+        toolResults.push({
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments || {},
+          result: execResult,
+          error: execError,
+        });
 
         if (execError) {
           socket.emit("agent:tool_call", { correlationId: cid, name: tc.name, arguments: tc.arguments, error: execError });
@@ -978,8 +1014,28 @@ async function processVoiceInput(
     }
     } // end if (!usedOrchestrator)
 
+    const completionGuard = guardCompletionClaims({
+      task: userText,
+      response: responseText,
+      toolCalls: toolResults,
+      source: 'voice',
+    });
+    if (completionGuard.blocked) {
+      logger.warn(`[Audio] Completion claim blocked: ${completionGuard.reason}`);
+      responseText = completionGuard.text;
+      sentenceBuffer = '';
+      socket.emit("agent:notification", { type: 'work_product_guard', level: 'warning', message: completionGuard.reason });
+    }
+
     // Flush remaining text
-    if (sentenceBuffer.trim()) flushSentence(sentenceBuffer);
+    if (sentenceBuffer.trim() && !deferCompletionSpeech) flushSentence(sentenceBuffer);
+    if (deferCompletionSpeech && responseText) {
+      const finalSentences = responseText.split(/(?<=[。！？.!?\n])/);
+      for (const s of finalSentences) {
+        if (pipelineAbort?.signal.aborted) break;
+        flushSentence(s);
+      }
+    }
     await Promise.allSettled(ttsPromises);
 
     if (responseText) {
