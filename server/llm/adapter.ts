@@ -43,6 +43,8 @@ const TOOL_RESULT_LIMITS: Record<string, number> = {
   ocr_image_file: 6_000,
   floorplan_extract_geometry: 8_000,
   capability_research: 8_000,
+  authority_research: 12_000,
+  authority_research_save: 4_000,
   self_extension_plan: 8_000,
   usage_get_summary: 6_000,
   lumi_constitution: 6_000,

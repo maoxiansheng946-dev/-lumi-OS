@@ -106,6 +106,8 @@ export function classifyAction(toolName: string, args: Record<string, any> = {})
   if (name.includes('wechat') || name.includes('feishu') || name.includes('wecom') || name.includes('message')) return 'messaging';
   if (name === 'computer_use' || name.startsWith('desktop_') || name.includes('mouse') || name.includes('keyboard') || name.includes('screenshot')) return 'desktop_control';
   if (name.includes('external_app') || name.includes('cad_') || name.includes('browser_open')) return 'external_app';
+  if (name === 'authority_research') return 'network';
+  if (name === 'authority_research_save') return 'local_write';
   if (name.includes('write') || name.includes('create_') || name.includes('save') || name.includes('edit') || name.includes('file_ops')) return 'local_write';
   if (name.includes('run_command') || name.includes('terminal') || name.includes('shell') || name.includes('code_execution')) return 'system';
   if (name.includes('web_search') || name.includes('url_fetch') || name.includes('search')) return 'network';

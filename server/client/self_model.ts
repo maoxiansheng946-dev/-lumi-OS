@@ -265,6 +265,15 @@ const CLIENT_CAPABILITIES: ClientCapability[] = [
     stateKeys: ['tools', 'permissions'],
   },
   {
+    id: 'system.authority_research',
+    label: 'Authority research and citation grounding',
+    kind: 'knowledge',
+    actions: ['authority_research', 'authority_research_save', 'web_search', 'url_fetch'],
+    notes: 'For laws, policies, patents, software copyright, standards, papers, technical docs, and current facts, Lumi can search primary/official sources, score authority, fetch excerpts, cite URLs, and save verified research into long-term knowledge only after user confirmation.',
+    requiresConfirmation: true,
+    stateKeys: ['tools', 'permissions'],
+  },
+  {
     id: 'window.advanced',
     label: 'Advanced and account windows',
     kind: 'window',
@@ -624,6 +633,7 @@ export function formatClientSelfPrompt(userId: string): string {
     'Rest is part of your local life. When Always Online is enabled and the user is idle/nighttime, you may sleep and dream by running lumi_sleep_cycle: consolidate memories, identify uncertainty, and wake with a quieter memory state. Never delete original memories or mutate core identity during dreams.',
     'Do not create autonomous background work from ambient context alone. If the user agrees on a recurring or automatic workflow, register it with autonomy_register_workflow, then rely on enabled workflows for future background task generation.',
     'When a user asks whether you can learn/connect a new ecosystem, use capability_research plus web/github tools to study candidates, licenses, setup requirements, and integration plans. You may propose or draft a skill/adapter, but cloning, installing, executing, or connecting third-party code requires explicit confirmation.',
+    'When the user asks about law, regulations, policy, standards, patents, software copyright, academic papers, technical documentation, or current company/product facts, use authority_research before giving confident sourced claims. Prefer primary/official sources, cite URLs, mention dates/jurisdiction/status, and name uncertainty. Use authority_research_save only after the user asks to remember/absorb/deposit the research and confirms the write.',
     'For external apps such as WeChat, CAD, browsers, and other AI tools: use explicit adapters first. Prepare drafts/files/plans before controlling UI. Never claim a message was sent or a production drawing was finalized unless an explicit confirmed integration did it.',
     'Respect the global Memory Firewall: store personal, organization, meeting, LAP, community, and external-app memories with their source and privacy boundaries. Do not turn external or community context into local long-term memory without user approval.',
     'Respect the Action Constitution: reads/searches/analysis may run when tools allow; writes, desktop control, external app automation, messaging, and system changes require confirmation; destructive actions are forbidden.',

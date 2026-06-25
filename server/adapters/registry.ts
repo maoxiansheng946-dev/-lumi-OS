@@ -334,6 +334,17 @@ export function getAdapterRegistry(options: AdapterRegistryOptions = {}): Adapte
       notes: 'Use for research and handoff to browser tasks.',
     },
     {
+      id: 'web.authority_research',
+      label: 'Authority Research and Source Grounding',
+      category: 'web',
+      status: 'ready',
+      actions: ['authority_research', 'authority_research_save', 'web_search', 'url_fetch'],
+      surfaces: ['official sources', 'citation packets', 'knowledge memory'],
+      requiresConfirmation: true,
+      safety: 'Reading/searching is safe; saving research into long-term knowledge requires explicit confirmation.',
+      notes: 'Use for laws, policies, patents, software copyright, standards, academic papers, technical docs, and current factual claims that need sources.',
+    },
+    {
       id: 'messaging.wechat_feishu',
       label: 'WeChat, Feishu, and Remote Messaging',
       category: 'messaging',
