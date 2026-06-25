@@ -23,7 +23,7 @@ import { listVoices } from '@/services/voiceService';
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 
 const CHAT_HISTORY_LIMIT = 300;
-const CHAT_RENDER_LIMIT = 180;
+const CHAT_RENDER_LIMIT = 80;
 const CHAT_SEARCH_LIMIT = 200;
 type WorkflowStatus = 'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error';
 
@@ -203,7 +203,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     return () => document.removeEventListener('mousedown', onClick);
   }, [showVoicePicker]);
 
-  const [newMessage, setNewMessage] = useState('');
+  const messageInputRef = useRef<HTMLInputElement>(null);
+  const draftTextRef = useRef('');
+  const [hasDraftText, setHasDraftText] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -221,6 +223,17 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const agentNameRef = useRef<string>('Lumi');
   const seenToolEventIds = useRef<Set<string>>(new Set());
   const seenWorkflowToolEvents = useRef<Set<string>>(new Set());
+
+  const updateDraftText = useCallback((value: string) => {
+    draftTextRef.current = value;
+    const nextHasDraft = value.trim().length > 0;
+    setHasDraftText(prev => prev === nextHasDraft ? prev : nextHasDraft);
+  }, []);
+
+  const setDraftText = useCallback((value: string) => {
+    updateDraftText(value);
+    if (messageInputRef.current) messageInputRef.current.value = value;
+  }, [updateDraftText]);
 
   // Escape to close panels
   useEffect(() => {
@@ -267,7 +280,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
       recognition.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        setNewMessage(transcript);
+        setDraftText(transcript);
         setIsListening(false);
       };
 
@@ -281,7 +294,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         setIsListening(false);
       };
     }
-  }, []);
+  }, [setDraftText, t.speechNotSupported]);
 
   const handleCopyMessage = useCallback(async (text: string, id: string) => {
     try {
@@ -829,7 +842,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     }]);
 
     setMessages(prev => [...prev, userMsg]);
-    setNewMessage('');
+    setDraftText('');
     setPendingAttachments(prev => prev.filter(item => !outgoingAttachments.some(sent => sent.id === item.id)));
     stop();
     setIsTyping(true);
@@ -944,7 +957,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    sendText(newMessage.trim(), pendingAttachments);
+    sendText(draftTextRef.current.trim(), pendingAttachments);
   };
 
   const toggleListening = () => {
@@ -1485,8 +1498,9 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               </Button>
               <div className="relative flex-1">
                 <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  ref={messageInputRef}
+                  defaultValue=""
+                  onChange={(e) => updateDraftText(e.target.value)}
                   placeholder={t.communicatePlaceholder || "Communicate with your essence..."}
                   className="bg-black/40 border-white/10 rounded-2xl py-6 pr-12 focus-visible:ring-celestial-saturn/50"
                 />
@@ -1512,7 +1526,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               ) : (
                 <Button
                   type="submit"
-                  disabled={!newMessage.trim() && pendingAttachments.length === 0}
+                  disabled={!hasDraftText && pendingAttachments.length === 0}
                   className="bg-celestial-saturn text-black rounded-2xl px-6 hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
                 >
                   <Send size={20} />

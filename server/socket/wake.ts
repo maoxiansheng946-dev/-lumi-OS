@@ -29,11 +29,20 @@ export function registerWakeHandlers(socket: Socket, getUserId: (s: Socket) => s
     }
   });
 
-  socket.on("wake:audio", (data: { audio: number[] }) => {
+  socket.on("wake:audio", (data: { audio?: number[] } | Buffer | ArrayBuffer | Uint8Array) => {
     if (!wakeDetector) return;
     if (isTtsPlaying()) return;
     try {
-      const buf = Buffer.from(new Int16Array(data.audio).buffer);
+      let buf: Buffer;
+      if (Buffer.isBuffer(data)) {
+        buf = data;
+      } else if (data instanceof ArrayBuffer) {
+        buf = Buffer.from(data);
+      } else if (ArrayBuffer.isView(data)) {
+        buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        buf = Buffer.from(new Int16Array(data.audio || []).buffer);
+      }
       wakeDetector.sendAudio(buf);
     } catch {}
   });

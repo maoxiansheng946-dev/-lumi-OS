@@ -182,7 +182,7 @@ export function useWakeWord({
           for (let i = 0; i < input.length; i++) {
             pcm[i] = Math.max(-32768, Math.min(32767, Math.round(input[i] * 32767)));
           }
-          socketRef.current?.emit('wake:audio', { audio: Array.from(pcm) });
+          socketRef.current?.emit('wake:audio', pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
         } catch { /* ignore */ }
       };
 
