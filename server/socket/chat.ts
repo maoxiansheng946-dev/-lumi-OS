@@ -71,6 +71,79 @@ function normalizeChatHistoryRecord(m: any): NormalizedMessage[] {
   return entries;
 }
 
+interface ChatIncomingAttachment {
+  id?: string;
+  fileName: string;
+  path?: string;
+  content?: string | null;
+  preview?: string | null;
+  mimeType?: string;
+  size?: number;
+  kind: 'image' | 'file';
+}
+
+const MAX_CHAT_ATTACHMENTS = 8;
+const MAX_CHAT_ATTACHMENT_CONTENT = 30000;
+
+function boundedString(value: unknown, maxLength: number): string {
+  if (typeof value !== 'string') return '';
+  return value.slice(0, maxLength);
+}
+
+function isImageAttachment(name: string, mimeType?: string): boolean {
+  return Boolean(mimeType?.startsWith('image/')) || /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(name || '');
+}
+
+function normalizeIncomingAttachments(input: unknown): ChatIncomingAttachment[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, MAX_CHAT_ATTACHMENTS).map((item: any) => {
+    const fileName = boundedString(String(item?.fileName ?? item?.name ?? item?.id ?? 'attachment'), 240);
+    const mimeType = boundedString(String(item?.mimeType ?? ''), 120);
+    const kind: ChatIncomingAttachment['kind'] = item?.kind === 'image' || isImageAttachment(fileName, mimeType) ? 'image' : 'file';
+    return {
+      id: boundedString(item?.id, 160) || undefined,
+      fileName,
+      path: boundedString(item?.path, 1200) || undefined,
+      content: boundedString(item?.content, MAX_CHAT_ATTACHMENT_CONTENT) || null,
+      preview: boundedString(item?.preview, 4000) || null,
+      mimeType,
+      size: typeof item?.size === 'number' ? item.size : undefined,
+      kind,
+    };
+  }).filter(item => item.fileName || item.path || item.content);
+}
+
+function buildChatAttachmentContext(attachments: ChatIncomingAttachment[]): string {
+  if (attachments.length === 0) return '';
+  const lines: string[] = [
+    '## Current Turn Attachments',
+    'The user attached these files to the current message. Treat them as part of the user request.',
+  ];
+  attachments.forEach((item, index) => {
+    const content = item.content || item.preview || '';
+    lines.push(`### ${index + 1}. ${item.fileName}`);
+    lines.push(`Type: ${item.kind}${item.mimeType ? ` (${item.mimeType})` : ''}`);
+    if (item.path) lines.push(`Local path: ${item.path}`);
+    if (item.kind === 'image') {
+      lines.push('For visual details, use the ocr_image_file tool with the local path before answering.');
+    }
+    if (content) {
+      lines.push(`Extracted text:\n${content}`);
+    } else if (item.path) {
+      lines.push('No extracted text is attached; use the local path with an appropriate tool if needed.');
+    }
+  });
+  return lines.join('\n');
+}
+
+function buildStoredAttachmentSummary(userText: string, attachments: ChatIncomingAttachment[]): string {
+  if (attachments.length === 0) return userText;
+  const summary = attachments
+    .map(item => `- ${item.fileName}${item.kind === 'image' ? ' (image)' : ''}`)
+    .join('\n');
+  return `${userText}\n\n[Attachments]\n${summary}`.trim();
+}
+
 function buildNaturalReplyStyleOverlay(source?: string): string {
   const voiceLine = source === 'voice'
     ? '- In voice, default to one short sentence. If the user asks a simple question, answer in under 20 Chinese characters when possible.'
@@ -123,9 +196,15 @@ export function registerChatHandler(
     }
   });
 
-  socket.on("agent:chat", async (data: { text: string; history: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string; requestId?: string }) => {
+  socket.on("agent:chat", async (data: { text?: string; history?: any[]; attachments?: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string; requestId?: string }) => {
     console.log('[ChatHandler] agent:chat RECEIVED:', JSON.stringify(data).slice(0, 300));
-    const { text, history, personalityId = "lumi", category, agentId, mode: payloadMode, source } = data;
+    const { history, personalityId = "lumi", category, agentId, mode: payloadMode, source } = data;
+    const attachments = normalizeIncomingAttachments(data.attachments);
+    const rawUserText = typeof data.text === 'string' ? data.text.trim() : '';
+    const visibleUserText = rawUserText || (attachments.length > 0 ? 'Please review the attached file(s).' : '');
+    const attachmentContext = buildChatAttachmentContext(attachments);
+    const text = [visibleUserText, attachmentContext].filter(Boolean).join('\n\n');
+    const storedUserContent = buildStoredAttachmentSummary(visibleUserText, attachments);
     const requestId = typeof data.requestId === 'string' ? data.requestId.slice(0, 120) : undefined;
     const eventSource = source || 'chat';
     const toolResultPreviewLimit = 500;
@@ -578,7 +657,7 @@ export function registerChatHandler(
           }
           emitAgent("agent:response", { text: quickResult.responseText, agentName: personality.name });
           if (conversationId) {
-            addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: text, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+            addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: storedUserContent, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
             if (quickResult.toolCall) {
               addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'tool', content: `[Tool: ${quickResult.toolCall.name}] Called`, domain: resolvedDomain, orgId: resolvedOrgId });
             }
@@ -613,7 +692,7 @@ export function registerChatHandler(
 
         emitAgent("agent:response", { text: profileResponse, agentName: personality.name });
         if (conversationId) {
-          addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: text, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+          addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: storedUserContent, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
           addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'assistant', content: profileResponse, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
           socket.emit('chat:conversation_updated', { conversationId, agentId: conversationAgentId, source: 'chat' });
         }
@@ -1102,7 +1181,7 @@ export function registerChatHandler(
       // Save to conversation via conversation manager (reuse conversationId from setup)
 
       if (conversationId) {
-        addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: text, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
+        addMessage({ userId: uid, agentId: conversationAgentId, conversationId, role: 'user', content: storedUserContent, personality: personality.id, domain: resolvedDomain, orgId: resolvedOrgId });
         // Persist tool calls interleaved before the assistant response
         for (const tc of allToolRecords) {
           const tcSummary = tc.error
@@ -1132,7 +1211,7 @@ export function registerChatHandler(
       const db = readDB();
       db.interactions.push({
         id: interactionId, userId: uid, agentId: agentId || '',
-        conversationId: conversationId || '', content: text, response: responseText,
+        conversationId: conversationId || '', content: storedUserContent, response: responseText,
         role: "user", personality: personality.id, timestamp: new Date().toISOString(),
         cognitiveIntent: cognition.intent.category,
         llmWasCalled,

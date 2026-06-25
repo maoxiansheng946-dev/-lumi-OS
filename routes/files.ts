@@ -152,6 +152,7 @@ function sanitizeKnowledgeFilename(value: string, fallback = 'untitled'): string
 
 const TEXT_KNOWLEDGE_EXTS = /\.(txt|md|json|csv|log|xml|yaml|yml|ts|tsx|js|jsx|py|html|css|env|toml|ini|cfg)$/i;
 const EXTRACTABLE_KNOWLEDGE_EXTS = /\.(docx|xlsx|xls|pdf)$/i;
+const IMAGE_KNOWLEDGE_EXTS = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
 
 async function extractKnowledgeFileContent(filePath: string): Promise<string | null> {
   const extName = path.extname(filePath);
@@ -356,6 +357,10 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
         name: repairFilename(finalName),
         displayName: repairFilename(finalName),
         type: 'file',
+        kind: IMAGE_KNOWLEDGE_EXTS.test(ext) || file.mimetype?.startsWith('image/') ? 'image' : 'file',
+        mimeType: file.mimetype || '',
+        size: formatSize(file.size),
+        rawSize: file.size,
         path: dest,
         domain: scope.domain,
         orgId: scope.orgId,

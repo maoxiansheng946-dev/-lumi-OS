@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, Upload, FileText, Mic, Video, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, FileText, Mic, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check, Paperclip, Image as ImageIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useTTS } from '@/hooks/useTTS';
@@ -23,6 +23,18 @@ const CHAT_HISTORY_LIMIT = 2000;
 const CHAT_SEARCH_LIMIT = 200;
 type WorkflowStatus = 'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error';
 
+type ChatAttachment = {
+  id: string;
+  fileName: string;
+  path?: string;
+  content?: string | null;
+  preview?: string | null;
+  mimeType?: string;
+  size?: number;
+  kind: 'image' | 'file';
+  downloadUrl?: string;
+};
+
 function getDisplayText(message: any): string {
   if (typeof message?.text === 'string') return message.text;
   if (message?.text == null) return '';
@@ -32,15 +44,27 @@ function getDisplayText(message: any): string {
 function buildChatHistoryPayload(messages: any[]) {
   return messages.flatMap((m) => {
     const text = getDisplayText(m).trim();
-    if (!text) return [];
+    const attachmentSummary = Array.isArray(m.attachments) && m.attachments.length > 0
+      ? `\n\n[Attachments]\n${m.attachments.map((item: ChatAttachment) => `- ${item.fileName}${item.kind === 'image' ? ' (image)' : ''}`).join('\n')}`
+      : '';
+    if (!text && !attachmentSummary) return [];
     if (m.type === 'tool') return [];
     if (['error', 'proactive'].includes(m.source)) return [];
     if (/^(Request failed|请求失败|出错了|Failed to route)/i.test(text)) return [];
     if (m.type === 'agent') return [{ role: 'assistant', content: text }];
-    if (m.type === 'user' || m.type === 'file_context') return [{ role: 'user', content: text }];
+    if (m.type === 'user' || m.type === 'file_context') return [{ role: 'user', content: `${text}${attachmentSummary}`.trim() }];
     return [];
   }).slice(-80);
 }
+
+function isImageFileName(name: string, mimeType?: string): boolean {
+  return Boolean(mimeType?.startsWith('image/')) || /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(name || '');
+}
+
+const CHAT_ATTACHMENT_ACCEPT = [
+  '.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff',
+  '.txt,.md,.json,.csv,.pdf,.docx,.xlsx,.xls,.pptx,.ppt,.rtf,.ts,.tsx,.js,.jsx,.py,.html,.css,.yaml,.yml,.xml,.log',
+].join(',');
 
 export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void }) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -125,7 +149,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [optimizationProgress, setOptimizationProgress] = useState(0);
-  const [uploadResults, setUploadResults] = useState<any[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingHistory, setIsSearchingHistory] = useState(false);
@@ -158,6 +182,13 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     const separator = path.includes('?') ? '&' : '?';
     return `${path}${separator}domain=${encodeURIComponent(workDomain)}&agentId=${encodeURIComponent(agentId)}`;
   }, [workDomain, agentId]);
+  const scopedFileUrl = useCallback((path: string) => {
+    const separator = path.includes('?') ? '&' : '?';
+    const orgScope = workDomain === 'work' && orgConnection?.orgId
+      ? `&orgId=${encodeURIComponent(orgConnection.orgId)}`
+      : '';
+    return `${path}${separator}domain=${encodeURIComponent(workDomain)}${orgScope}`;
+  }, [workDomain, orgConnection?.orgId]);
   const requestMeetingMode = useCallback(() => {
     window.dispatchEvent(new CustomEvent('lumi:request-meeting-mode'));
   }, []);
@@ -665,12 +696,26 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     seenWorkflowToolEvents.current.clear();
   }, [isOpen]);
 
-  const sendText = async (text: string) => {
-    if (!text || !user) return;
+  const sendText = async (text: string, attachments: ChatAttachment[] = pendingAttachments) => {
+    const trimmedText = text.trim();
+    const outgoingAttachments = attachments.map(item => ({
+      id: item.id,
+      fileName: item.fileName,
+      path: item.path,
+      content: item.content || null,
+      preview: item.preview || null,
+      mimeType: item.mimeType || '',
+      size: item.size || 0,
+      kind: item.kind,
+      downloadUrl: item.downloadUrl,
+    }));
+    if ((!trimmedText && outgoingAttachments.length === 0) || !user) return;
+    const outgoingText = trimmedText || ui('请帮我看看这些附件。', 'Please review these attachments.');
 
     const userMsg = {
       id: Date.now().toString(),
-      text,
+      text: outgoingText,
+      attachments: outgoingAttachments,
       userName: user.displayName || user.username || (t.chatUserFallback || 'User'),
       timestamp: new Date().toISOString(),
       type: 'user'
@@ -687,6 +732,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
     setMessages(prev => [...prev, userMsg]);
     setNewMessage('');
+    setPendingAttachments(prev => prev.filter(item => !outgoingAttachments.some(sent => sent.id === item.id)));
     stop();
     setIsTyping(true);
     const requestId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -726,7 +772,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         streamingMsgId.current = null;
         resolve();
       }
-    }, 30000);
+    }, outgoingAttachments.length > 0 ? 60000 : 30000);
 
     socket.on('agent:response', onResponse);
     socket.on('agent:error', onError);
@@ -734,7 +780,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
     // Always try socket first
     socket.emit("agent:chat", {
-      text,
+      text: outgoingText,
+      attachments: outgoingAttachments,
       history: buildChatHistoryPayload(messages),
       personalityId: 'lumi',
       category: agentCategory,
@@ -745,11 +792,12 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       requestId,
     });
 
-    // Parallel REST fallback after 5s if socket hasn't responded
-    restFallbackTimer = setTimeout(async () => {
+    // Parallel REST fallback after 5s if socket hasn't responded. It is text-only,
+    // so attachment turns wait for the socket path that preserves file context.
+    restFallbackTimer = outgoingAttachments.length === 0 ? setTimeout(async () => {
       if (resolved) return;
       try {
-        const response = await runAgentLogic(text, { platform, aiConfig });
+        const response = await runAgentLogic(outgoingText, { platform, aiConfig });
         if (resolved) return;
         resolve();
         setAgentMetadata(response);
@@ -773,7 +821,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         }]);
         toast.error(message);
       }
-    }, 5000);
+    }, 5000) : null;
   };
 
   // When prefillMessage comes from notification center, show it as a Lumi message
@@ -798,7 +846,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    sendText(newMessage.trim());
+    sendText(newMessage.trim(), pendingAttachments);
   };
 
   const toggleListening = () => {
@@ -817,20 +865,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importType, setImportType] = useState<'text' | 'voice' | 'video'>('text');
 
-  const acceptMap: Record<string, string> = {
-    text: '.txt,.md,.json,.csv,.pdf,.docx,.ts,.tsx,.js,.jsx,.py,.html,.css,.yaml,.yml,.xml,.log',
-    voice: '.mp3,.wav,.m4a,.ogg,.flac,.webm',
-    video: '.mp4,.mov,.avi,.webm,.mkv',
-  };
-
-  const handleImportData = (type: 'text' | 'voice' | 'video') => {
-    setImportType(type);
-    fileInputRef.current?.click();
-  };
-
-  const doUpload = async (files: FileList | null) => {
+  const uploadChatAttachments = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setIsOptimizing(true);
     setOptimizationProgress(30);
@@ -840,34 +876,32 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     fileList.forEach(f => formData.append('files', f));
 
     try {
+      formData.append('domain', workDomain);
+      if (workDomain === 'work' && orgConnection?.orgId) formData.append('orgId', orgConnection.orgId);
+
       const res = await fetch('/api/files/upload', { method: 'POST', body: formData, credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
-        setOptimizationProgress(100);
-        setTimeout(() => { setIsOptimizing(false); setOptimizationProgress(0); }, 500);
-
-        for (const f of d.files || []) {
-          const result: any = {
-            id: `upres-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            fileName: f.name,
-            timestamp: new Date().toISOString(),
+        const attachments: ChatAttachment[] = (d.files || []).map((f: any) => {
+          const fileName = f.name || f.displayName || f.id || 'attachment';
+          const mimeType = f.mimeType || '';
+          const kind = f.kind === 'image' || isImageFileName(fileName, mimeType) ? 'image' : 'file';
+          return {
+            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            fileName,
+            path: f.path,
             content: f.content || null,
             preview: f.preview || null,
-            ingested: f.ingested || false,
+            mimeType,
+            size: f.rawSize || f.size || 0,
+            kind,
+            downloadUrl: f.id ? scopedFileUrl(`/api/files/download/${encodeURIComponent(f.id)}?inline=1`) : undefined,
           };
-          setUploadResults(prev => [result, ...prev]);
-
-          // Inject file content into chat so Lumi sees it in current conversation
-          if (f.content) {
-            setMessages(prev => [...prev, {
-              id: `filectx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              text: `[Uploaded: ${f.name}]\n\n${f.content}`,
-              userName: user?.displayName || user?.username || 'You',
-              timestamp: new Date().toISOString(),
-              type: 'file_context',
-            }]);
-          }
-        }
+        });
+        setPendingAttachments(prev => [...prev, ...attachments]);
+        setOptimizationProgress(100);
+        setTimeout(() => { setIsOptimizing(false); setOptimizationProgress(0); }, 500);
+        if (attachments.length > 0) toast.success(ui('已添加到本条消息', 'Attached to this message'));
       } else {
         setIsOptimizing(false);
         setOptimizationProgress(0);
@@ -883,6 +917,10 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       setOptimizationProgress(0);
       toast.error(t.chatConnError || 'Connection error during upload');
     }
+  };
+
+  const removePendingAttachment = (id: string) => {
+    setPendingAttachments(prev => prev.filter(item => item.id !== id));
   };
 
   if (isFounder) {
@@ -918,8 +956,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         ref={fileInputRef}
         className="hidden"
         multiple
-        accept={acceptMap[importType]}
-        onChange={(e) => { doUpload(e.target.files); e.target.value = ''; }}
+        accept={CHAT_ATTACHMENT_ACCEPT}
+        onChange={(e) => { uploadChatAttachments(e.target.files); e.target.value = ''; }}
       />
       <WorkflowPanel
         visible={workflowPanelVisible}
@@ -1213,6 +1251,32 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                     );
                   })()}
 
+                  {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                    <div className={`max-w-[85%] mb-2 flex flex-wrap gap-2 ${msg.type === 'agent' ? '' : 'justify-end'}`}>
+                      {msg.attachments.map((item: ChatAttachment) => {
+                        const card = (
+                          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/65">
+                            {item.kind === 'image' && item.downloadUrl ? (
+                              <img src={item.downloadUrl} alt={item.fileName} className="h-8 w-8 rounded-lg object-cover" loading="lazy" />
+                            ) : item.kind === 'image' ? (
+                              <ImageIcon size={16} className="text-celestial-saturn" />
+                            ) : (
+                              <FileText size={16} className="text-white/45" />
+                            )}
+                            <span className="max-w-[180px] truncate">{item.fileName}</span>
+                          </div>
+                        );
+                        return item.downloadUrl ? (
+                          <a key={item.id} href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-80">
+                            {card}
+                          </a>
+                        ) : (
+                          <div key={item.id}>{card}</div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className={`relative group max-w-[85%] p-5 rounded-3xl text-sm leading-relaxed ${
                     msg.type === 'agent'
                       ? 'bg-celestial-saturn/10 text-celestial-saturn border border-celestial-saturn/20 rounded-tl-none'
@@ -1274,7 +1338,52 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           </div>
 
           <div className="p-6 bg-white/5 border-t border-white/5">
+            {pendingAttachments.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {pendingAttachments.map(item => (
+                  <div key={item.id} className="flex max-w-full items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/70">
+                    {item.kind === 'image' && item.downloadUrl ? (
+                      <img src={item.downloadUrl} alt={item.fileName} className="h-8 w-8 rounded-lg object-cover" />
+                    ) : item.kind === 'image' ? (
+                      <ImageIcon size={16} className="shrink-0 text-celestial-saturn" />
+                    ) : (
+                      <FileText size={16} className="shrink-0 text-white/45" />
+                    )}
+                    <span className="max-w-[220px] truncate">{item.fileName}</span>
+                    <button
+                      type="button"
+                      onClick={() => removePendingAttachment(item.id)}
+                      className="ml-1 rounded-full p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/70"
+                      title={ui('移除附件', 'Remove attachment')}
+                      aria-label={ui('移除附件', 'Remove attachment')}
+                    >
+                      <XCircle size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {isOptimizing && (
+              <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-white/5">
+                <motion.div
+                  className="h-full bg-celestial-saturn"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${optimizationProgress}%` }}
+                />
+              </div>
+            )}
             <form onSubmit={handleSendMessage} className="relative flex gap-3">
+              <Button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isTyping || isOptimizing}
+                variant="ghost"
+                className="h-12 w-12 shrink-0 rounded-2xl border border-white/10 bg-black/30 p-0 text-white/45 transition-all hover:border-celestial-saturn/30 hover:bg-celestial-saturn/10 hover:text-celestial-saturn disabled:opacity-40"
+                title={ui('添加图片或文件', 'Attach image or file')}
+                aria-label={ui('添加图片或文件', 'Attach image or file')}
+              >
+                {isOptimizing ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+              </Button>
               <div className="relative flex-1">
                 <Input
                   value={newMessage}
@@ -1304,7 +1413,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
               ) : (
                 <Button
                   type="submit"
-                  disabled={!newMessage.trim()}
+                  disabled={!newMessage.trim() && pendingAttachments.length === 0}
                   className="bg-celestial-saturn text-black rounded-2xl px-6 hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
                 >
                   <Send size={20} />
@@ -1336,121 +1445,6 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                 </div>
               ))}
             </div>
-          </GlassCard>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1], delay: 0.28 }}>
-          <GlassCard className="p-6 rounded-[2.5rem] space-y-4" hoverEffect={false}>
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">{t.optimizeKnowledge || 'Knowledge Optimization'}</h4>
-            <div className="grid grid-cols-1 gap-3">
-              <Button 
-                onClick={() => handleImportData('text')}
-                disabled={isOptimizing}
-                variant="ghost" 
-                className="w-full justify-start gap-3 bg-white/5 border border-white/5 hover:bg-white/10 rounded-2xl py-6"
-              >
-                <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
-                  <FileText size={16} />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-bold">{t.textData || 'Text'}</div>
-                  <div className="text-xs opacity-40">PDF, TXT, DOCX</div>
-                </div>
-              </Button>
-
-              <Button 
-                onClick={() => handleImportData('voice')}
-                disabled={isOptimizing}
-                variant="ghost" 
-                className="w-full justify-start gap-3 bg-white/5 border border-white/5 hover:bg-white/10 rounded-2xl py-6"
-              >
-                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400">
-                  <Mic size={16} />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-bold">{t.voiceData || 'Voice'}</div>
-                  <div className="text-xs opacity-40">MP3, WAV, M4A</div>
-                </div>
-              </Button>
-
-              <Button 
-                onClick={() => handleImportData('video')}
-                disabled={isOptimizing}
-                variant="ghost" 
-                className="w-full justify-start gap-3 bg-white/5 border border-white/5 hover:bg-white/10 rounded-2xl py-6"
-              >
-                <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center text-red-400">
-                  <Video size={16} />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-bold">{t.videoData || 'Video'}</div>
-                  <div className="text-xs opacity-40">MP4, MOV, AVI</div>
-                </div>
-              </Button>
-            </div>
-
-            {isOptimizing && (
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
-                  <span className="text-celestial-saturn animate-pulse">{t.optimizing || 'Optimizing...'}</span>
-                  <span>{optimizationProgress}%</span>
-                </div>
-                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-celestial-saturn"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${optimizationProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {uploadResults.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-white/5">
-                <h5 className="text-[11px] font-bold text-white/35 uppercase tracking-widest">Uploaded</h5>
-                {uploadResults.map(r => (
-                  <div key={r.id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl overflow-hidden">
-                    <div className="px-3 py-2 flex items-center gap-2">
-                      <Upload size={11} className="text-green-400/60 shrink-0" />
-                      <span className="text-[11px] text-white/60 truncate flex-1">{r.fileName}</span>
-                      {r.content && (
-                        <span className="text-[10px] text-white/25 shrink-0">{(r.content?.length || 0).toLocaleString()}c</span>
-                      )}
-                    </div>
-                    {r.preview && (
-                      <div className="px-3 py-1.5 bg-black/20 border-t border-white/[0.04] text-[10px] text-white/35 max-h-16 overflow-y-auto font-mono whitespace-pre-wrap">
-                        {r.preview.slice(0, 300)}...
-                      </div>
-                    )}
-                    {r.ingested ? (
-                      <div className="px-3 py-1 bg-black/20 border-t border-white/[0.04] text-[10px] text-white/25 flex items-center gap-1">
-                        <CheckCircle2 size={9} /> In Knowledge Base
-                      </div>
-                    ) : (
-                      <div className="px-3 py-1.5 bg-black/20 border-t border-white/[0.04] flex items-center gap-2">
-                        <span className="text-[10px] text-white/35">Add to KB?</span>
-                        <button
-                          onClick={async () => {
-                            try {
-                              await fetch('/api/files/ingest', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ fileId: r.fileName, agentId: 'lumi' }),
-                              });
-                              setUploadResults(prev => prev.map(x => x.id === r.id ? { ...x, ingested: true } : x));
-                              toast.success(`"${r.fileName}" added to Knowledge Base`);
-                            } catch { toast.error('Failed'); }
-                          }}
-                          className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 hover:bg-amber-500/30 border border-amber-500/20 rounded-md text-amber-400 transition-colors"
-                        >
-                          Yes
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </GlassCard>
           </motion.div>
 
