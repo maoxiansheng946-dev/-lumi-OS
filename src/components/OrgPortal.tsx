@@ -18,7 +18,9 @@ interface OrgStatus {
   sessionConnected?: boolean;
 }
 
-export function OrgPortal({ onBack }: { onBack?: () => void }) {
+type OrgPortalMode = 'select' | 'join' | 'create';
+
+export function OrgPortal({ onBack, initialMode = 'select' }: { onBack?: () => void; initialMode?: OrgPortalMode }) {
   const t = useT();
   const isZh = t.langCode !== 'en';
   const ui = (zh: string, en: string) => isZh ? zh : en;
@@ -27,7 +29,7 @@ export function OrgPortal({ onBack }: { onBack?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [switchingWork, setSwitchingWork] = useState(false);
   const [switchMsg, setSwitchMsg] = useState('');
-  const [mode, setMode] = useState<'select' | 'join' | 'create'>('select');
+  const [mode, setMode] = useState<OrgPortalMode>(initialMode);
   const [orgForm, setOrgForm] = useState({ name: '', slug: '' });
   const [creating, setCreating] = useState(false);
   const [createResult, setCreateResult] = useState<'idle' | 'success' | 'error'>('idle');

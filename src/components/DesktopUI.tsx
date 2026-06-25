@@ -42,7 +42,6 @@ import {
   Play,
   Pause,
   Mic,
-  Briefcase,
   Terminal as TerminalIcon,
   Music,
   Bot,
@@ -1016,17 +1015,15 @@ export function DesktopUI({
   }), []);
 
   // Desktop icon layout: absolute positioning, 4 columns, fixed spacing
-  const isOrgAdmin = orgConnection?.connected && (orgConnection.orgRole === 'owner' || orgConnection.orgRole === 'admin');
   const desktopIcons = [
-    { id: 'workbench', labelKey: 'orgWorkbench', icon: <Briefcase size={24} />, colorClass: 'from-blue-500 to-indigo-600', windowId: 'org' as const },
+    { id: 'runtime-log', labelKey: 'runtimeLog', icon: <TerminalIcon size={24} />, colorClass: 'from-teal-500 to-cyan-600', windowId: 'runtime-log' },
     { id: 'tools', labelKey: 'tools', icon: <Wrench size={24} />, colorClass: 'from-amber-500 to-orange-600', windowId: 'tools' },
     { id: 'skills', labelKey: 'skills', icon: <Sparkles size={24} />, colorClass: 'from-emerald-500 to-teal-600', windowId: 'skills' },
+    { id: 'team', labelKey: 'team', icon: <Bot size={24} />, colorClass: 'from-cyan-500 to-blue-600', windowId: 'team' },
     { id: 'memory-avatar', labelKey: 'memoryAvatars', icon: <Castle size={24} />, colorClass: 'from-fuchsia-500 to-purple-600', windowId: 'memory-avatar' },
     { id: 'avatar-studio', labelKey: 'avatarStudio', icon: <Brush size={24} />, colorClass: 'from-cyan-400 to-blue-600', windowId: 'avatar-studio' },
     { id: 'sound', labelKey: 'sound', icon: <Volume2 size={24} />, colorClass: 'from-sky-500 to-indigo-600', windowId: 'sound' },
     { id: 'music', labelKey: 'music', icon: <Music size={24} />, colorClass: 'from-red-500 to-pink-600', windowId: 'music-center' },
-    { id: 'team', labelKey: 'team', icon: <Bot size={24} />, colorClass: 'from-cyan-500 to-blue-600', windowId: 'team' },
-    { id: 'runtime-log', labelKey: 'runtimeLog', icon: <TerminalIcon size={24} />, colorClass: 'from-teal-500 to-cyan-600', windowId: 'runtime-log' },
   ];
 
   const handleWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1698,7 +1695,7 @@ export function DesktopUI({
     };
     window.addEventListener('lumi:navigate', handler);
     return () => window.removeEventListener('lumi:navigate', handler);
-  }, [setActiveTab, isOrgAdmin]);
+  }, [setActiveTab]);
 
   // Listen for Memory Avatar Lab open request from AgentGenerator
   useEffect(() => {
@@ -2984,7 +2981,16 @@ export function DesktopUI({
           </div>
 
           <div className="flex items-center justify-center">
-            <WorkModeSwitch domain={workDomain} onToggle={() => switchDomain(workDomain === 'personal' ? 'work' : 'personal')} connected={orgConnection?.connected ?? false} />
+            <WorkModeSwitch
+              domain={workDomain}
+              onSelectDomain={switchDomain}
+              connected={orgConnection?.connected ?? false}
+              organizationOpen={activeTab === 'org'}
+              onOpenOrganization={() => setActiveTab('org')}
+              onCloseOrganization={() => {
+                if (activeTab === 'org') setActiveTab('home');
+              }}
+            />
           </div>
 
           <div className="flex items-center gap-6 flex-1 justify-end">
@@ -3400,11 +3406,10 @@ export function DesktopUI({
               {desktopIcons.map((def, i) => {
                 const { x, y } = getDefaultDesktopIconPosition(i);
                 const label = (t as any)[def.labelKey] || def.labelKey;
-                const isIconOpen = def.windowId === 'org' ? activeTab === 'org' : openWindows.includes(def.windowId);
-                const isIconFocused = def.windowId === 'org' ? activeTab === 'org' : focusedWindow === def.windowId;
+                const isIconOpen = openWindows.includes(def.windowId);
+                const isIconFocused = focusedWindow === def.windowId;
                 const handleClick = () => {
-                  if (def.id === 'workbench') setActiveTab('org');
-                  else toggleWindow(def.windowId);
+                  toggleWindow(def.windowId);
                 };
                 return (
                   <motion.div
@@ -3859,7 +3864,10 @@ export function DesktopUI({
             transition={{ duration: 0.3 }}
             className="fixed inset-0 z-[220] bg-celestial-deep overflow-auto"
           >
-            <OrgPortal onBack={() => setActiveTab('home')} />
+            <OrgPortal
+              initialMode={orgConnection?.connected ? 'select' : 'create'}
+              onBack={() => setActiveTab('home')}
+            />
           </motion.div>
         )}
       </AnimatePresence>
