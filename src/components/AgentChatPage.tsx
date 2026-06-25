@@ -22,7 +22,8 @@ import { useVoiceCloning } from '@/hooks/useVoiceCloning';
 import { listVoices } from '@/services/voiceService';
 import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
 
-const CHAT_HISTORY_LIMIT = 2000;
+const CHAT_HISTORY_LIMIT = 300;
+const CHAT_RENDER_LIMIT = 180;
 const CHAT_SEARCH_LIMIT = 200;
 type WorkflowStatus = 'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error';
 
@@ -1034,18 +1035,27 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const workflowPanelVisible =
     isOpen &&
     (workflowStatus !== 'idle' || workflowSteps.length > 0 || workflowHasExecution);
+  const displayMessages = searchQuery.trim()
+    ? searchDisplayMessages
+    : messages.length > CHAT_RENDER_LIMIT
+      ? messages.slice(-CHAT_RENDER_LIMIT)
+      : messages;
+  const hiddenMessageCount = searchQuery.trim()
+    ? 0
+    : Math.max(0, messages.length - displayMessages.length);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ clipPath: 'circle(0% at 50% 95%)', opacity: 0 }}
-          animate={{ clipPath: 'circle(150% at 50% 95%)', opacity: 1 }}
-          exit={{ clipPath: 'circle(0% at 50% 95%)', opacity: 0 }}
-          transition={{ duration: 0.65, ease: [0.25, 0.1, 0.25, 1] }}
+          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.99 }}
+          transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
           className="fixed inset-0 z-[210] flex flex-col"
           style={{
             background: 'radial-gradient(ellipse at 50% 30%, #0a0f1e 0%, #060810 40%, #020205 100%)',
+            willChange: 'opacity, transform',
           }}
         >
       <input
@@ -1254,12 +1264,13 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                 No saved conversation records match.
               </div>
             )}
+            {hiddenMessageCount > 0 && (
+              <div className="text-center text-[10px] font-mono uppercase tracking-wider text-white/25">
+                {ui(`已折叠 ${hiddenMessageCount} 条较早消息，可用搜索查看`, `${hiddenMessageCount} older messages hidden; use search to find them`)}
+              </div>
+            )}
             <AnimatePresence initial={false}>
-              {(() => {
-                const displayMsgs = searchQuery.trim()
-                  ? searchDisplayMessages
-                  : messages;
-                return displayMsgs.map((msg) => (
+              {displayMessages.map((msg) => (
                 msg.type === 'file_context' ? null /* invisible context */ : msg.type === 'tool' ? (
                   <motion.div
                     key={msg.id}
@@ -1391,8 +1402,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                     {msg.userName} - {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </motion.div>
-              )));
-            })()}
+              )))}
             </AnimatePresence>
             {isTyping && (
               <div className="flex flex-col gap-3">
