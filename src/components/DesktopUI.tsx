@@ -999,16 +999,25 @@ export function DesktopUI({
   const [time, setTime] = useState(new Date());
   const [isWallpaperMode, setIsWallpaperMode] = useState(false);
   const isWallpaperModeRef = useRef(false);
+  const chatOpenRef = useRef(false);
   const closeToBackgroundSyncRef = useRef(false);
   const wallpaperAutomationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wallpaperWasEnabledBeforeAutomationRef = useRef(false);
+  const wallpaperWorkPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [wallpaperWorkPromptVisible, setWallpaperWorkPromptVisible] = useState(false);
   const [wallpaper, setWallpaper] = useState<string>(() => localStorage.getItem('lumi_wallpaper_type') || 'celestial');
   const [wallpaperUrl, setWallpaperUrl] = useState<string>(() => localStorage.getItem('lumi_wallpaper_url') || '');
   const wallpaperInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     isWallpaperModeRef.current = isWallpaperMode;
+    if (isWallpaperMode) setWallpaperWorkPromptVisible(false);
   }, [isWallpaperMode]);
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+    if (chatOpen) setWallpaperWorkPromptVisible(false);
+  }, [chatOpen]);
 
   const getDefaultDesktopIconPosition = useCallback((index: number) => ({
     x: 40 + (index % 4) * 130,
@@ -1745,6 +1754,40 @@ export function DesktopUI({
     applyWallpaperMode(!isWallpaperMode);
   }, [applyWallpaperMode, isWallpaperMode]);
 
+  const dismissWallpaperWorkPrompt = useCallback(() => {
+    if (wallpaperWorkPromptTimerRef.current) {
+      clearTimeout(wallpaperWorkPromptTimerRef.current);
+      wallpaperWorkPromptTimerRef.current = null;
+    }
+    setWallpaperWorkPromptVisible(false);
+  }, []);
+
+  const showWallpaperWorkPrompt = useCallback(() => {
+    if (isWallpaperModeRef.current || chatOpenRef.current) return;
+    setWallpaperWorkPromptVisible(true);
+    if (wallpaperWorkPromptTimerRef.current) {
+      clearTimeout(wallpaperWorkPromptTimerRef.current);
+    }
+    wallpaperWorkPromptTimerRef.current = setTimeout(() => {
+      setWallpaperWorkPromptVisible(false);
+      wallpaperWorkPromptTimerRef.current = null;
+    }, 14000);
+  }, []);
+
+  const enterWallpaperFromWorkPrompt = useCallback(() => {
+    dismissWallpaperWorkPrompt();
+    applyWallpaperMode(true);
+  }, [applyWallpaperMode, dismissWallpaperWorkPrompt]);
+
+  useEffect(() => {
+    return () => {
+      if (wallpaperWorkPromptTimerRef.current) {
+        clearTimeout(wallpaperWorkPromptTimerRef.current);
+        wallpaperWorkPromptTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ enabled?: boolean; timeoutMs?: number }>).detail || {};
@@ -1799,9 +1842,10 @@ export function DesktopUI({
   useEffect(() => {
     if (!socket) return;
 
-    const onStatus = (data: { status: string; agentName?: string; phase?: string; detail?: string }) => {
+    const onStatus = (data: { status: string; agentName?: string; phase?: string; detail?: string; source?: string }) => {
       if (data.status === 'thinking') {
         const isBackground = data.phase === 'background';
+        if (isBackground && data.source !== 'chat') showWallpaperWorkPrompt();
         setAgentStatus(isBackground ? 'background' : 'thinking');
         setWorkflowSteps(prev => [...prev, {
           id: `thinking-${Date.now()}`,
@@ -1833,7 +1877,7 @@ export function DesktopUI({
       }
     };
 
-    const onToolCall = (data: { correlationId?: string; name: string; arguments?: any; args?: any; result?: string; error?: string }) => {
+    const onToolCall = (data: { correlationId?: string; name: string; arguments?: any; args?: any; result?: string; error?: string; source?: string }) => {
       const toolArgs = data.arguments ?? data.args;
       const phase = data.error !== undefined ? 'error' : data.result !== undefined ? 'result' : 'start';
       if (data.correlationId) {
@@ -1841,6 +1885,7 @@ export function DesktopUI({
         if (seenWorkflowToolEvents.current.has(eventKey)) return;
         seenWorkflowToolEvents.current.add(eventKey);
       }
+      if (data.source !== 'chat') showWallpaperWorkPrompt();
       if (data.result !== undefined) {
         setAgentStatus('executing');
         triggerPetReaction('jump', 1200);
@@ -1876,7 +1921,8 @@ export function DesktopUI({
       }
     };
 
-    const onConfirmTool = (data: { correlationId: string; name: string; arguments?: any }) => {
+    const onConfirmTool = (data: { correlationId: string; name: string; arguments?: any; source?: string }) => {
+      if (data.source !== 'chat') showWallpaperWorkPrompt();
       setAgentStatus('waiting_confirmation');
       const argsSummary = data.arguments
         ? Object.entries(data.arguments).map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 30) : String(v).slice(0, 30)}`).join(', ')
@@ -3699,6 +3745,45 @@ export function DesktopUI({
         t={t}
         placement={isWallpaperMode ? 'center' : 'corner'}
       />
+      <AnimatePresence>
+        {wallpaperWorkPromptVisible && !isWallpaperMode && !chatOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.96 }}
+            transition={{ duration: 0.24 }}
+            className="fixed bottom-28 left-1/2 z-[265] w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 pointer-events-auto"
+          >
+            <div className="flex items-center gap-3 rounded-2xl border border-cyan-400/20 bg-zinc-950/92 px-3 py-3 shadow-2xl shadow-cyan-950/30 backdrop-blur-2xl sm:px-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                <Zap size={17} className="animate-pulse" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200">
+                  {t.wallpaperWorkPromptTitle || (lang === 'zh' ? '进入原生桌面协作' : 'Native desktop handoff')}
+                </div>
+                <div className="mt-0.5 truncate text-xs font-medium text-white/55">
+                  {t.wallpaperWorkPromptDesc || (lang === 'zh' ? 'Lumi 已开始工作，可以直接转入壁纸模式。' : 'Lumi has started working and can move into wallpaper mode.')}
+                </div>
+              </div>
+              <button
+                onClick={enterWallpaperFromWorkPrompt}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-cyan-300/25 bg-cyan-300/15 px-3 py-2 text-xs font-black uppercase tracking-widest text-cyan-100 transition-colors hover:bg-cyan-300/25"
+              >
+                <Zap size={13} />
+                {t.enterWallpaper || (lang === 'zh' ? '进入壁纸' : 'Enter')}
+              </button>
+              <button
+                onClick={dismissWallpaperWorkPrompt}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label={t.close || 'Close'}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="absolute inset-0 z-[20] pointer-events-none">
         <SensorPrimer
           isOpen={!sensorPrimerSeen}
