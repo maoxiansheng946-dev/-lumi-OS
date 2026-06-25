@@ -654,3 +654,92 @@ html[data-mode="light"] [class*="bg-black\\/90"] {
 .markdown-body strong { font-weight: 600; }
 .markdown-body em { font-style: italic; }
 .markdown-body img { max-width: 100%; max-height: 480px; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); margin: 0.5rem 0; }
+
+.chat-message-markdown {
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
+.chat-message-markdown p {
+  margin: 0.45rem 0;
+}
+
+.chat-message-markdown p:first-child {
+  margin-top: 0;
+}
+
+.chat-message-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-message-markdown h1,
+.chat-message-markdown h2,
+.chat-message-markdown h3 {
+  color: rgba(255,255,255,0.94);
+  letter-spacing: 0;
+}
+
+.chat-message-markdown h1 {
+  font-size: 1.08rem;
+  line-height: 1.35;
+  margin: 0.15rem 0 0.65rem;
+}
+
+.chat-message-markdown h2 {
+  font-size: 1rem;
+  line-height: 1.4;
+  margin: 0.9rem 0 0.35rem;
+}
+
+.chat-message-markdown h3 {
+  font-size: 0.93rem;
+  line-height: 1.45;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.chat-message-markdown ul,
+.chat-message-markdown ol {
+  margin: 0.45rem 0 0.65rem;
+  padding-left: 1.15rem;
+}
+
+.chat-message-markdown li {
+  margin: 0.22rem 0;
+  padding-left: 0.12rem;
+}
+
+.chat-message-markdown li::marker {
+  color: rgba(0,255,255,0.68);
+}
+
+.chat-message-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.18);
+}
+
+.chat-message-markdown th,
+.chat-message-markdown td {
+  padding: 0.48rem 0.65rem;
+  vertical-align: top;
+}
+
+.chat-message-markdown pre {
+  border-radius: 0.9rem;
+  padding: 0.85rem;
+  background: rgba(0,0,0,0.32);
+}
+
+.chat-message-markdown code {
+  font-size: 0.82em;
+}
+
+.chat-message-markdown blockquote {
+  border-left-width: 3px;
+  border-left-color: rgba(0,255,255,0.45);
+  background: rgba(0,255,255,0.055);
+  border-radius: 0 0.75rem 0.75rem 0;
+}

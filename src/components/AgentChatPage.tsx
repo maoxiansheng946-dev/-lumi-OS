@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, FileText, Mic, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check, Paperclip, Image as ImageIcon } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, FileText, Mic, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check, Paperclip, Image as ImageIcon, Download } from 'lucide-react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useTTS } from '@/hooks/useTTS';
@@ -35,6 +38,14 @@ type ChatAttachment = {
   downloadUrl?: string;
 };
 
+type GeneratedFileLink = {
+  id: string;
+  fileName: string;
+  path: string;
+  url: string;
+  kind: 'image' | 'document' | 'deck' | 'sheet' | 'pdf' | 'cad' | 'file';
+};
+
 function getDisplayText(message: any): string {
   if (typeof message?.text === 'string') return message.text;
   if (message?.text == null) return '';
@@ -65,6 +76,53 @@ const CHAT_ATTACHMENT_ACCEPT = [
   '.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff',
   '.txt,.md,.json,.csv,.pdf,.docx,.xlsx,.xls,.pptx,.ppt,.rtf,.ts,.tsx,.js,.jsx,.py,.html,.css,.yaml,.yml,.xml,.log',
 ].join(',');
+
+const GENERATED_FILE_EXTS = 'docx|pptx|xlsx|xls|pdf|txt|md|csv|json|png|jpe?g|webp|gif|svg|html|dxf|dwg';
+const WINDOWS_GENERATED_FILE_RE = new RegExp(`[A-Za-z]:\\\\[^\\n\\r"'<>|]+?\\.(?:${GENERATED_FILE_EXTS})\\b`, 'gi');
+const LUMI_OUTPUT_FILE_RE = new RegExp(`/lumi_output/[^\\s\\])"'<>]+?\\.(?:${GENERATED_FILE_EXTS})\\b`, 'gi');
+
+function generatedFileKind(fileName: string): GeneratedFileLink['kind'] {
+  const lower = fileName.toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|svg)$/i.test(lower)) return 'image';
+  if (/\.pptx?$/i.test(lower)) return 'deck';
+  if (/\.xlsx?$/i.test(lower)) return 'sheet';
+  if (/\.pdf$/i.test(lower)) return 'pdf';
+  if (/\.(dxf|dwg)$/i.test(lower)) return 'cad';
+  if (/\.(docx?|txt|md|csv|json|html)$/i.test(lower)) return 'document';
+  return 'file';
+}
+
+function buildGeneratedFileUrl(filePath: string): string {
+  if (filePath.startsWith('/lumi_output/')) return filePath;
+  return `/api/files/generated?path=${encodeURIComponent(filePath)}`;
+}
+
+function extractGeneratedFiles(text: string): GeneratedFileLink[] {
+  const seen = new Set<string>();
+  const candidates = [
+    ...(text.match(WINDOWS_GENERATED_FILE_RE) || []),
+    ...(text.match(LUMI_OUTPUT_FILE_RE) || []),
+  ];
+
+  return candidates
+    .map(raw => raw.trim().replace(/[)\].,;，。；]+$/g, ''))
+    .filter(filePath => {
+      const key = filePath.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(filePath => {
+      const fileName = filePath.split(/[\\/]/).pop() || filePath;
+      return {
+        id: `generated-${filePath}`,
+        fileName,
+        path: filePath,
+        url: buildGeneratedFileUrl(filePath),
+        kind: generatedFileKind(fileName),
+      };
+    });
+}
 
 export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage, onPrefillConsumed }: { t: any; user: any; agent?: any; isOpen: boolean; onClose: () => void; prefillMessage?: string; onPrefillConsumed?: () => void }) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -231,6 +289,45 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       setTimeout(() => setCopiedId(null), 1500);
     } catch {}
   }, []);
+
+  const renderGeneratedFiles = useCallback((files: GeneratedFileLink[], align: 'start' | 'end' = 'start') => {
+    if (files.length === 0) return null;
+    const labelFor = (kind: GeneratedFileLink['kind']) => {
+      if (kind === 'deck') return ui('演示文稿', 'Presentation');
+      if (kind === 'sheet') return ui('表格', 'Spreadsheet');
+      if (kind === 'pdf') return 'PDF';
+      if (kind === 'cad') return 'CAD';
+      if (kind === 'image') return ui('图片', 'Image');
+      if (kind === 'document') return ui('文档', 'Document');
+      return ui('文件', 'File');
+    };
+
+    return (
+      <div className={`max-w-[92%] mb-3 flex flex-wrap gap-2 ${align === 'end' ? 'justify-end' : 'justify-start'}`}>
+        {files.map(file => (
+          <a
+            key={file.id}
+            href={file.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex min-w-0 max-w-[280px] items-center gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-400/10 px-3 py-2.5 text-left transition-all hover:border-emerald-300/35 hover:bg-emerald-400/15"
+            title={file.path}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200">
+              {file.kind === 'image' ? <ImageIcon size={17} /> : <FileText size={17} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-semibold text-white/80">{file.fileName}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-emerald-100/55">
+                <Download size={11} />
+                <span>{labelFor(file.kind)}</span>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    );
+  }, [isZh]);
 
   const buildSearchDisplayMessages = useCallback(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -1202,6 +1299,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                         </>
                       )}
                     </div>
+                    {renderGeneratedFiles(extractGeneratedFiles([msg.toolResult, msg.text].filter(Boolean).join('\n')), 'start')}
                   </motion.div>
                 ) : (
                 <motion.div
@@ -1219,9 +1317,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                       if (parsed.images && Array.isArray(parsed.images)) imageUrls = parsed.images;
                       if (parsed.image_base64) imageUrls = [`data:image/png;base64,${parsed.image_base64}`];
                     } catch {}
-                    const fileMatch = messageText.match(/(?:Saved|created|generated|written).*?:\s*(.+?\.(?:pdf|pptx|docx|xlsx|txt|ts|js|py|json|png|jpg|gif))(?:\s|$)/i);
-                    const filePath = fileMatch?.[1];
-                    if (imageUrls.length === 0 && !filePath) return null;
+                    const generatedFiles = extractGeneratedFiles(messageText);
+                    if (imageUrls.length === 0 && generatedFiles.length === 0) return null;
                     return (
                       <div className="max-w-[85%] mb-1 space-y-2">
                         {imageUrls.length > 0 && (
@@ -1234,19 +1331,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                             ))}
                           </div>
                         )}
-                        {filePath && (
-                          <div className="flex items-center gap-3 px-3 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                            <FileText size={16} className="text-emerald-400" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-xs text-white/70 truncate block">{filePath.split(/[\\/]/).pop()}</span>
-                              <span className="text-[12px] text-white/55">{t.fileReady || 'File ready - click to copy path'}</span>
-                            </div>
-                            <button onClick={() => handleCopyMessage(filePath, msg.id)}
-                              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
-                              <Copy size={12} className="text-white/40" />
-                            </button>
-                          </div>
-                        )}
+                        {renderGeneratedFiles(generatedFiles, msg.type === 'agent' ? 'start' : 'end')}
                       </div>
                     );
                   })()}
@@ -1277,12 +1362,16 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
                     </div>
                   )}
 
-                  <div className={`relative group max-w-[85%] p-5 rounded-3xl text-sm leading-relaxed ${
+                  <div className={`relative group text-sm leading-relaxed ${
                     msg.type === 'agent'
-                      ? 'bg-celestial-saturn/10 text-celestial-saturn border border-celestial-saturn/20 rounded-tl-none'
-                      : 'bg-white/5 text-white/80 border border-white/10 rounded-tr-none'
+                      ? 'max-w-[92%] md:max-w-[84%] rounded-[1.5rem] rounded-tl-none border border-white/10 bg-white/[0.055] p-5 text-white/85 shadow-xl shadow-black/10 md:p-6'
+                      : 'max-w-[85%] rounded-3xl rounded-tr-none border border-white/10 bg-white/5 p-5 text-white/80'
                   }`}>
-                    <span className="whitespace-pre-wrap">{getDisplayText(msg)}</span>
+                    <div className={`markdown-body chat-message-markdown ${msg.type === 'agent' ? 'chat-message-markdown-agent' : 'chat-message-markdown-user'}`}>
+                      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        {getDisplayText(msg)}
+                      </Markdown>
+                    </div>
                     {getDisplayText(msg) && (
                       <button
                         onClick={() => handleCopyMessage(getDisplayText(msg), msg.id)}

@@ -16,7 +16,7 @@ import { exec, spawn } from 'child_process';
 import iconv from 'iconv-lite';
 import { readDB, writeDB } from '../db_layer';
 import { ingestDocument } from '../server/agents/rag';
-import { getDataPath } from '../server/config/data_path';
+import { getDataPath, getDataRoot } from '../server/config/data_path';
 import * as OrgKB from '../server/org/kb';
 
 const PERSONAL_KNOWLEDGE_DIR = getDataPath('knowledge');
@@ -153,6 +153,84 @@ function sanitizeKnowledgeFilename(value: string, fallback = 'untitled'): string
 const TEXT_KNOWLEDGE_EXTS = /\.(txt|md|json|csv|log|xml|yaml|yml|ts|tsx|js|jsx|py|html|css|env|toml|ini|cfg)$/i;
 const EXTRACTABLE_KNOWLEDGE_EXTS = /\.(docx|xlsx|xls|pdf)$/i;
 const IMAGE_KNOWLEDGE_EXTS = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
+const GENERATED_FILE_EXTS = /\.(docx?|pptx?|xlsx?|pdf|txt|md|csv|json|png|jpe?g|webp|gif|svg|html|dxf|dwg)$/i;
+
+const DOWNLOAD_MIME_TYPES: Record<string, string> = {
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.json': 'application/json',
+  '.csv': 'text/csv',
+  '.log': 'text/plain',
+  '.xml': 'application/xml',
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.ts': 'text/typescript',
+  '.tsx': 'text/typescript',
+  '.py': 'text/x-python',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.dxf': 'application/dxf',
+  '.dwg': 'application/octet-stream',
+};
+
+function getDownloadMime(filePath: string): string | undefined {
+  const ext = path.extname(filePath).toLowerCase() || (filePath.startsWith('.') ? filePath.toLowerCase() : '');
+  return DOWNLOAD_MIME_TYPES[ext];
+}
+
+function isInsideRoot(filePath: string, root: string): boolean {
+  const normalizedFile = path.normalize(filePath).toLowerCase();
+  const normalizedRoot = path.normalize(root).toLowerCase();
+  return normalizedFile === normalizedRoot || normalizedFile.startsWith(normalizedRoot + path.sep.toLowerCase());
+}
+
+function resolveGeneratedDownloadPath(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    const err: any = new Error('path is required');
+    err.status = 400;
+    throw err;
+  }
+  const expanded = raw.replace(/^~(?=$|[\\/])/, os.homedir());
+  const resolved = path.resolve(expanded);
+  if (!GENERATED_FILE_EXTS.test(resolved)) {
+    const err: any = new Error('Unsupported generated file type');
+    err.status = 400;
+    throw err;
+  }
+
+  const allowedRoots = [
+    path.join(process.cwd(), 'lumi_output'),
+    getDataRoot(),
+    path.join(os.homedir(), 'Desktop'),
+    path.join(os.homedir(), 'Downloads'),
+    path.join(os.homedir(), 'Documents'),
+    os.tmpdir(),
+  ];
+  if (!allowedRoots.some(root => isInsideRoot(resolved, root))) {
+    const err: any = new Error('Generated file path is outside allowed directories');
+    err.status = 403;
+    throw err;
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    const err: any = new Error('Generated file not found');
+    err.status = 404;
+    throw err;
+  }
+  return resolved;
+}
 
 async function extractKnowledgeFileContent(filePath: string): Promise<string | null> {
   const extName = path.extname(filePath);
@@ -487,6 +565,22 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /files/generated?path=... — download a generated work artifact ──
+router.get('/files/generated', requireAuth, (req: Request, res: Response) => {
+  try {
+    const filePath = resolveGeneratedDownloadPath(req.query.path);
+    const fileName = path.basename(filePath);
+    const mime = getDownloadMime(filePath);
+    if (mime) res.setHeader('Content-Type', mime);
+    const inline = req.query.inline === '1';
+    const disposition = inline ? 'inline' : 'attachment';
+    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err: any) {
+    sendRouteError(res, err);
+  }
+});
+
 // ── GET /files/download/:id — download or preview a file ──
 router.get('/files/download/:id', (req: Request, res: Response) => {
   try {
@@ -497,21 +591,8 @@ router.get('/files/download/:id', (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // MIME types for common previewable formats
     const ext = path.extname(safeName).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      '.txt': 'text/plain', '.md': 'text/markdown', '.json': 'application/json',
-      '.csv': 'text/csv', '.log': 'text/plain', '.xml': 'application/xml',
-      '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
-      '.ts': 'text/typescript', '.tsx': 'text/typescript', '.py': 'text/x-python',
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-      '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
-      '.flac': 'audio/flac', '.m4a': 'audio/mp4',
-      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-      '.pdf': 'application/pdf',
-    };
-    const mime = mimeMap[ext];
+    const mime = getDownloadMime(ext);
     if (mime) res.setHeader('Content-Type', mime);
 
     const inline = req.query.inline === '1';
