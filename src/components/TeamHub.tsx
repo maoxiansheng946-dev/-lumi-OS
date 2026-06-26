@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2 } from 'lucide-react';
+import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2, RefreshCw, CheckCircle2, AlertTriangle, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function TeamHub({ t }: { t?: any }) {
@@ -13,7 +13,10 @@ export function TeamHub({ t }: { t?: any }) {
   const [connectSkillTags, setConnectSkillTags] = useState('');
   const [connectCommand, setConnectCommand] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [testingIds, setTestingIds] = useState<string[]>([]);
   const loadAgentsFailedText = t?.loadAgentsFailed || 'Failed to load agents';
+  const isZh = t?.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
 
   const fetchAgents = useCallback(async () => {
     setLoading(true);
@@ -52,11 +55,14 @@ export function TeamHub({ t }: { t?: any }) {
         credentials: 'include',
       });
       if (res.ok) {
+        const created = await res.json().catch(() => null);
         toast.success(t?.agentConnected || 'External agent connected');
         setShowConnectForm(false);
         setConnectName('');
         setConnectCommand('');
-        fetchAgents();
+        setConnectSkillTags('');
+        if (created?.id) setAgents(prev => [created, ...prev.filter(a => a.id !== created.id)]);
+        else fetchAgents();
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error || t?.connectFailed || 'Connection failed');
@@ -65,6 +71,27 @@ export function TeamHub({ t }: { t?: any }) {
       toast.error(err.message || t?.connectFailed || 'Connection failed');
     }
     setConnecting(false);
+  };
+
+  const handleTestConnection = async (agent: any) => {
+    setTestingIds(prev => prev.includes(agent.id) ? prev : [...prev, agent.id]);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: `Lumi health check for ${agent.name || 'external agent'}. Reply briefly.` }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Connection test failed');
+      if (data.agent) setAgents(prev => prev.map(a => a.id === agent.id ? data.agent : a));
+      if (data.ok) toast.success(ui('外部 agent 连接正常', 'External agent is reachable'));
+      else toast.error(data.result?.output || ui('外部 agent 测试失败', 'External agent test failed'));
+    } catch (err: any) {
+      toast.error(err.message || ui('外部 agent 测试失败', 'External agent test failed'));
+    } finally {
+      setTestingIds(prev => prev.filter(id => id !== agent.id));
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -102,6 +129,20 @@ export function TeamHub({ t }: { t?: any }) {
 
   const internalAgents = agents.filter(a => a.runtime !== 'external');
   const externalAgents = agents.filter(a => a.runtime === 'external');
+  const readyExternalCount = externalAgents.filter(agent => agent.healthStatus === 'online' && agent.isFrozen !== true).length;
+
+  const healthMeta = (agent: any) => {
+    if (agent.healthStatus === 'online') return { icon: <CheckCircle2 size={13} />, label: ui('可用', 'Online'), className: 'border-emerald-400/15 bg-emerald-500/10 text-emerald-300' };
+    if (agent.healthStatus === 'error') return { icon: <AlertTriangle size={13} />, label: ui('异常', 'Error'), className: 'border-red-400/15 bg-red-500/10 text-red-200' };
+    return { icon: <Clock3 size={13} />, label: ui('未测试', 'Untested'), className: 'border-white/10 bg-white/[0.04] text-white/45' };
+  };
+
+  const formatTime = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString(isZh ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="space-y-6">
@@ -115,15 +156,23 @@ export function TeamHub({ t }: { t?: any }) {
             {t?.teamHub || 'Agent Team'}
           </h2>
           <p className="text-sm text-white/40 max-w-xl mt-1">
-            {t?.teamDesc || "Lumi's team of agents. Each member has their own skills — Lumi can dispatch tasks through the orchestrator."}
+            {ui('Lumi 的工作团队。内部 agent 可直接调度，外部 agent 通过本机 CLI 连接，先测试健康状态再交给 orchestrator。', "Lumi's working team. Internal agents are dispatched directly; external agents connect through local CLI commands and should pass a health test before orchestration.")}
           </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-white/35">
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1">
+              {ui(`内部 ${internalAgents.length}`, `${internalAgents.length} internal`)}
+            </span>
+            <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-1 text-cyan-200/60">
+              {ui(`外部就绪 ${readyExternalCount}/${externalAgents.length}`, `${readyExternalCount}/${externalAgents.length} external ready`)}
+            </span>
+          </div>
         </div>
         <button
           onClick={() => setShowConnectForm(!showConnectForm)}
           className="lumi-button-primary shrink-0 border-cyan-400/25 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25"
         >
           <ExternalLink size={12} />
-          {t?.connectExternal || 'Connect External Agent'}
+          {t?.connectExternal || ui('连接外部 Agent', 'Connect External Agent')}
         </button>
       </div>
 
@@ -131,7 +180,7 @@ export function TeamHub({ t }: { t?: any }) {
         {showConnectForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="lumi-panel space-y-4 border-cyan-500/15 bg-cyan-500/5 p-5">
-              <p className="text-xs text-cyan-400/70">{t?.connectExternalDesc || 'Link an AI agent running on your machine or cloud.'}</p>
+              <p className="text-xs text-cyan-400/70">{ui('连接一个可通过本机命令调用的外部 agent。命令必须包含 {task}，保存后可以立即测试健康状态。', 'Connect an external agent callable from a local command. The command must include {task}; test health after saving.')}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input value={connectName} onChange={e => setConnectName(e.target.value)}
                   placeholder={t?.agentName || 'Agent Name'} className="lumi-field py-2 text-xs" />
@@ -142,7 +191,7 @@ export function TeamHub({ t }: { t?: any }) {
                   ))}
                 </select>
                 <input value={connectSkillTags} onChange={e => setConnectSkillTags(e.target.value)}
-                  placeholder={t?.agentSkillTags || 'Skill Tags (comma separated)'} className="lumi-field py-2 text-xs" />
+                  placeholder={t?.agentSkillTags || ui('能力标签，用逗号分隔，如 analysis, code', 'Skill tags, comma separated, e.g. analysis, code')} className="lumi-field py-2 text-xs" />
                 <input value={connectCommand} onChange={e => setConnectCommand(e.target.value)}
                   placeholder={t?.agentCommandHint || 'openclaw send --task "{task}"'} className="lumi-field py-2 font-mono text-xs" />
               </div>
@@ -266,17 +315,74 @@ export function TeamHub({ t }: { t?: any }) {
                             <span className="text-[11px] text-cyan-400/70">{agent.category || 'external'}</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDelete(agent.id)}
-                          className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
-                          title={t?.remove || 'Remove'}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleToggle(agent)}
+                            className={`rounded-lg p-1.5 transition-all ${agent.isFrozen ? 'bg-white/5 text-white/30 hover:text-white/50' : 'bg-green-500/10 text-green-400'}`}
+                            title={agent.isFrozen ? (t?.activate || 'Activate') : (t?.freeze || 'Freeze')}
+                          >
+                            {agent.isFrozen ? <Power size={14} /> : <PowerOff size={14} />}
+                          </button>
+                          <button
+                            onClick={() => void handleTestConnection(agent)}
+                            disabled={testingIds.includes(agent.id)}
+                            className="rounded-lg p-1.5 text-cyan-300/65 transition-all hover:bg-cyan-500/10 hover:text-cyan-100 disabled:opacity-30"
+                            title={ui('测试连接', 'Test connection')}
+                          >
+                            <RefreshCw size={14} className={testingIds.includes(agent.id) ? 'animate-spin' : ''} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(agent.id)}
+                            className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
+                            title={t?.remove || 'Remove'}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(() => {
+                          const meta = healthMeta(agent);
+                          return (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${meta.className}`}>
+                              {meta.icon}
+                              {meta.label}
+                            </span>
+                          );
+                        })()}
+                        {agent.lastRunDurationMs != null && (
+                          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-white/35">
+                            {agent.lastRunDurationMs}ms
+                          </span>
+                        )}
+                        {agent.lastHealthCheckAt && (
+                          <span className="text-[11px] text-white/30">
+                            {formatTime(agent.lastHealthCheckAt)}
+                          </span>
+                        )}
+                      </div>
+                      {(agent.skillTags || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {agent.skillTags.map((tag: string) => (
+                            <span key={tag} className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] uppercase text-cyan-300/55">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                      {agent.healthStatus !== 'online' && (
+                        <div className="rounded-lg border border-amber-300/10 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/55">
+                          {agent.healthStatus === 'error'
+                            ? ui('上次测试失败。修复命令并重新测试前，不会参与调度。', 'Last test failed. It will not be scheduled until the command is fixed and tested again.')
+                            : ui('尚未测试。测试通过后才会参与任务调度。', 'Untested. It will only join orchestration after a successful health test.')}
+                        </div>
+                      )}
                       {agent.externalCommand && (
                         <div className="p-2 bg-black/40 rounded-lg text-xs font-mono text-white/40 truncate">
                           {agent.externalCommand}
+                        </div>
+                      )}
+                      {agent.lastRunOutput && (
+                        <div className="max-h-20 overflow-hidden rounded-lg border border-white/[0.06] bg-black/25 p-2 text-xs leading-relaxed text-white/42">
+                          {agent.lastRunOutput}
                         </div>
                       )}
                     </motion.div>

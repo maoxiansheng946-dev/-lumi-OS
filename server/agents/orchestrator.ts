@@ -69,6 +69,8 @@ export interface WorkflowResult {
 export interface OrchestrationContext {
   userId: string;
   personalityId?: string;
+  domain?: string;
+  orgId?: string;
   availableAgentIds?: string[];
   desktopRelay?: (toolName: string, args: Record<string, any>) => Promise<string>;
 }
@@ -152,6 +154,40 @@ function buildWorkerOutput(text: string, toolCalls: ToolExecutionRecord[] = []):
     artifacts.size ? '\nGenerated/referenced files:' : '',
     ...Array.from(artifacts).map(ref => `- ${ref}`),
   ].filter(Boolean).join('\n');
+}
+
+function agentAvailableForContext(agent: AgentRecord, context: OrchestrationContext): boolean {
+  if (!agent || agent.status === 'offline' || agent.status === 'terminated') return false;
+  if ((agent as any).isFrozen === true) return false;
+  if (agent.runtime === 'external' && agent.healthStatus !== 'online') return false;
+  if (context.availableAgentIds?.length && !context.availableAgentIds.includes(agent.id)) return false;
+
+  const domain = context.domain || (context.orgId ? 'work' : 'personal');
+  if (domain === 'work') {
+    return !!context.orgId && (agent.orgId || '') === context.orgId && (agent.domain || 'work') === 'work';
+  }
+
+  if (agent.domain === 'work' || agent.orgId) return false;
+  if (agent.ownerUid && agent.ownerUid !== context.userId) return false;
+  return true;
+}
+
+function recordExternalAgentRun(agentId: string, result: { success: boolean; output: string; exitCode: number | null; durationMs: number }) {
+  try {
+    const db = readDB();
+    const agent = (db.agents || []).find((item: any) => item.id === agentId);
+    if (!agent) return;
+    Object.assign(agent, {
+      healthStatus: result.success ? 'online' : 'error',
+      lastRunAt: new Date().toISOString(),
+      lastRunStatus: result.success ? 'success' : 'failed',
+      lastRunOutput: result.output.slice(0, 1200),
+      lastRunDurationMs: result.durationMs,
+      lastRunExitCode: result.exitCode,
+      lastActiveAt: new Date().toISOString(),
+    });
+    writeDB(db);
+  } catch {}
 }
 
 // ── Complexity classification ──
@@ -662,6 +698,7 @@ async function executeExternalWorkerTask(
     { command: agent.externalCommand!, timeout: 180_000 },
     subTask.description,
   );
+  recordExternalAgentRun(agent.id, result);
 
   return {
     subTaskId: subTask.id,
@@ -1096,7 +1133,7 @@ export async function runOrchestratedTask(
   if (complexity !== 'complex' && complexity !== 'moderate') return null;
 
   const db = readDB();
-  const availableAgents = (db.agents || []).filter((a: any) => a.status !== 'offline');
+  const availableAgents = (db.agents || []).filter((a: any) => agentAvailableForContext(a, context));
   if (availableAgents.length < 1) return null;
 
   const subTasks = await decomposeTask(text, llmConfig, context, llmGetters);

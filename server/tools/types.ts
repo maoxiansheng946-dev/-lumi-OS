@@ -5,6 +5,10 @@ export type SecurityLevel = 'safe' | 'confirm' | 'forbidden';
 
 export interface ToolContext {
   userId?: string;
+  /** Active data domain for scoped writes. */
+  domain?: 'personal' | 'work' | string;
+  /** Organization id when domain is work. */
+  orgId?: string;
   socketId?: string;
   cwd?: string;
   /** Relay for desktop tools: sends execution request to Tauri frontend and returns result */

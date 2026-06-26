@@ -635,7 +635,7 @@ export function registerChatHandler(
               });
             }
             try {
-              const tcResult = await toolRegistry.execute(quickResult.toolCall.name, quickResult.toolCall.arguments, { userId: uid, desktopRelay, llmGetters });
+              const tcResult = await toolRegistry.execute(quickResult.toolCall.name, quickResult.toolCall.arguments, { userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, desktopRelay, llmGetters });
               if (shouldEmitQuickTool) {
                 emitToolLifecycle({
                   correlationId: toolCid,
@@ -794,7 +794,7 @@ export function registerChatHandler(
           emitAgent("agent:status", { status: "thinking", agentName: exposeAgentWork ? "Lumi Orchestrator" : personality.name, phase: exposeAgentWork ? 'orchestrator' : 'background' });
           const orchResult = await runOrchestratedTask(
             text,
-            { userId: uid, personalityId, desktopRelay },
+            { userId: uid, personalityId, domain: resolvedDomain, orgId: resolvedOrgId, desktopRelay },
             { provider: activeProvider, model: activeModel },
             llmGetters,
             exposeAgentWork ? (msg) => emitAgent("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
@@ -993,6 +993,8 @@ export function registerChatHandler(
             onChunk,
             {
               userId: uid,
+              domain: resolvedDomain,
+              orgId: resolvedOrgId,
               desktopRelay,
               llmGetters,
               source: 'chat',
@@ -1112,6 +1114,8 @@ export function registerChatHandler(
                 undefined,
                 {
                   userId: uid,
+                  domain: resolvedDomain,
+                  orgId: resolvedOrgId,
                   desktopRelay,
                   llmGetters,
                   source: 'chat',

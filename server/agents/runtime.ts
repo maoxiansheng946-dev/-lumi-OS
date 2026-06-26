@@ -44,6 +44,18 @@ export interface AgentRecord {
   runtime?: 'internal' | 'external';
   /** CLI command template for external agents. {task} is replaced with the task text. */
   externalCommand?: string;
+  /** Data domain for routing/isolation. */
+  domain?: string;
+  /** Organization id when the agent belongs to a work domain. */
+  orgId?: string;
+  /** UI and routing health state for external agents. */
+  healthStatus?: 'online' | 'untested' | 'error';
+  lastHealthCheckAt?: string;
+  lastRunAt?: string;
+  lastRunStatus?: 'success' | 'failed';
+  lastRunOutput?: string;
+  lastRunDurationMs?: number;
+  lastRunExitCode?: number | null;
 }
 
 export interface AgentTickResult {

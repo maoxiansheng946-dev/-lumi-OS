@@ -84,6 +84,83 @@ describe('Agent CRUD', () => {
     expect(res.status).toBe(404);
   });
 
+  it('creates and tests an external agent', async () => {
+    const command = `node -e "console.log('external-ok ' + process.argv.slice(1).join(' '))" {task}`;
+    const create = await fetch(`${url}/api/agents`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        name: 'CLI Agent',
+        category: 'analysis',
+        runtime: 'external',
+        externalCommand: command,
+        skillTags: ['analysis', 'cli'],
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const created = await create.json();
+    expect(create.status).toBe(200);
+    expect(created.runtime).toBe('external');
+    expect(created.skillTags).toEqual(['analysis', 'cli']);
+    expect(created.healthStatus).toBe('untested');
+
+    const test = await fetch(`${url}/api/agents/${created.id}/test`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ task: 'ping' }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const tested = await test.json();
+    expect(test.status).toBe(200);
+    expect(tested.ok).toBe(true);
+    expect(tested.agent.healthStatus).toBe('online');
+    expect(tested.agent.lastRunOutput).toContain('external-ok');
+
+    const updatedCommand = `node -e "console.log('external-v2 ' + process.argv.slice(1).join(' '))" {task}`;
+    const update = await fetch(`${url}/api/agents/${created.id}`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ externalCommand: updatedCommand }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const updated = await update.json();
+    expect(update.status).toBe(200);
+    expect(updated.healthStatus).toBe('untested');
+    expect(updated.lastRunOutput).toBeUndefined();
+
+    await fetch(`${url}/api/agents/${created.id}`, { method: 'DELETE', headers: headers(), signal: AbortSignal.timeout(5000) });
+  });
+
+  it('rejects unsafe external agent commands', async () => {
+    const res = await fetch(`${url}/api/agents`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        name: 'Unsafe CLI Agent',
+        runtime: 'external',
+        externalCommand: 'shutdown /s /t 0 {task}',
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('blocked pattern');
+
+    const chained = await fetch(`${url}/api/agents`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        name: 'Chained CLI Agent',
+        runtime: 'external',
+        externalCommand: 'echo ok && echo bad {task}',
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const chainedBody = await chained.json();
+    expect(chained.status).toBe(400);
+    expect(chainedBody.error).toContain('shell control token');
+  });
+
   it('deletes the agent', async () => {
     const res = await fetch(`${url}/api/agents/${agentId}`, {
       method: 'DELETE',

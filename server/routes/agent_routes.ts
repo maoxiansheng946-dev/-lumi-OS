@@ -4,10 +4,67 @@ import { getOrCreateActiveConversation, getActiveConversation, getMessages, addM
 import { getKey } from "../config/keys";
 import { makeLLMCall, NormalizedMessage } from "../llm/providers";
 import { getUserPreferredLLMConfig } from "../llm/user_preferences";
-import { requireAuth, resolveDomain } from "../middleware/auth";
+import { executeExternalAgent, validateExternalCommand } from "../agents/external_runtime";
+import { requireAuth, resolveDomain, type AuthUser } from "../middleware/auth";
 
 const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res, next)).catch(next);
+
+function normalizeStringList(value: unknown, max = 20): string[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  return Array.from(new Set(raw
+    .map(item => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, max)));
+}
+
+function normalizeRuntimeConfig(value: unknown): string {
+  if (!value) return '{}';
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return JSON.stringify(parsed && typeof parsed === 'object' ? parsed : {});
+    } catch {
+      return '{}';
+    }
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  return '{}';
+}
+
+function parseRuntimeConfig(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function agentMatchesScope(agent: any, user: AuthUser): boolean {
+  if (!agent || agent.id?.startsWith?.('ephemeral_')) return false;
+  if (user.orgId) {
+    return (agent.orgId || '') === user.orgId && (agent.domain || 'work') === 'work';
+  }
+  return (!agent.orgId || agent.orgId === '') && agent.domain !== 'work' && (!agent.ownerUid || agent.ownerUid === user.uid);
+}
+
+function findScopedAgent(db: any, user: AuthUser, id: string): any | null {
+  return (db.agents || []).find((agent: any) => agent.id === id && agentMatchesScope(agent, user)) || null;
+}
+
+function externalRuntimeConfig(agent: any): { cwd?: string } {
+  const cfg = parseRuntimeConfig(agent?.runtimeConfig);
+  const cwd = typeof cfg.cwd === 'string' && cfg.cwd.trim() ? cfg.cwd.trim() : undefined;
+  return cwd ? { cwd } : {};
+}
 
 export function mountAgentRoutes(
   router: Router,
@@ -75,34 +132,105 @@ export function mountAgentRoutes(
 
   router.get("/agents", requireAuth, (req, res) => {
     try {
-      const orgId = req.user!.orgId;
-      res.json(readDB().agents.filter((a: any) => {
-        if (a.id.startsWith('ephemeral_')) return false;
-        if (!a.ownerUid || a.ownerUid !== req.user!.uid) return false;
-        if (orgId) return a.orgId === orgId;
-        return (!a.orgId || a.orgId === '');
-      }));
+      res.json((readDB().agents || []).filter((a: any) => agentMatchesScope(a, req.user!)));
     }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   router.post("/agents", requireAuth, (req, res) => {
     try {
-      const { name, category, data, personalityId, modelPreference, memoryScope, autonomyLevel, territory, distilledFrom, evidenceMap, relationshipType, isFrozen, seedMemoryIds, executionMode, runtime, externalCommand } = req.body;
+      const { name, category, data, personalityId, modelPreference, memoryScope, autonomyLevel, territory, distilledFrom, evidenceMap, relationshipType, isFrozen, seedMemoryIds, executionMode, runtime, externalCommand, skillTags, knowledgeDomains, runtimeConfig } = req.body;
       const db = readDB(); const isSanctuary = territory === 'sanctuary';
       const dc = resolveDomain(req.user!);
-      const agent: any = { id: Math.random().toString(36).substring(2, 15), ownerUid: req.user!.uid, name, category: category || (relationshipType || 'friend'), data: data || '{}', status: "active", personalityId: personalityId || 'lumi', modelPreference: modelPreference || '', memoryScope: isSanctuary ? 'private' : (memoryScope || 'shared'), autonomyLevel: isSanctuary ? 'reactive' : (autonomyLevel || 'reactive'), runtimeConfig: '{}', territory: territory || 'open', distilledFrom: distilledFrom || '', evidenceMap: evidenceMap || [], relationshipType: relationshipType || '', isFrozen: isFrozen ?? isSanctuary, seedMemoryIds: seedMemoryIds || [], executionMode: executionMode || '', runtime: runtime || 'internal', externalCommand: externalCommand || '', domain: dc.domain, orgId: dc.orgId, createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), skillTags: [], knowledgeDomains: [], allowCrossPollination: !isSanctuary };
+      const runtimeKind = runtime === 'external' ? 'external' : 'internal';
+      const command = String(externalCommand || '').trim();
+      if (runtimeKind === 'external') {
+        const validationError = validateExternalCommand(command);
+        if (validationError) return res.status(400).json({ error: validationError });
+      }
+      const agent: any = {
+        id: Math.random().toString(36).substring(2, 15),
+        ownerUid: req.user!.uid,
+        userId: req.user!.uid,
+        name: String(name || '').trim() || 'Untitled Agent',
+        category: category || (relationshipType || 'friend'),
+        data: data || '{}',
+        status: "active",
+        personalityId: personalityId || 'lumi',
+        modelPreference: modelPreference || '',
+        memoryScope: isSanctuary ? 'private' : (memoryScope || 'shared'),
+        autonomyLevel: isSanctuary ? 'reactive' : (autonomyLevel || 'reactive'),
+        runtimeConfig: normalizeRuntimeConfig(runtimeConfig),
+        territory: territory || 'open',
+        distilledFrom: distilledFrom || '',
+        evidenceMap: evidenceMap || [],
+        relationshipType: relationshipType || '',
+        isFrozen: isFrozen ?? isSanctuary,
+        seedMemoryIds: seedMemoryIds || [],
+        executionMode: executionMode || '',
+        runtime: runtimeKind,
+        externalCommand: runtimeKind === 'external' ? command : '',
+        domain: dc.domain,
+        orgId: dc.orgId,
+        createdAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+        skillTags: normalizeStringList(skillTags),
+        knowledgeDomains: normalizeStringList(knowledgeDomains),
+        allowCrossPollination: !isSanctuary,
+        healthStatus: runtimeKind === 'external' ? 'untested' : 'online',
+      };
       db.agents.push(agent); writeDB(db); res.json(agent);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+
+  router.post("/agents/:id/test", requireAuth, asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const db = readDB();
+    const agent = findScopedAgent(db, req.user!, id);
+    if (!agent) return res.status(404).json({ error: "Agent not found or unauthorized" });
+    if (agent.runtime !== 'external') return res.status(400).json({ error: "Only external agents can be tested" });
+
+    const command = String(req.body?.externalCommand || agent.externalCommand || '').trim();
+    const validationError = validateExternalCommand(command);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    const task = String(req.body?.task || 'Lumi external agent health check. Reply briefly with OK and your agent name if you can receive this task.').slice(0, 500);
+    const timeoutMs = Math.max(1000, Math.min(Number(req.body?.timeoutMs) || 30000, 60000));
+    const result = await executeExternalAgent({
+      command,
+      timeout: timeoutMs,
+      ...externalRuntimeConfig(agent),
+    }, task);
+
+    Object.assign(agent, {
+      externalCommand: command,
+      healthStatus: result.success ? 'online' : 'error',
+      lastHealthCheckAt: new Date().toISOString(),
+      lastRunAt: new Date().toISOString(),
+      lastRunStatus: result.success ? 'success' : 'failed',
+      lastRunOutput: result.output.slice(0, 1200),
+      lastRunDurationMs: result.durationMs,
+      lastRunExitCode: result.exitCode,
+      lastActiveAt: new Date().toISOString(),
+    });
+    writeDB(db);
+
+    res.json({
+      ok: result.success,
+      result,
+      agent,
+    });
+  }));
 
   router.put("/agents/:id", requireAuth, (req, res) => {
     try {
       const { id } = req.params;
       const db = readDB();
-      const idx = db.agents.findIndex((a: any) => a.id === id && a.ownerUid === req.user!.uid);
+      const idx = db.agents.findIndex((a: any) => a.id === id && agentMatchesScope(a, req.user!));
       if (idx === -1) return res.status(404).json({ error: "Agent not found or unauthorized" });
       const agent = db.agents[idx];
+      const previousRuntime = agent.runtime;
+      const previousCommand = String(agent.externalCommand || '').trim();
       const allowedFields = [
         'name', 'category', 'personalityId', 'modelPreference', 'memoryScope',
         'autonomyLevel', 'executionMode', 'skillTags', 'knowledgeDomains',
@@ -110,10 +238,38 @@ export function mountAgentRoutes(
         'runtime', 'externalCommand',
       ];
       for (const field of allowedFields) {
-        if (req.body[field] !== undefined) agent[field] = req.body[field];
+        if (req.body[field] === undefined) continue;
+        if (field === 'skillTags' || field === 'knowledgeDomains') {
+          agent[field] = normalizeStringList(req.body[field]);
+        } else if (field === 'runtime') {
+          agent.runtime = req.body[field] === 'external' ? 'external' : 'internal';
+        } else if (field === 'externalCommand') {
+          agent.externalCommand = String(req.body[field] || '').trim();
+        } else {
+          agent[field] = req.body[field];
+        }
       }
       if (req.body.data !== undefined) agent.data = typeof req.body.data === 'string' ? req.body.data : JSON.stringify(req.body.data);
-      if (req.body.runtimeConfig !== undefined) agent.runtimeConfig = typeof req.body.runtimeConfig === 'string' ? req.body.runtimeConfig : JSON.stringify(req.body.runtimeConfig);
+      if (req.body.runtimeConfig !== undefined) agent.runtimeConfig = normalizeRuntimeConfig(req.body.runtimeConfig);
+      const nextRuntime = agent.runtime === 'external' ? 'external' : 'internal';
+      if (nextRuntime === 'external') {
+        const validationError = validateExternalCommand(String(agent.externalCommand || ''));
+        if (validationError) return res.status(400).json({ error: validationError });
+        const commandChanged = previousRuntime !== nextRuntime || previousCommand !== String(agent.externalCommand || '').trim();
+        if (commandChanged) {
+          agent.healthStatus = 'untested';
+          delete agent.lastHealthCheckAt;
+          delete agent.lastRunStatus;
+          delete agent.lastRunOutput;
+          delete agent.lastRunDurationMs;
+          delete agent.lastRunExitCode;
+        } else if (!agent.healthStatus) {
+          agent.healthStatus = 'untested';
+        }
+      } else {
+        agent.externalCommand = '';
+        agent.healthStatus = 'online';
+      }
       agent.lastActiveAt = new Date().toISOString();
       writeDB(db);
       res.json(agent);
@@ -125,7 +281,7 @@ export function mountAgentRoutes(
       const { id } = req.params; const db = readDB();
       const BUILTINS = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'];
       if (BUILTINS.includes(id)) return res.status(403).json({ error: "Cannot delete built-in agent" });
-      const idx = db.agents.findIndex((a: any) => a.id === id && a.ownerUid === req.user!.uid);
+      const idx = db.agents.findIndex((a: any) => a.id === id && agentMatchesScope(a, req.user!));
       if (idx === -1) return res.status(404).json({ error: "Agent not found or unauthorized" });
       db.agents.splice(idx, 1);
       // Cleanup orphaned data

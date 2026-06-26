@@ -1,27 +1,62 @@
 import { ToolRegistry } from '../registry';
+import type { ToolContext } from '../types';
 import { readDB, writeDB } from '../../../db_layer';
+import { validateExternalCommand } from '../../agents/external_runtime';
 
-async function agentCreate(args: Record<string, any>, _context?: any): Promise<string> {
+function normalizeStringList(value: unknown, max = 20): string[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  return Array.from(new Set(raw
+    .map(item => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, max)));
+}
+
+const BUILTIN_AGENT_IDS = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'];
+
+function agentInToolScope(agent: any, context?: ToolContext): boolean {
+  if (!agent || agent.id?.startsWith?.('ephemeral_')) return false;
+  const domain = context?.domain === 'work' ? 'work' : 'personal';
+  if (domain === 'work') {
+    return !!context?.orgId && (agent.orgId || '') === context.orgId && (agent.domain || 'work') === 'work';
+  }
+  if (agent.domain === 'work' || agent.orgId) return false;
+  if (context?.userId && agent.ownerUid && agent.ownerUid !== context.userId) return false;
+  return true;
+}
+
+async function agentCreate(args: Record<string, any>, context?: ToolContext): Promise<string> {
   const name = (args.name || '').trim();
   if (!name) return 'Error: agent name is required.';
 
   const category = (args.category || 'general').trim().toLowerCase();
-  const skillTags: string[] = Array.isArray(args.skillTags) ? args.skillTags : [];
+  const skillTags = normalizeStringList(args.skillTags);
   const description = (args.description || '').trim();
   const executionMode = args.executionMode || 'lumi';
   const modelPreference = args.model || 'deepseek-chat';
-  const knowledgeDomains: string[] = Array.isArray(args.knowledgeDomains) ? args.knowledgeDomains : [];
+  const knowledgeDomains = normalizeStringList(args.knowledgeDomains);
   const autonomyLevel = args.autonomyLevel || 'reactive';
-  const runtime = args.runtime || 'internal';
+  const runtime = args.runtime === 'external' ? 'external' : 'internal';
   const externalCommand = (args.externalCommand || '').trim() || undefined;
+  const domain = context?.domain === 'work' ? 'work' : 'personal';
+  const orgId = domain === 'work' ? (context?.orgId || '') : '';
 
   if (runtime === 'external' && !externalCommand) {
     return 'Error: external agents must provide an externalCommand (e.g. "openclaw send --agent mybot --message \\"{task}\\"").';
+  }
+  if (runtime === 'external' && externalCommand) {
+    const validationError = validateExternalCommand(externalCommand);
+    if (validationError) return `Error: ${validationError}`;
   }
 
   const id = `worker_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const agent: Record<string, any> = {
     id,
+    ownerUid: context?.userId || '',
+    userId: context?.userId || '',
     name,
     category,
     config: JSON.stringify({ description, knowledgeDomains }),
@@ -38,6 +73,9 @@ async function agentCreate(args: Record<string, any>, _context?: any): Promise<s
     territory: 'open',
     runtime,
     ...(externalCommand ? { externalCommand } : {}),
+    domain,
+    orgId,
+    healthStatus: runtime === 'external' ? 'untested' : 'online',
   };
 
   try {
@@ -55,17 +93,10 @@ async function agentCreate(args: Record<string, any>, _context?: any): Promise<s
   }
 }
 
-async function agentList(_args: Record<string, any>, context?: any): Promise<string> {
+async function agentList(_args: Record<string, any>, context?: ToolContext): Promise<string> {
   try {
     const db = readDB();
-    const userId = context?.userId;
-    const agents = (db.agents || []).filter((a: any) => {
-      // Filter out ephemeral agents
-      if (a.id?.startsWith('ephemeral_')) return false;
-      // If userId is available, show user's own + shared agents
-      if (userId && a.ownerUid && a.ownerUid !== userId) return false;
-      return true;
-    });
+    const agents = (db.agents || []).filter((a: any) => agentInToolScope(a, context));
 
     if (agents.length === 0) {
       return 'No active worker agents found. Use agent_create to spawn one when needed.';
@@ -79,6 +110,8 @@ async function agentList(_args: Record<string, any>, context?: any): Promise<str
       status: a.status,
       territory: a.territory || 'open',
       runtime: a.runtime || 'internal',
+      healthStatus: a.healthStatus || (a.runtime === 'external' ? 'untested' : 'online'),
+      isFrozen: a.isFrozen === true,
       createdAt: a.createdAt,
     }));
 
@@ -88,7 +121,7 @@ async function agentList(_args: Record<string, any>, context?: any): Promise<str
   }
 }
 
-async function agentTerminate(args: Record<string, any>, _context?: any): Promise<string> {
+async function agentTerminate(args: Record<string, any>, context?: ToolContext): Promise<string> {
   const agentId = (args.agentId || '').trim();
   const terminateAll = args.all === true;
 
@@ -97,14 +130,18 @@ async function agentTerminate(args: Record<string, any>, _context?: any): Promis
     if (!db.agents) db.agents = [];
 
     if (terminateAll) {
-      const BUILTINS = ['lumi', 'lumi_default', 'scholar_default', 'founder_default', 'incubated'];
-      const activeAgents = db.agents.filter((a: any) => a.status === 'active' && !BUILTINS.includes(a.id));
+      const activeAgents = db.agents.filter((a: any) =>
+        a.status === 'active' &&
+        !BUILTIN_AGENT_IDS.includes(a.id) &&
+        agentInToolScope(a, context)
+      );
       if (activeAgents.length === 0) {
-        return 'No active agents to terminate (built-in agents excluded).';
+        return 'No active agents to terminate in the current scope (built-in agents excluded).';
       }
+      const activeIds = new Set(activeAgents.map((a: any) => a.id));
       const count = activeAgents.length;
       for (const agent of db.agents) {
-        if (agent.status === 'active' && !BUILTINS.includes(agent.id)) {
+        if (activeIds.has(agent.id)) {
           agent.status = 'terminated';
           agent.terminatedAt = new Date().toISOString();
         }
@@ -121,7 +158,11 @@ async function agentTerminate(args: Record<string, any>, _context?: any): Promis
       return 'Error: specify agentId or set all=true to terminate all agents.';
     }
 
-    const agent = db.agents.find((a: any) => a.id === agentId);
+    if (BUILTIN_AGENT_IDS.includes(agentId)) {
+      return `Cannot terminate built-in agent "${agentId}".`;
+    }
+
+    const agent = db.agents.find((a: any) => a.id === agentId && agentInToolScope(a, context));
     if (!agent) {
       return `Agent "${agentId}" not found.`;
     }

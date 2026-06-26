@@ -127,17 +127,54 @@ export async function executeExternalAgent(
  * Returns an error string if the command is rejected, null if OK.
  */
 export function validateExternalCommand(command: string): string | null {
-  if (!command || !command.trim()) {
+  const trimmed = command?.trim();
+  if (!trimmed) {
     return 'External command is empty';
   }
-  if (!command.includes('{task}')) {
+  if (trimmed.length > 1500) {
+    return 'External command is too long';
+  }
+  const placeholders = trimmed.match(/\{task\}/g) || [];
+  if (placeholders.length === 0) {
     return 'External command must include {task} placeholder';
   }
-  // Block obvious path traversal / shell injection patterns
-  const lower = command.toLowerCase();
-  const blocked = ['rm -rf', 'shutdown', 'reboot', 'format ', 'diskpart', 'del /f'];
+  if (placeholders.length > 1) {
+    return 'External command must include exactly one {task} placeholder';
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    return 'External command cannot contain newlines';
+  }
+
+  const controlTokens = ['&&', '||', ';', '|', '>', '<', '`', '$('];
+  for (const token of controlTokens) {
+    if (trimmed.includes(token)) return `Command contains shell control token: "${token}"`;
+  }
+
+  const lower = trimmed.toLowerCase();
+  const blocked = [
+    'rm -rf',
+    'shutdown',
+    'reboot',
+    'format ',
+    'diskpart',
+    'del /f',
+    'erase ',
+    'rd /s',
+    'rmdir /s',
+    'remove-item',
+    'stop-computer',
+    'restart-computer',
+    'mkfs',
+    'dd if=',
+  ];
   for (const b of blocked) {
     if (lower.includes(b)) return `Command contains blocked pattern: "${b}"`;
+  }
+  if (/^\s*(?:cmd|cmd\.exe)\s+\/c\b/i.test(trimmed)) {
+    return 'External command cannot launch cmd /c';
+  }
+  if (/^\s*(?:powershell|pwsh)(?:\.exe)?\s+-(?:command|c|encodedcommand)\b/i.test(trimmed)) {
+    return 'External command cannot launch inline PowerShell';
   }
   return null;
 }
