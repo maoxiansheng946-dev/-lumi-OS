@@ -11,6 +11,7 @@ interface AutoTask {
   description: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   source: string;
+  planId?: string;
   priority: number;
   mode: 'desktop' | 'terminal' | 'analysis';
   createdAt: string;
@@ -204,7 +205,7 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
           <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-300/15 bg-amber-400/10 text-amber-300">
             <Zap size={16} />
           </span>
-          <span className="text-sm font-black uppercase tracking-[0.12em] text-white/75">{ui('自主执行记录', 'Autonomous Activity')}</span>
+          <span className="text-sm font-black uppercase tracking-[0.12em] text-white/75">{ui('自主学习执行', 'Autonomous Learning')}</span>
           {liveItems.length > 0 && (
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           )}
@@ -257,11 +258,11 @@ export function AutonomousFeed({ expanded: initialExpanded }: { expanded?: boole
             <AnimatePresence>
               {loading && allItems.length === 0 ? (
                 <div className="lumi-panel py-8 text-center text-xs text-white/30">
-                  {ui('正在加载自主执行记录...', 'Loading autonomous work...')}
+                  {ui('正在加载自主学习记录...', 'Loading autonomous learning...')}
                 </div>
               ) : allItems.length === 0 ? (
                 <div className="lumi-panel py-8 text-center text-xs text-white/30">
-                  {ui('暂无自主任务。切到自主模式后，Lumi 的工作记录会出现在这里。', 'No autonomous tasks yet. Switch to autonomous mode and wait for Lumi to initiate work.')}
+                  {ui('暂无自主学习任务。进入自主模式并开启自动处理后，Lumi 会持续创建学习和吸收任务。', 'No autonomous learning tasks yet. In autonomous mode with auto processing enabled, Lumi will keep creating learning and absorption work.')}
                 </div>
               ) : (
                 allItems.map(task => (

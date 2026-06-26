@@ -11,6 +11,7 @@ export interface AutonomousTask {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   source: 'scheduler' | 'curiosity' | 'pattern_detected' | 'user_request';
   workflowId?: string;
+  planId?: string;
   priority: number;  // 0-10
   mode: 'desktop' | 'terminal' | 'analysis';
   createdAt: string;

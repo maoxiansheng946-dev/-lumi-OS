@@ -695,12 +695,12 @@ function ExecutionWorkQueue({ t }: { t: any }) {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-celestial-saturn/20 bg-celestial-saturn/10 text-celestial-saturn">
               <Calendar size={18} />
             </span>
-            {isZh ? '计划与自主执行' : 'Plans & Autonomous Work'}
+            {isZh ? 'Lumi 学习与吸收' : 'Lumi Learning & Absorption'}
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/42">
             {isZh
-              ? '这里是 Lumi 的工作队列：手动计划、自主任务、桌面控制和工具调用进度都汇到这里看。'
-              : 'This is Lumi’s work queue: manual plans, autonomous tasks, desktop control, and tool execution progress all converge here.'}
+              ? '这里是 Lumi 自己创建、执行和沉淀知识的学习流：她会从上下文、资料和记忆里持续吸收新东西。'
+              : 'This is Lumi’s own learning stream: she creates plans, executes them, and absorbs reusable knowledge from context, files, and memory.'}
           </p>
         </div>
       </div>
@@ -716,8 +716,6 @@ function ExecutionWorkQueue({ t }: { t: any }) {
 function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: boolean; onOpenQueue?: () => void }) {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [newPlan, setNewPlan] = useState({ title: '', priority: 'medium' });
   const [busyPlanIds, setBusyPlanIds] = useState<string[]>([]);
   const isZh = t?.langCode !== 'en';
   const activeCount = plans.length;
@@ -728,47 +726,15 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
       const res = await fetch('/api/plans?status=active', { credentials: 'include' });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || 'Failed to load plans');
-      setPlans((d.plans || []).filter((p: any) => p.status !== 'done' && p.status !== 'completed' && p.status !== 'cancelled').slice(0, 5));
+      setPlans((d.plans || [])
+        .filter((p: any) => (p.source === 'lumi' || p.source === 'auto') && p.status !== 'done' && p.status !== 'completed' && p.status !== 'cancelled')
+        .slice(0, 8));
     } catch (err: any) {
       toast.error(err?.message || (t.planLoadFailed || 'Failed to load plans'));
     } finally { setLoading(false); }
   };
 
   useEffect(() => { loadPlans(); }, []);
-
-  const createPlan = async () => {
-    if (!newPlan.title.trim()) return;
-    try {
-      const res = await fetch('/api/plans', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newPlan.title, description: '', steps: [], tags: [], source: 'manual', priority: newPlan.priority }),
-        credentials: 'include',
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || 'Failed to create plan');
-      setPlans(prev => [d.plan, ...prev].slice(0, 5));
-      setNewPlan({ title: '', priority: 'medium' });
-      setShowNew(false);
-      toast.success(t.planCreated || 'Plan added');
-    } catch (err: any) {
-      toast.error(err?.message || (t.planCreateFailed || 'Failed to create plan'));
-    }
-  };
-
-  const markDone = async (id: string) => {
-    setBusyPlanIds(prev => prev.includes(id) ? prev : [...prev, id]);
-    try {
-      const res = await fetch(`/api/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }), credentials: 'include' });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || 'Failed to update plan');
-      setPlans(prev => prev.filter(p => p.id !== id));
-      toast.success(t.planCompleted || 'Plan completed');
-    } catch (err: any) {
-      toast.error(err?.message || (t.planUpdateFailed || 'Failed to update plan'));
-    } finally {
-      setBusyPlanIds(prev => prev.filter(planId => planId !== id));
-    }
-  };
 
   const deletePlan = async (id: string) => {
     setBusyPlanIds(prev => prev.includes(id) ? prev : [...prev, id]);
@@ -785,6 +751,26 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
     }
   };
 
+  const getStepInfo = (plan: any) => {
+    const steps = Array.isArray(plan.steps) ? plan.steps : [];
+    const done = steps.filter((step: any) => step.status === 'done' || step.status === 'skipped').length;
+    const activeStep = steps.find((step: any) => step.status === 'in_progress')
+      || steps.find((step: any) => step.status === 'pending');
+    const label = activeStep
+      ? activeStep.status === 'in_progress'
+        ? (isZh ? '吸收中' : 'Absorbing')
+        : activeStep.title
+      : (isZh ? '等待下一轮执行' : 'Waiting for next run');
+    return { steps, done, label };
+  };
+
+  const formatUpdatedAt = (value?: string) => {
+    if (!value) return '';
+    const time = new Date(value);
+    if (Number.isNaN(time.getTime())) return '';
+    return time.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <GlassCard
       className={`lumi-panel ${embedded ? 'h-full' : 'cursor-pointer hover:bg-white/[0.05]'} space-y-3 rounded-2xl bg-black/20 p-5 transition-colors`}
@@ -794,13 +780,13 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
         <div>
           <span className="text-[12px] font-black uppercase tracking-widest text-white/65 flex items-center gap-2">
             <Calendar size={12} className="text-celestial-saturn" />
-            {embedded ? (isZh ? '手动计划' : 'Manual Plans') : (t.plans || 'Plans')}
+            {embedded ? (isZh ? 'Lumi 学习计划' : 'Lumi Learning Plans') : (isZh ? 'Lumi 学习流' : 'Lumi Learning')}
           </span>
           {!embedded && (
             <p className="mt-1 text-[11px] text-white/30">
               {activeCount > 0
-                ? (isZh ? `${activeCount} 个待办计划` : `${activeCount} active plan${activeCount === 1 ? '' : 's'}`)
-                : (isZh ? '暂无待办计划' : 'No active plans')}
+                ? (isZh ? `${activeCount} 个学习计划` : `${activeCount} learning plan${activeCount === 1 ? '' : 's'}`)
+                : (isZh ? '暂无学习计划' : 'No learning plans')}
             </p>
           )}
         </div>
@@ -813,47 +799,49 @@ function DailyPlans({ t, embedded = false, onOpenQueue }: { t: any; embedded?: b
               {isZh ? '队列' : 'Queue'}
             </button>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowNew(!showNew); }}
-            className="lumi-icon-button h-7 w-7 rounded-lg border-transparent text-[13px] font-bold"
-          >
-            {showNew ? '–' : '+'}
-          </button>
         </div>
       </div>
-
-      {showNew && (
-        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-          <input value={newPlan.title} onChange={e => setNewPlan(p => ({ ...p, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && createPlan()} placeholder={isZh ? '新计划...' : 'New plan...'} className="lumi-field min-w-0 flex-1 py-1.5 text-xs" />
-          <select value={newPlan.priority} onChange={e => setNewPlan(p => ({ ...p, priority: e.target.value }))} className="lumi-field w-16 py-1.5 text-xs text-white/70">
-            <option value="high">H</option>
-            <option value="medium">M</option>
-            <option value="low">L</option>
-          </select>
-          <button onClick={createPlan} disabled={!newPlan.title.trim()} className="lumi-button-primary h-8 px-3 text-xs">{isZh ? '添加' : 'Add'}</button>
-        </div>
-      )}
 
       {loading ? (
         <div className="text-white/30 text-xs py-2">{isZh ? '加载中...' : 'Loading...'}</div>
       ) : plans.length === 0 ? (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3 text-xs text-white/30">
-          {isZh ? '没有待办计划。可以点 + 新建，或打开工作队列查看 Lumi 的自主记录。' : 'No active plans. Add one with +, or open the queue to review Lumi autonomous activity.'}
+          {isZh ? 'Lumi 还没有生成学习计划。进入自主模式并开启自动处理后，她会按最近上下文持续创建。' : 'Lumi has not generated learning plans yet. In autonomous mode with auto processing enabled, she will keep creating them from recent context.'}
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {plans.map((plan: any) => (
-            <div key={plan.id} className="flex items-center gap-2 group">
-              <button onClick={(e) => { e.stopPropagation(); markDone(plan.id); }} disabled={busyPlanIds.includes(plan.id)} className="p-0.5 text-white/20 hover:text-green-400 transition-colors disabled:opacity-30">
-                <Circle size={12} />
-              </button>
-              <span className="flex-1 text-xs text-white/65 truncate">{plan.title}</span>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${plan.priority === 'high' ? 'bg-red-400' : plan.priority === 'medium' ? 'bg-amber-400' : 'bg-white/25'}`} />
-              <button onClick={(e) => { e.stopPropagation(); deletePlan(plan.id); }} disabled={busyPlanIds.includes(plan.id)} className="p-0.5 text-white/15 opacity-0 transition-all hover:text-red-300 group-hover:opacity-100 disabled:opacity-30">
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
+        <div className="space-y-2">
+          {plans.map((plan: any) => {
+            const { steps, done, label } = getStepInfo(plan);
+            const progress = steps.length > 0 ? `${done}/${steps.length}` : (isZh ? '待沉淀' : 'queued');
+            const updatedAt = formatUpdatedAt(plan.updatedAt);
+            return (
+              <div key={plan.id} className="group rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+                <div className="flex items-start gap-2">
+                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${plan.priority === 'critical' ? 'bg-red-300' : plan.priority === 'high' ? 'bg-orange-300' : plan.priority === 'medium' ? 'bg-amber-300' : 'bg-white/25'}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-xs font-bold text-white/70">{plan.title}</span>
+                      <span className="shrink-0 rounded-full border border-celestial-saturn/20 bg-celestial-saturn/10 px-2 py-0.5 text-[10px] font-bold text-celestial-saturn/80">
+                        {progress}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-white/35">
+                      <span className="truncate">{label}</span>
+                      {updatedAt && <span className="shrink-0 font-mono">{updatedAt}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deletePlan(plan.id); }}
+                    disabled={busyPlanIds.includes(plan.id)}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white/15 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-200 group-hover:opacity-100 disabled:opacity-30"
+                    title={isZh ? '移除计划' : 'Remove plan'}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </GlassCard>

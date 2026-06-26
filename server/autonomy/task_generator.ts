@@ -5,6 +5,7 @@
 import { isAutonomousWorkAllowed } from './safety_gate';
 import { enqueue } from './task_queue';
 import { listEnabledAutonomousWorkflows } from './workflows';
+import { createPlan, updatePlan, type LumiPlan } from './planner';
 import { readDB } from '../../db_layer';
 import { makeLLMCall, NormalizedMessage } from '../llm/providers';
 import { getRecentActivity } from '../context/activity_stream';
@@ -25,6 +26,31 @@ type GeneratedAutonomousTask = {
   priority: number;
   workflowId?: string;
 };
+
+function toPlanPriority(priority: number): LumiPlan['priority'] {
+  if (priority >= 9) return 'critical';
+  if (priority >= 7) return 'high';
+  if (priority <= 3) return 'low';
+  return 'medium';
+}
+
+function createLearningPlanForTask(task: GeneratedAutonomousTask, workflowTitle: string): LumiPlan {
+  return createPlan(
+    task.title.slice(0, 120),
+    [
+      task.description.slice(0, 700),
+      `来源工作流：${workflowTitle}`,
+    ].join('\n\n'),
+    'lumi',
+    toPlanPriority(Math.max(1, Math.min(10, task.priority || 5))),
+    [
+      { title: '识别可吸收的新知识', description: '从最近上下文、记忆、资料或知识缺口中确认本轮学习目标。' },
+      { title: '执行学习与整理', description: '完成分析、归纳、对照和必要的知识结构化。' },
+      { title: '沉淀结果', description: '输出可复用摘要、索引、记忆线索或下一步学习建议。' },
+    ],
+    ['lumi-learning', 'autonomous', task.workflowId || 'workflow'],
+  );
+}
 
 export async function generateAutonomousTasks(
   userId: string,
@@ -121,13 +147,15 @@ export async function generateAutonomousTasks(
 
   if (contextParts.length === 0) return 0;
 
-  const prompt = `你是 Lumi 的后台自主任务规划器。根据用户当前的上下文，建议 1-3 个你可以自主完成的小任务。
+  const prompt = `你是 Lumi 的后台自主学习与任务规划器。根据用户当前的上下文，建议 1-3 个你可以自主完成的小任务。
 
 要求：
 - 只能基于下面“已确认且启用的自动工作流”生成任务
 - 每个任务必须填写 workflowId，且 workflowId 必须来自下面的工作流列表
 - 任务 mode 必须在对应工作流的 allowedModes 内
 - 如果任务需要外部应用，而工作流 externalApps=not_allowed，则不要生成该任务
+- 优先生成学习、知识吸收、记忆整理、资料消化、能力补齐类任务
+- 每个任务完成后应产出可沉淀的摘要、索引、记忆线索或下一步建议
 - 安全无害（不删除文件、不执行危险命令）
 - 快速完成（2分钟内，不要需要多轮交互）
 - 真正有用（根据上下文判断）
@@ -189,16 +217,25 @@ ${contextParts.join('\n')}
         console.log(`[AutoTasks] Skipped task with disallowed mode ${requestedMode} for workflow ${workflow.id}`);
         continue;
       }
+      const plan = createLearningPlanForTask(t, workflow.title);
       const task = enqueue({
         userId,
         workflowId: workflow.id,
+        planId: plan.id,
         title: t.title.slice(0, 120),
         description: t.description.slice(0, 500),
         source: 'curiosity',
         priority: Math.max(1, Math.min(10, t.priority || 5)),
         mode: requestedMode,
       });
-      if (task) enqueued++;
+      if (task) {
+        enqueued++;
+      } else {
+        updatePlan(plan.id, {
+          status: 'cancelled',
+          result: 'Autonomous queue is full, so this Lumi learning plan was not started.',
+        });
+      }
     }
 
     console.log(`[AutoTasks] Generated ${enqueued} autonomous tasks for ${userId}`);

@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { AutonomousTask } from './task_queue';
 import { getUserPreferredLLMConfig } from '../llm/user_preferences';
 import { formatLumiConstitutionForPrompt } from '../personality/constitution';
+import { getPlan, updatePlan, updatePlanStep } from './planner';
 
 interface LLMGetters {
   getDeepSeek: () => any;
@@ -60,6 +61,65 @@ const pendingDesktopResults = new Map<string, {
   timeout: ReturnType<typeof setTimeout>;
 }>();
 
+function clipPlanResult(value: string, max = 1800): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function markLinkedPlanRunning(task: AutonomousTask) {
+  if (!task.planId) return;
+  const plan = getPlan(task.planId);
+  if (!plan || plan.status !== 'active') return;
+  const step = plan.steps.find(item => item.status === 'in_progress')
+    || plan.steps.find(item => item.status === 'pending');
+  if (step) {
+    updatePlanStep(plan.id, step.id, {
+      status: 'in_progress',
+      result: `Autonomous task started: ${task.title}`,
+    });
+  }
+}
+
+function markLinkedPlanCompleted(task: AutonomousTask, summary: string) {
+  if (!task.planId) return;
+  const plan = getPlan(task.planId);
+  if (!plan) return;
+  const clipped = clipPlanResult(summary);
+
+  for (const step of plan.steps) {
+    if (step.status === 'pending' || step.status === 'in_progress') {
+      const stepUpdate: Parameters<typeof updatePlanStep>[2] = { status: 'done' };
+      if (step.status === 'in_progress') stepUpdate.result = clipped;
+      updatePlanStep(plan.id, step.id, stepUpdate);
+    }
+  }
+
+  updatePlan(plan.id, {
+    status: 'completed',
+    result: clipped,
+  });
+}
+
+function markLinkedPlanFailed(task: AutonomousTask, error: string) {
+  if (!task.planId) return;
+  const plan = getPlan(task.planId);
+  if (!plan) return;
+  const clipped = clipPlanResult(`自主学习受阻：${error}`, 1000);
+  const step = plan.steps.find(item => item.status === 'in_progress')
+    || plan.steps.find(item => item.status === 'pending');
+
+  if (step) {
+    updatePlanStep(plan.id, step.id, {
+      status: 'skipped',
+      result: clipped,
+    });
+  }
+
+  updatePlan(plan.id, {
+    status: 'paused',
+    result: clipped,
+  });
+}
+
 export function handleAutonomousDesktopResult(
   correlationId: string,
   data: { output?: string; error?: string },
@@ -104,6 +164,7 @@ export async function executeNextAutonomousTask(
 
   const running = markRunning(task.id);
   if (!running) return { executed: false };
+  markLinkedPlanRunning(running);
 
   io.emit('autonomous:task_started', {
     taskId: task.id,
@@ -178,6 +239,7 @@ export async function executeNextAutonomousTask(
 
     const summary = result.text || `Completed with ${toolCallCount} tool calls.`;
     markCompleted(task.id, summary, toolCallCount, tokensUsed);
+    markLinkedPlanCompleted(task, summary);
 
     io.emit('autonomous:task_completed', {
       taskId: task.id,
@@ -193,6 +255,7 @@ export async function executeNextAutonomousTask(
   } catch (err: any) {
     const errorMsg = err.message || 'Unknown error';
     markFailed(task.id, errorMsg);
+    markLinkedPlanFailed(task, errorMsg);
 
     io.emit('autonomous:task_failed', {
       taskId: task.id,

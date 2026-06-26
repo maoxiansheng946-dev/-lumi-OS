@@ -16,6 +16,8 @@ export interface AutonomousWorkflow {
 
 type WorkflowInput = Partial<Omit<AutonomousWorkflow, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>;
 
+export const DEFAULT_LEARNING_WORKFLOW_ID = 'workflow_lumi_continuous_learning';
+
 function allWorkflows(): AutonomousWorkflow[] {
   try {
     const db = readDB();
@@ -46,7 +48,57 @@ function normalizeActions(value: unknown): string[] {
     .slice(0, 20);
 }
 
+function buildLearningWorkflow(userId: string, existing?: AutonomousWorkflow): AutonomousWorkflow {
+  const now = new Date().toISOString();
+  return {
+    id: DEFAULT_LEARNING_WORKFLOW_ID,
+    userId,
+    title: 'Lumi 持续学习与知识吸收',
+    description: [
+      'Lumi 根据最近上下文、长期记忆、知识库变化和未解决问题，主动创建小型学习计划。',
+      '她会整理可复用知识、发现知识缺口、沉淀摘要和下一步建议，不对外发送消息，不删除或修改用户文件。',
+    ].join(' '),
+    trigger: 'autonomous_cycle: recent activity, memory gaps, uploaded knowledge, reusable insights',
+    allowedModes: ['analysis'],
+    allowedActions: [
+      'recent_activity_review',
+      'memory_consolidation',
+      'knowledge_gap_scan',
+      'knowledge_absorption',
+      'learning_plan_creation',
+      'summary',
+    ],
+    externalAppsAllowed: false,
+    enabled: existing?.enabled ?? true,
+    createdAt: existing?.createdAt || now,
+    updatedAt: existing?.updatedAt || now,
+  };
+}
+
+export function ensureLearningWorkflow(userId: string): AutonomousWorkflow {
+  const workflows = allWorkflows();
+  const index = workflows.findIndex(workflow => workflow.userId === userId && workflow.id === DEFAULT_LEARNING_WORKFLOW_ID);
+
+  if (index >= 0) {
+    const next = buildLearningWorkflow(userId, workflows[index]);
+    const prev = workflows[index];
+    const changed = JSON.stringify({ ...prev, updatedAt: next.updatedAt }) !== JSON.stringify(next);
+    if (changed) {
+      workflows[index] = { ...next, updatedAt: new Date().toISOString() };
+      saveWorkflows(workflows);
+      return workflows[index];
+    }
+    return prev;
+  }
+
+  const workflow = buildLearningWorkflow(userId);
+  workflows.push(workflow);
+  saveWorkflows(workflows);
+  return workflow;
+}
+
 export function listAutonomousWorkflows(userId: string): AutonomousWorkflow[] {
+  ensureLearningWorkflow(userId);
   return allWorkflows().filter(workflow => workflow.userId === userId);
 }
 
