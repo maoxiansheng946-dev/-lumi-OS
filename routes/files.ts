@@ -12,12 +12,14 @@ import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import iconv from 'iconv-lite';
 import { readDB, writeDB } from '../db_layer';
 import { ingestDocument } from '../server/agents/rag';
 import { getDataPath, getDataRoot } from '../server/config/data_path';
 import * as OrgKB from '../server/org/kb';
+import { analyzeScreen } from '../server/llm/adapter';
+import { getUserPreferredVision, type VisionProvider } from '../server/llm/vision_preferences';
 
 const PERSONAL_KNOWLEDGE_DIR = getDataPath('knowledge');
 fs.mkdirSync(PERSONAL_KNOWLEDGE_DIR, { recursive: true });
@@ -59,7 +61,39 @@ function getAuthPayload(req: Request): any | null {
 // ── Multer: files staged in OS temp, then moved to knowledge dir ──
 const tmpDir = path.join(os.tmpdir(), 'lumi-uploads');
 fs.mkdirSync(tmpDir, { recursive: true });
-const upload = multer({ dest: tmpDir, limits: { fileSize: 500 * 1024 * 1024 } });
+const MAX_UPLOAD_FILES = Math.max(20, Number(process.env.KNOWLEDGE_UPLOAD_MAX_FILES || 200));
+const upload = multer({ dest: tmpDir, limits: { fileSize: 500 * 1024 * 1024, files: MAX_UPLOAD_FILES } });
+
+type KnowledgeStatus = 'ready' | 'indexing' | 'indexed' | 'partial' | 'unsupported' | 'failed';
+type ExtractionMethod = 'text' | 'docx' | 'spreadsheet' | 'pdf' | 'image-vision' | 'image-metadata' | 'unsupported';
+
+interface KnowledgeExtractionResult {
+  content: string | null;
+  method: ExtractionMethod;
+  status: Extract<KnowledgeStatus, 'indexed' | 'partial' | 'unsupported' | 'failed'>;
+  warning?: string;
+  error?: string;
+  provider?: VisionProvider;
+  model?: string;
+}
+
+interface KnowledgeExtractionDeps {
+  llmGetters?: Record<string, (() => any) | undefined>;
+}
+
+let knowledgeExtractionDeps: KnowledgeExtractionDeps = {};
+let sharpLoader: Promise<any> | null = null;
+
+export function configureKnowledgeFileRoutes(deps: KnowledgeExtractionDeps): void {
+  knowledgeExtractionDeps = { ...knowledgeExtractionDeps, ...deps };
+}
+
+async function getSharp() {
+  if (!sharpLoader) {
+    sharpLoader = import('sharp').then(mod => mod.default || mod);
+  }
+  return sharpLoader;
+}
 
 // ── Helpers ──
 
@@ -81,7 +115,12 @@ interface KnowledgeEntry {
   type: 'file';
   source: 'upload' | 'generated' | 'ingested';
   agentIds: string[];
-  status: 'ready' | 'indexing' | 'indexed';
+  status: KnowledgeStatus;
+  extractionStatus?: KnowledgeExtractionResult['status'];
+  extractionMethod?: ExtractionMethod;
+  extractionWarning?: string;
+  extractionError?: string;
+  contentChars?: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -232,33 +271,154 @@ function resolveGeneratedDownloadPath(value: unknown): string {
   return resolved;
 }
 
-async function extractKnowledgeFileContent(filePath: string): Promise<string | null> {
+function visionModelFor(provider: VisionProvider): string {
+  switch (provider) {
+    case 'qwen': return 'qwen-vl-max';
+    case 'ark': return 'doubao-1-5-vision-pro-32k';
+    case 'ollama': return 'qwen2.5vl:7b';
+    case 'lmstudio': return 'local-vision-model';
+    case 'relay': return 'qwen2.5-vl-7b-instruct';
+    case 'openai': return 'gpt-4o';
+    case 'gemini':
+    default:
+      return 'gemini-2.0-flash';
+  }
+}
+
+function resolveKnowledgeVisionProvider(userId: string): VisionProvider | null {
+  const g = knowledgeExtractionDeps.llmGetters || {};
+  const provider = getUserPreferredVision(userId).provider;
+  if (provider === 'openai' && g.getOpenAI?.()) return 'openai';
+  if (provider === 'gemini' && g.getGemini?.()) return 'gemini';
+  if (provider === 'ark' && g.getArk?.()) return 'ark';
+  if (provider === 'qwen' && g.getQwen?.()) return 'qwen';
+  if (provider === 'ollama' && g.getOllama?.()) return 'ollama';
+  if (provider === 'lmstudio' && g.getLmStudio?.()) return 'lmstudio';
+  if (provider === 'relay' && g.getRelay?.()) return 'relay';
+  return null;
+}
+
+async function extractImageKnowledge(filePath: string, userId: string): Promise<KnowledgeExtractionResult> {
+  let meta: any = {};
+  try {
+    const sharp = await getSharp();
+    meta = await sharp(filePath).metadata();
+    const provider = resolveKnowledgeVisionProvider(userId);
+    const displayName = repairFilename(path.basename(filePath));
+    const imageInfo = [
+      `[Image File] ${displayName}`,
+      `Format: ${meta.format || path.extname(filePath).replace(/^\./, '') || 'unknown'}`,
+      `Size: ${meta.width || '?'} x ${meta.height || '?'} px`,
+    ].join('\n');
+
+    if (!provider) {
+      return {
+        content: `${imageInfo}\n\nVisual analysis was not run because no configured vision model is available for this user.`,
+        method: 'image-metadata',
+        status: 'partial',
+        warning: 'No configured vision model is available. Configure a vision provider to extract text and visual content from images.',
+      };
+    }
+
+    const g = knowledgeExtractionDeps.llmGetters || {};
+    const buffer = await sharp(filePath)
+      .rotate()
+      .resize({ width: 1800, height: 1800, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    const base64 = buffer.toString('base64');
+    const preferred = getUserPreferredVision(userId);
+    const model = preferred.model || visionModelFor(provider);
+    const prompt = [
+      'Prepare this uploaded image for Lumi knowledge-base retrieval.',
+      'Extract every readable text exactly as visible. Then summarize the visual content, tables, diagrams, screenshots, documents, labels, entities, and relationships that may be useful later.',
+      'Return structured plain text in the image language when possible. Do not invent details that are not visible.',
+      `File name: ${displayName}`,
+    ].join('\n');
+    const imagePayload = JSON.stringify({
+      image_base64: base64,
+      format: 'jpeg',
+      width: meta.width || null,
+      height: meta.height || null,
+    });
+    const analysis = await analyzeScreen(
+      imagePayload,
+      prompt,
+      { provider, model, userId, maxTokens: 2200 },
+      g.getDeepSeek,
+      g.getGemini,
+      g.getOpenAI,
+      g.getAnthropic,
+      g.getQwen,
+      g.getOllama,
+      g.getLmStudio,
+      g.getArk,
+      g.getXiaomi,
+      g.getKimi,
+      g.getGlm,
+      g.getRelay,
+    );
+
+    return {
+      content: `${imageInfo}\nVision provider: ${provider}/${model}\n\nExtracted visual knowledge:\n${String(analysis || '').trim()}`,
+      method: 'image-vision',
+      status: 'indexed',
+      provider,
+      model,
+    };
+  } catch (err: any) {
+    const fallback = [
+      `[Image File] ${repairFilename(path.basename(filePath))}`,
+      meta?.format ? `Format: ${meta.format}` : '',
+      meta?.width || meta?.height ? `Size: ${meta.width || '?'} x ${meta.height || '?'} px` : '',
+    ].filter(Boolean).join('\n');
+    return {
+      content: fallback || null,
+      method: fallback ? 'image-metadata' : 'unsupported',
+      status: fallback ? 'partial' : 'failed',
+      error: err?.message || String(err),
+      warning: fallback ? 'Image vision extraction failed; only file metadata was indexed.' : undefined,
+    };
+  }
+}
+
+async function extractKnowledgeFileContent(filePath: string, userId = 'anonymous'): Promise<KnowledgeExtractionResult> {
   const extName = path.extname(filePath);
   try {
     if (TEXT_KNOWLEDGE_EXTS.test(extName)) {
-      return fs.readFileSync(filePath, 'utf-8');
+      return { content: fs.readFileSync(filePath, 'utf-8'), method: 'text', status: 'indexed' };
     }
     if (/\.docx$/i.test(extName)) {
       const mammoth = await import('mammoth');
-      return (await mammoth.extractRawText({ path: filePath })).value;
+      return { content: (await mammoth.extractRawText({ path: filePath })).value, method: 'docx', status: 'indexed' };
     }
     if (/\.xlsx?$/i.test(extName)) {
       const XLSX = await import('xlsx');
       const wb = XLSX.readFile(filePath);
-      return wb.SheetNames.map((name: string) => {
+      const content = wb.SheetNames.map((name: string) => {
         const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
         return `[${name}]\n${csv}`;
       }).join('\n\n');
+      return { content, method: 'spreadsheet', status: 'indexed' };
     }
     if (/\.pdf$/i.test(extName)) {
       const pdfModule: any = await import('pdf-parse');
       const pdfParse = pdfModule.default || pdfModule;
-      return (await pdfParse(fs.readFileSync(filePath))).text;
+      return { content: (await pdfParse(fs.readFileSync(filePath))).text, method: 'pdf', status: 'indexed' };
+    }
+    if (IMAGE_KNOWLEDGE_EXTS.test(extName)) {
+      return await extractImageKnowledge(filePath, userId);
     }
   } catch (err: any) {
     console.warn(`[Files] Failed to extract "${path.basename(filePath)}": ${err.message}`);
+    return { content: null, method: 'unsupported', status: 'failed', error: err.message };
   }
-  return null;
+  return {
+    content: null,
+    method: 'unsupported',
+    status: 'unsupported',
+    warning: 'This file type has no supported text or visual extraction path yet.',
+  };
 }
 
 function normalizeFileDomain(value: unknown): 'personal' | 'work' {
@@ -303,6 +463,18 @@ function removeFileMeta(db: any, filename: string, scope: FileScope): void {
   db.knowledgeFiles = (db.knowledgeFiles || []).filter((m: any) => !(m.filename === filename && metaMatchesScope(m, scope)));
 }
 
+function applyExtractionMeta(meta: any, extraction: KnowledgeExtractionResult, content: string | null): void {
+  if (!meta) return;
+  meta.extractionStatus = extraction.status;
+  meta.extractionMethod = extraction.method;
+  meta.extractionWarning = extraction.warning || '';
+  meta.extractionError = extraction.error || '';
+  meta.extractionProvider = extraction.provider || '';
+  meta.extractionModel = extraction.model || '';
+  meta.contentChars = content?.length || 0;
+  meta.updatedAt = new Date().toISOString();
+}
+
 function ensureOrgArticleFromFile(scope: FileScope, userId: string, filename: string, content: string | null, articleId?: string): any | null {
   if (scope.domain !== 'work' || !scope.orgId) return null;
   const articleContent = (content && content.trim())
@@ -330,7 +502,7 @@ function sendRouteError(res: Response, err: any, fallbackStatus = 400): void {
   res.status(err?.status || fallbackStatus).json({ error: err?.message || 'Request failed' });
 }
 
-function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested', agentIds: string[] = [], scope: FileScope, status?: 'ready' | 'indexing' | 'indexed'): KnowledgeEntry {
+function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested', agentIds: string[] = [], scope: FileScope, status?: KnowledgeStatus, meta?: any): KnowledgeEntry {
   const filePath = path.join(scope.dir, filename);
   const displayName = repairFilename(filename);
   let st: fs.Stats;
@@ -348,6 +520,11 @@ function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested
     source,
     agentIds,
     status: status || (agentIds.length > 0 ? 'indexed' : 'ready'),
+    extractionStatus: meta?.extractionStatus,
+    extractionMethod: meta?.extractionMethod,
+    extractionWarning: meta?.extractionWarning || undefined,
+    extractionError: meta?.extractionError || undefined,
+    contentChars: meta?.contentChars || undefined,
     updatedAt: st.mtime.toISOString(),
     createdAt: st.birthtime.toISOString(),
   };
@@ -358,11 +535,11 @@ router.get('/files/list', (req: Request, res: Response) => {
   try {
     const scope = getFileScope(req);
     const db = readDB();
-    const fileMeta: Record<string, { source: string; agentIds: string[]; status?: 'ready' | 'indexing' | 'indexed' }> = {};
+    const fileMeta: Record<string, any> = {};
     if (db.knowledgeFiles) {
       for (const m of db.knowledgeFiles) {
         if (!metaMatchesScope(m, scope)) continue;
-        fileMeta[m.filename] = { source: m.source || 'upload', agentIds: m.agentIds || [], status: m.status };
+        fileMeta[m.filename] = m;
       }
     }
 
@@ -372,7 +549,7 @@ router.get('/files/list', (req: Request, res: Response) => {
       if (name.startsWith('.') || name.startsWith('_')) continue;
       const meta = fileMeta[name] || { source: 'upload' as const, agentIds: [] as string[] };
       const source = (meta.source as 'upload' | 'generated' | 'ingested') || 'upload';
-      files.push(buildEntry(name, source, meta.agentIds, scope, meta.status));
+      files.push(buildEntry(name, source, meta.agentIds, scope, meta.status, meta));
     }
 
     files.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -383,7 +560,7 @@ router.get('/files/list', (req: Request, res: Response) => {
 });
 
 // ── POST /files/upload — upload files + auto-ingest into Lumi's memory ──
-router.post('/files/upload', requireAuth, upload.array('files', 20), async (req: Request, res: Response) => {
+router.post('/files/upload', requireAuth, upload.array('files', MAX_UPLOAD_FILES), async (req: Request, res: Response) => {
   try {
     const uploadedFiles = req.files as Express.Multer.File[];
     if (!uploadedFiles || uploadedFiles.length === 0) {
@@ -411,7 +588,6 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
 
       // Track in DB
       const existing = findFileMeta(db, finalName, scope);
-      const isNew = !existing;
       if (existing) {
         existing.source = 'upload';
         existing.domain = scope.domain;
@@ -443,11 +619,21 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
         domain: scope.domain,
         orgId: scope.orgId,
       };
+      let extraction: KnowledgeExtractionResult = {
+        content: null,
+        method: 'unsupported',
+        status: 'unsupported',
+      };
       let extractedContent: string | null = null;
 
-      // For text files: return content so the chat can use it immediately
-      if (TEXT_KNOWLEDGE_EXTS.test(ext) || EXTRACTABLE_KNOWLEDGE_EXTS.test(ext)) {
-        extractedContent = await extractKnowledgeFileContent(dest);
+      // Extract supported document/image content so Lumi can retrieve it later.
+      if (TEXT_KNOWLEDGE_EXTS.test(ext) || EXTRACTABLE_KNOWLEDGE_EXTS.test(ext) || IMAGE_KNOWLEDGE_EXTS.test(ext)) {
+        extraction = await extractKnowledgeFileContent(dest, userId);
+        extractedContent = extraction.content;
+        entry.extractionStatus = extraction.status;
+        entry.extractionMethod = extraction.method;
+        entry.extractionWarning = extraction.warning;
+        entry.extractionError = extraction.error;
         if (extractedContent) {
           entry.content = extractedContent.slice(0, 50000); // cap at 50KB for chat context
           entry.preview = extractedContent.slice(0, 1000);
@@ -459,36 +645,57 @@ router.post('/files/upload', requireAuth, upload.array('files', 20), async (req:
       if (scope.domain === 'work') {
         try {
           const meta = findFileMeta(db, finalName, scope);
-          const article = ensureOrgArticleFromFile(scope, userId, finalName, extractedContent, meta?.orgArticleId);
-          if (meta) {
-            if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
-            meta.orgArticleId = article?.id;
-            meta.status = 'indexed';
-            if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
+          if (meta) applyExtractionMeta(meta, extraction, extractedContent);
+          if (extractedContent?.trim()) {
+            const article = ensureOrgArticleFromFile(scope, userId, finalName, extractedContent, meta?.orgArticleId);
+            if (meta) {
+              if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+              meta.orgArticleId = article?.id;
+              meta.status = extraction.status === 'partial' ? 'partial' : 'indexed';
+              if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
+            }
+            entry.orgArticleId = article?.id;
+            entry.ingested = true;
+            entry.partial = extraction.status === 'partial';
+          } else if (meta) {
+            meta.status = extraction.status === 'failed' ? 'failed' : extraction.status === 'unsupported' ? 'unsupported' : 'ready';
+            entry.syncError = extraction.error || extraction.warning || 'No extractable content found';
           }
-          entry.orgArticleId = article?.id;
-          entry.ingested = true;
         } catch (orgErr: any) {
           console.warn(`[OrgKB] Failed to sync "${finalName}": ${orgErr.message}`);
           entry.syncError = orgErr.message;
         }
-      } else if (isNew && (TEXT_KNOWLEDGE_EXTS.test(ext) || EXTRACTABLE_KNOWLEDGE_EXTS.test(ext))) {
+      } else if (extractedContent?.trim()) {
         try {
-          const content = extractedContent || await extractKnowledgeFileContent(dest);
-          if (content) {
-            const result = await ingestDocument(userId, 'lumi', finalName, content);
-            const meta = findFileMeta(db, finalName, scope);
-            if (meta) {
-              if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
-              if (!meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
-              meta.status = 'indexed';
-              meta.updatedAt = new Date().toISOString();
-            }
-            entry.ingested = true;
-            console.log(`[AutoIngest] "${finalName}" → ${result.chunkCount} chunks`);
+          const result = await ingestDocument(userId, 'lumi', finalName, extractedContent, {
+            filePath: dest,
+            domain: scope.domain,
+            orgId: scope.orgId || '',
+          });
+          const meta = findFileMeta(db, finalName, scope);
+          if (meta) {
+            if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+            if (!meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
+            meta.status = extraction.status === 'partial' ? 'partial' : 'indexed';
+            applyExtractionMeta(meta, extraction, extractedContent);
           }
+          entry.ingested = true;
+          entry.partial = extraction.status === 'partial';
+          console.log(`[AutoIngest] "${finalName}" -> ${result.chunkCount} chunks`);
         } catch (ingestErr: any) {
           console.warn(`[AutoIngest] Failed for "${finalName}": ${ingestErr.message}`);
+          const meta = findFileMeta(db, finalName, scope);
+          if (meta) {
+            meta.status = 'failed';
+            meta.extractionError = ingestErr.message;
+          }
+          entry.syncError = ingestErr.message;
+        }
+      } else {
+        const meta = findFileMeta(db, finalName, scope);
+        if (meta) {
+          applyExtractionMeta(meta, extraction, extractedContent);
+          meta.status = extraction.status === 'failed' ? 'failed' : extraction.status === 'unsupported' ? 'unsupported' : 'ready';
         }
       }
 
@@ -535,6 +742,8 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
       });
     }
     const meta = findFileMeta(db, safeName, scope);
+    const generatedExtraction: KnowledgeExtractionResult = { content: contentText, method: 'text', status: 'indexed' };
+    if (meta) applyExtractionMeta(meta, generatedExtraction, contentText);
     let orgArticleId: string | undefined;
     if (scope.domain === 'work') {
       const article = ensureOrgArticleFromFile(scope, userId, safeName, contentText, meta?.orgArticleId);
@@ -547,11 +756,15 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
       }
     } else if (meta) {
       try {
-        const result = await ingestDocument(userId, 'lumi', safeName, contentText);
+        const result = await ingestDocument(userId, 'lumi', safeName, contentText, {
+          filePath,
+          domain: scope.domain,
+          orgId: scope.orgId || '',
+        });
         if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
         if (!meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
         meta.status = 'indexed';
-        meta.updatedAt = new Date().toISOString();
+        applyExtractionMeta(meta, generatedExtraction, contentText);
         console.log(`[AutoIngest] "${safeName}" -> ${result.chunkCount} chunks`);
       } catch (ingestErr: any) {
         console.warn(`[AutoIngest] Failed for generated "${safeName}": ${ingestErr.message}`);
@@ -559,7 +772,7 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
     }
     writeDB(db);
 
-    res.json({ success: true, filename: safeName, orgArticleId, entry: buildEntry(safeName, 'generated', meta?.agentIds || [], scope) });
+    res.json({ success: true, filename: safeName, orgArticleId, entry: buildEntry(safeName, 'generated', meta?.agentIds || [], scope, meta?.status, meta) });
   } catch (err: any) {
     sendRouteError(res, err);
   }
@@ -707,6 +920,12 @@ router.get('/files/info/:id', (req: Request, res: Response) => {
       type: 'file',
       source: meta?.source || 'upload',
       agentIds: meta?.agentIds || [],
+      status: meta?.status || ((meta?.agentIds || []).length > 0 ? 'indexed' : 'ready'),
+      extractionStatus: meta?.extractionStatus,
+      extractionMethod: meta?.extractionMethod,
+      extractionWarning: meta?.extractionWarning || undefined,
+      extractionError: meta?.extractionError || undefined,
+      contentChars: meta?.contentChars || undefined,
       updatedAt: st.mtime.toISOString(),
       createdAt: meta?.createdAt || st.birthtime.toISOString(),
     });
@@ -729,10 +948,8 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'File not found' });
     }
 
-    const content = await extractKnowledgeFileContent(filePath);
-    if (!content || !content.trim()) {
-      return res.status(415).json({ error: 'This file type has no extractable text for Lumi to absorb' });
-    }
+    const extraction = await extractKnowledgeFileContent(filePath, userId);
+    const content = extraction.content;
 
     // Mark as indexing
     const db = readDB();
@@ -751,6 +968,16 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
       db.knowledgeFiles.push(meta);
     }
     if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+    applyExtractionMeta(meta, extraction, content);
+    if (!content || !content.trim()) {
+      meta.status = extraction.status === 'failed' ? 'failed' : extraction.status === 'unsupported' ? 'unsupported' : 'ready';
+      writeDB(db);
+      return res.status(415).json({
+        error: extraction.error || extraction.warning || 'This file type has no extractable text or visual content for Lumi to absorb',
+        extractionStatus: extraction.status,
+        extractionMethod: extraction.method,
+      });
+    }
     meta.indexingAt = new Date().toISOString();
     writeDB(db);
 
@@ -758,23 +985,28 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
       const article = ensureOrgArticleFromFile(scope, userId, safeName, content, meta?.orgArticleId);
       if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
       meta.orgArticleId = article?.id;
-      meta.status = 'indexed';
+      meta.status = extraction.status === 'partial' ? 'partial' : 'indexed';
+      applyExtractionMeta(meta, extraction, content);
       delete meta.indexingAt;
       writeDB(db);
-      res.json({ success: true, orgArticleId: article?.id, memoryIds: [] });
+      res.json({ success: true, orgArticleId: article?.id, memoryIds: [], extractionStatus: extraction.status });
       return;
     }
 
-    const result = await ingestDocument(userId, agentId, safeName, content);
+    const result = await ingestDocument(userId, agentId, safeName, content, {
+      filePath,
+      domain: scope.domain,
+      orgId: scope.orgId || '',
+    });
 
     // Mark as indexed
     if (!meta.agentIds.includes(agentId)) meta.agentIds.push(agentId);
-    meta.status = 'indexed';
-    meta.updatedAt = new Date().toISOString();
+    meta.status = extraction.status === 'partial' ? 'partial' : 'indexed';
+    applyExtractionMeta(meta, extraction, content);
     delete meta.indexingAt;
     writeDB(db);
 
-    res.json({ success: true, chunkCount: result.chunkCount, memoryIds: result.memoryIds });
+    res.json({ success: true, chunkCount: result.chunkCount, memoryIds: result.memoryIds, extractionStatus: extraction.status });
   } catch (err: any) {
     sendRouteError(res, err, 500);
   }

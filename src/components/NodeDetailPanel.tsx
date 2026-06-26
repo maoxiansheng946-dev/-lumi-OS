@@ -13,7 +13,12 @@ interface FileEntry {
   rawSize?: number;
   source?: 'upload' | 'generated' | 'ingested';
   agentIds?: string[];
-  status?: 'ready' | 'indexing' | 'indexed';
+  status?: 'ready' | 'indexing' | 'indexed' | 'partial' | 'unsupported' | 'failed';
+  extractionStatus?: 'indexed' | 'partial' | 'unsupported' | 'failed';
+  extractionMethod?: string;
+  extractionWarning?: string;
+  extractionError?: string;
+  contentChars?: number;
   updatedAt?: string;
   createdAt?: string;
 }
@@ -244,6 +249,10 @@ export function NodeDetailPanel({
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[12px] font-bold uppercase ${
                         node.fileData.status === 'indexed'
                           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                          : node.fileData.status === 'partial'
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                          : node.fileData.status === 'failed' || node.fileData.status === 'unsupported'
+                            ? 'bg-red-500/10 border-red-500/30 text-red-300'
                           : node.fileData.status === 'indexing'
                             ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                             : 'bg-white/5 border-white/10 text-white/40'
@@ -251,6 +260,17 @@ export function NodeDetailPanel({
                         {node.fileData.status === 'indexed' ? <CheckCircle2 size={9} /> : node.fileData.status === 'indexing' ? <Loader2 size={9} className="animate-spin" /> : <Clock size={9} />}
                         {node.fileData.status}
                       </span>
+                    </div>
+                  )}
+                  {(node.fileData.extractionMethod || node.fileData.extractionWarning || node.fileData.extractionError) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-white/45 uppercase tracking-widest">Extraction</label>
+                      <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-xs leading-5 text-white/58">
+                        {node.fileData.extractionMethod && <p>Method: {node.fileData.extractionMethod}</p>}
+                        {node.fileData.contentChars ? <p>Indexed text: {node.fileData.contentChars.toLocaleString()} chars</p> : null}
+                        {node.fileData.extractionWarning && <p className="text-amber-200/75">{node.fileData.extractionWarning}</p>}
+                        {node.fileData.extractionError && <p className="text-red-200/75">{node.fileData.extractionError}</p>}
+                      </div>
                     </div>
                   )}
                   {node.fileData.agentIds && node.fileData.agentIds.length > 0 && (

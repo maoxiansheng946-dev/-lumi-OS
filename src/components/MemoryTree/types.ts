@@ -28,7 +28,12 @@ export interface FileEntry {
   rawSize?: number;
   source?: 'upload' | 'generated' | 'ingested';
   agentIds?: string[];
-  status?: 'ready' | 'indexing' | 'indexed';
+  status?: 'ready' | 'indexing' | 'indexed' | 'partial' | 'unsupported' | 'failed';
+  extractionStatus?: 'indexed' | 'partial' | 'unsupported' | 'failed';
+  extractionMethod?: string;
+  extractionWarning?: string;
+  extractionError?: string;
+  contentChars?: number;
   updatedAt?: string;
   createdAt?: string;
 }

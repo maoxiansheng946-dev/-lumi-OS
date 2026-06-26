@@ -8,6 +8,14 @@ export interface ChunkOptions {
   agentId?: string;
 }
 
+export interface IngestDocumentOptions {
+  chunkSize?: number;
+  tier?: 'episodic' | 'internalized';
+  filePath?: string;
+  domain?: string;
+  orgId?: string;
+}
+
 /**
  * Split text into overlapping chunks for memory ingestion.
  * Default chunk size ~500 chars with 50 char overlap.
@@ -39,7 +47,7 @@ export async function ingestDocument(
   agentId: string,
   documentTitle: string,
   content: string,
-  options?: { chunkSize?: number; tier?: 'episodic' | 'internalized'; filePath?: string },
+  options?: IngestDocumentOptions,
 ): Promise<{ chunkCount: number; memoryIds: string[] }> {
   const chunks = chunkText(content, {
     maxChunkSize: options?.chunkSize || 500,
@@ -71,12 +79,15 @@ export async function ingestDocument(
         perspective: 'lumi_self',
         importance: 0.4,
         agentId,
+        domain: options?.domain || 'personal',
+        orgId: options?.orgId || '',
+        source: 'import',
       },
     );
     memoryIds.push(mem.id);
   }
 
-  console.log(`[RAG] Ingested "${documentTitle}" → ${chunks.length} chunks for agent ${agentId}`);
+  console.log(`[RAG] Ingested "${documentTitle}" -> ${chunks.length} chunks for agent ${agentId}`);
   return { chunkCount: chunks.length, memoryIds };
 }
 
@@ -91,6 +102,7 @@ export function retrieveChunks(
   agentId: string,
   query: string,
   limit = 5,
+  scope: { domain?: string; orgId?: string } = {},
 ): Array<Memory & { citation: string }> {
   const memories = queryMemories({
     userId,
@@ -99,6 +111,8 @@ export function retrieveChunks(
     query,
     limit,
     minConfidence: 0.3,
+    domain: scope.domain,
+    orgId: scope.orgId,
   });
 
   return memories.map(m => {

@@ -290,7 +290,10 @@ export function registerChatHandler(
       let ragChunks: string[] = [];
       const ragAgentIds = Array.from(new Set([conversationAgentId, 'lumi'].filter(Boolean)));
       for (const ragAgentId of ragAgentIds) {
-        const chunks = retrieveChunks(uid, ragAgentId, text, 3);
+        const chunks = retrieveChunks(uid, ragAgentId, text, 3, {
+          domain: resolvedDomain,
+          orgId: resolvedDomain === 'work' ? resolvedOrgId : '',
+        });
         for (const chunk of chunks) {
           const content = (chunk as any).content;
           if (content && !ragChunks.includes(content)) ragChunks.push(content);

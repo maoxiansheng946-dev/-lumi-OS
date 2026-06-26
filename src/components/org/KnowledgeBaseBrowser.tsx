@@ -55,7 +55,9 @@ interface SearchResult {
 interface UploadedKnowledgeFile {
   orgArticleId?: string;
   ingested?: boolean;
+  partial?: boolean;
   syncError?: string;
+  extractionStatus?: 'indexed' | 'partial' | 'unsupported' | 'failed';
 }
 
 interface KnowledgeStats {
@@ -340,12 +342,13 @@ export function KnowledgeBaseBrowser() {
 
       const uploadedFiles = Array.isArray(data.files) ? data.files as UploadedKnowledgeFile[] : [];
       const syncedCount = uploadedFiles.filter(file => file.ingested || file.orgArticleId).length;
+      const partialCount = uploadedFiles.filter(file => file.partial || file.extractionStatus === 'partial').length;
       const failedCount = uploadedFiles.filter(file => file.syncError).length;
       const totalCount = uploadedFiles.length || selectedFiles.length;
 
       toast.success(ui(
-        `已导入 ${totalCount} 个文件${syncedCount ? `，同步 ${syncedCount} 篇知识` : ''}${failedCount ? `，${failedCount} 个待处理` : ''}`,
-        `Imported ${totalCount} file(s)${syncedCount ? `, synced ${syncedCount} article(s)` : ''}${failedCount ? `, ${failedCount} pending` : ''}`,
+        `已导入 ${totalCount} 个文件${syncedCount ? `，同步 ${syncedCount} 篇知识` : ''}${partialCount ? `，部分吸收 ${partialCount} 个` : ''}${failedCount ? `，${failedCount} 个待处理` : ''}`,
+        `Imported ${totalCount} file(s)${syncedCount ? `, synced ${syncedCount} article(s)` : ''}${partialCount ? `, ${partialCount} partial` : ''}${failedCount ? `, ${failedCount} pending` : ''}`,
       ));
 
       await loadKnowledgeBase();

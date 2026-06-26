@@ -30,7 +30,7 @@ import { setupStatic } from "./server/runtime/static";
 import { bootstrap } from "./server/runtime/bootstrap";
 import { lapRoutes } from "./server/lap/routes";
 import voiceRoutes from "./routes/voice";
-import fileRoutes from "./routes/files";
+import fileRoutes, { configureKnowledgeFileRoutes } from "./routes/files";
 import { subscriptionRoutes } from "./server/subscription/routes";
 import { resolveRole } from "./server/runtime/role";
 import {
@@ -53,6 +53,22 @@ app.use('/lumi_output', express.static(path.join(process.cwd(), 'lumi_output')))
 
 // ── Shared routes (both roles) ──
 mountAllRoutes({ apiRouter, jwtSecret: JWT_SECRET, llm, getCookieOptions, io });
+configureKnowledgeFileRoutes({
+  llmGetters: {
+    getDeepSeek: llm.getDeepSeek,
+    getGemini: llm.getGemini,
+    getOpenAI: llm.getOpenAI,
+    getAnthropic: llm.getAnthropic,
+    getQwen: llm.getQwen,
+    getOllama: llm.getOllama,
+    getLmStudio: llm.getLmStudio,
+    getArk: llm.getArk,
+    getXiaomi: llm.getXiaomi,
+    getKimi: llm.getKimi,
+    getGlm: llm.getGlm,
+    getRelay: llm.getRelay,
+  },
+});
 apiRouter.use("/", voiceRoutes);
 apiRouter.use("/", fileRoutes);
 apiRouter.use("/", subscriptionRoutes);

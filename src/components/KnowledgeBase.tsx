@@ -206,6 +206,8 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
   }, [fileIsAbsorbed, files, search]);
 
   const absorbedFileCount = useMemo(() => files.filter(fileIsAbsorbed).length, [fileIsAbsorbed, files]);
+  const partialFileCount = useMemo(() => files.filter(file => (file.extractionStatus || file.status) === 'partial').length, [files]);
+  const needsAttentionFileCount = useMemo(() => files.filter(file => ['failed', 'unsupported'].includes(String(file.extractionStatus || file.status || ''))).length, [files]);
   const pendingFileCount = Math.max(0, files.length - absorbedFileCount);
   const fileSearchResults = search.trim() ? visibleFiles.slice(0, 5) : [];
 
@@ -330,7 +332,9 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
         const d = await res.json();
         const uploaded = d.files?.length || files.length;
         const absorbed = (d.files || []).filter((file: any) => file.ingested).length;
-        toast.success(`${t.kbUploadedFiles || 'Uploaded'}: ${uploaded}${absorbed ? ` | ${t.kbIngested || 'Absorbed'}: ${absorbed}` : ''}`);
+        const partial = (d.files || []).filter((file: any) => file.partial || file.extractionStatus === 'partial').length;
+        const needsAttention = (d.files || []).filter((file: any) => file.syncError || ['failed', 'unsupported'].includes(String(file.extractionStatus || ''))).length;
+        toast.success(`${t.kbUploadedFiles || 'Uploaded'}: ${uploaded}${absorbed ? ` | ${t.kbIngested || 'Absorbed'}: ${absorbed}` : ''}${partial ? ` | Partial: ${partial}` : ''}${needsAttention ? ` | Needs review: ${needsAttention}` : ''}`);
         fetchAll();
       } else toast.error(t.kbUploadFailed || 'Upload failed');
     } catch { toast.error(t.kbUploadFailed || 'Upload failed'); }
@@ -461,6 +465,16 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                   {pendingFileCount} {t.kbPendingIngest || 'file(s) waiting to be absorbed by Lumi'}
                 </div>
               )}
+              {partialFileCount > 0 && (
+                <div className="border-b border-blue-400/10 bg-blue-400/[0.055] px-4 py-2 text-[11px] font-bold leading-5 text-blue-100/68">
+                  {partialFileCount} partially absorbed file(s). Configure a vision model for full image reading.
+                </div>
+              )}
+              {needsAttentionFileCount > 0 && (
+                <div className="border-b border-red-400/10 bg-red-400/[0.055] px-4 py-2 text-[11px] font-bold leading-5 text-red-100/70">
+                  {needsAttentionFileCount} file(s) need review before Lumi can use them.
+                </div>
+              )}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                 {files.length === 0 ? (
                   <div className="text-xs text-white/25 text-center py-8">{t.noFilesYet || 'No files yet'}</div>
@@ -468,6 +482,16 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                   visibleFiles.map(f => {
                     const absorbed = fileIsAbsorbed(f);
                     const ingesting = ingestingFiles.has(f.id);
+                    const knowledgeStatus = f.extractionStatus || f.status;
+                    const partial = knowledgeStatus === 'partial';
+                    const failed = knowledgeStatus === 'failed' || knowledgeStatus === 'unsupported';
+                    const statusLabel = failed
+                      ? 'needs review'
+                      : partial
+                        ? 'partial'
+                        : absorbed
+                          ? (t.kbIngested || 'absorbed')
+                          : (t.kbReadyToIngest || 'pending');
                     return (
                     <div
                       key={f.id}
@@ -494,16 +518,20 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                             <span className="text-[10px] font-black uppercase tracking-[0.12em] text-white/25">{f.source}</span>
                           )}
                           <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] ${
-                            absorbed
+                            failed
+                              ? 'border-red-400/18 bg-red-400/10 text-red-200/75'
+                              : partial
+                                ? 'border-blue-400/18 bg-blue-400/10 text-blue-200/75'
+                              : absorbed
                               ? 'border-emerald-400/18 bg-emerald-400/10 text-emerald-200/75'
                               : 'border-amber-400/18 bg-amber-400/10 text-amber-200/75'
                           }`}>
-                            {absorbed ? <CheckCircle2 size={9} /> : ingesting ? <Loader2 size={9} className="animate-spin" /> : <Clock size={9} />}
-                            {absorbed ? (t.kbIngested || 'absorbed') : (t.kbReadyToIngest || 'pending')}
+                            {absorbed && !partial && !failed ? <CheckCircle2 size={9} /> : ingesting ? <Loader2 size={9} className="animate-spin" /> : failed ? <AlertCircle size={9} /> : <Clock size={9} />}
+                            {statusLabel}
                           </span>
                         </div>
                       </div>
-                      {!absorbed && (
+                      {(!absorbed || partial || failed) && (
                         <button
                           type="button"
                           disabled={ingesting}
@@ -513,7 +541,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                           }}
                           className="shrink-0 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100 transition-colors hover:bg-amber-400/16 disabled:pointer-events-none disabled:opacity-60"
                         >
-                          {ingesting ? (t.loading || 'Loading') : (t.kbIngest || 'Absorb')}
+                          {ingesting ? (t.loading || 'Loading') : partial ? 'Re-read' : (t.kbIngest || 'Absorb')}
                         </button>
                       )}
                       <ChevronRight size={12} className="text-white/20 shrink-0 group-hover:text-white/40 transition-colors" />
