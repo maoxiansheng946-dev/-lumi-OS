@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2, RefreshCw, CheckCircle2, AlertTriangle, Clock3 } from 'lucide-react';
+import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2, RefreshCw, CheckCircle2, AlertTriangle, Clock3, Info, X, ShieldCheck, Terminal, Tags, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function TeamHub({ t }: { t?: any }) {
@@ -14,6 +14,7 @@ export function TeamHub({ t }: { t?: any }) {
   const [connectCommand, setConnectCommand] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [testingIds, setTestingIds] = useState<string[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const loadAgentsFailedText = t?.loadAgentsFailed || 'Failed to load agents';
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => (isZh ? zh : en);
@@ -84,7 +85,10 @@ export function TeamHub({ t }: { t?: any }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Connection test failed');
-      if (data.agent) setAgents(prev => prev.map(a => a.id === agent.id ? data.agent : a));
+      if (data.agent) {
+        setAgents(prev => prev.map(a => a.id === agent.id ? data.agent : a));
+        setSelectedAgentId(current => current === agent.id ? data.agent.id : current);
+      }
       if (data.ok) toast.success(ui('外部 agent 连接正常', 'External agent is reachable'));
       else toast.error(data.result?.output || ui('外部 agent 测试失败', 'External agent test failed'));
     } catch (err: any) {
@@ -99,6 +103,7 @@ export function TeamHub({ t }: { t?: any }) {
       const res = await fetch(`/api/agents/${id}`, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
         setAgents(prev => prev.filter(a => a.id !== id));
+        setSelectedAgentId(current => current === id ? null : current);
         toast.success(t?.agentRemoved || 'Agent removed');
       } else {
         const err = await res.json().catch(() => ({}));
@@ -130,6 +135,7 @@ export function TeamHub({ t }: { t?: any }) {
   const internalAgents = agents.filter(a => a.runtime !== 'external');
   const externalAgents = agents.filter(a => a.runtime === 'external');
   const readyExternalCount = externalAgents.filter(agent => agent.healthStatus === 'online' && agent.isFrozen !== true).length;
+  const selectedAgent = selectedAgentId ? agents.find(agent => agent.id === selectedAgentId) || null : null;
 
   const healthMeta = (agent: any) => {
     if (agent.healthStatus === 'online') return { icon: <CheckCircle2 size={13} />, label: ui('可用', 'Online'), className: 'border-emerald-400/15 bg-emerald-500/10 text-emerald-300' };
@@ -142,6 +148,45 @@ export function TeamHub({ t }: { t?: any }) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleString(isZh ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const parseConfig = (agent: any) => {
+    try {
+      const parsed = typeof agent?.config === 'string' ? JSON.parse(agent.config) : agent?.config;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const parseRuntimeConfig = (agent: any) => {
+    try {
+      const parsed = typeof agent?.runtimeConfig === 'string' ? JSON.parse(agent.runtimeConfig) : agent?.runtimeConfig;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const agentDescription = (agent: any) => {
+    const config = parseConfig(agent);
+    return config.description || agent.description || agent.data?.description || ui('暂无介绍。可以通过技能标签和类别判断它适合处理的任务。', 'No description yet. Use its category and skill tags to judge what work fits.');
+  };
+
+  const listFrom = (value: unknown): string[] => {
+    const raw = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(',')
+        : [];
+    return raw.map(item => String(item || '').trim()).filter(Boolean);
+  };
+
+  const dispatchState = (agent: any) => {
+    if (agent.isFrozen) return ui('已暂停，不参与调度', 'Paused, not scheduled');
+    if (agent.runtime === 'external' && agent.healthStatus !== 'online') return ui('等待连接测试通过', 'Waiting for a passing health test');
+    if (agent.status === 'terminated') return ui('已终止', 'Terminated');
+    return ui('可参与调度', 'Ready for orchestration');
   };
 
   return (
@@ -180,7 +225,32 @@ export function TeamHub({ t }: { t?: any }) {
         {showConnectForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="lumi-panel space-y-4 border-cyan-500/15 bg-cyan-500/5 p-5">
-              <p className="text-xs text-cyan-400/70">{ui('连接一个可通过本机命令调用的外部 agent。命令必须包含 {task}，保存后可以立即测试健康状态。', 'Connect an external agent callable from a local command. The command must include {task}; test health after saving.')}</p>
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-500/10 text-cyan-300">
+                  <Info size={15} />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-cyan-100/80">{ui('外部 Agent 是本机 CLI 桥接', 'External agents are local CLI bridges')}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-cyan-100/45">
+                    {ui('这里保存的是命令模板，不是账号绑定。Lumi 会把子任务替换进 {task}，测试通过后才会让它参与团队调度。', 'This stores a command template, not an account binding. Lumi substitutes subtasks into {task}; only agents with a passing health test join orchestration.')}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                {[
+                  { icon: <Terminal size={14} />, title: ui('命令模板', 'Command'), detail: ui('必须包含一次 {task}', 'Must include one {task}') },
+                  { icon: <ShieldCheck size={14} />, title: ui('安全边界', 'Safety'), detail: ui('拒绝危险 shell 串联', 'Blocks risky shell chaining') },
+                  { icon: <Activity size={14} />, title: ui('调度条件', 'Routing'), detail: ui('健康测试通过才启用', 'Enabled after health test') },
+                ].map(item => (
+                  <div key={item.title} className="rounded-xl border border-cyan-300/10 bg-black/20 px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-cyan-200/65">
+                      {item.icon}
+                      {item.title}
+                    </div>
+                    <div className="mt-1 text-[11px] text-white/35">{item.detail}</div>
+                  </div>
+                ))}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input value={connectName} onChange={e => setConnectName(e.target.value)}
                   placeholder={t?.agentName || 'Agent Name'} className="lumi-field py-2 text-xs" />
@@ -241,7 +311,16 @@ export function TeamHub({ t }: { t?: any }) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="lumi-panel space-y-3 p-5 transition-colors hover:border-white/15 hover:bg-white/[0.06]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedAgentId(agent.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedAgentId(agent.id);
+                        }
+                      }}
+                      className="lumi-panel cursor-pointer space-y-3 p-5 transition-colors hover:border-white/15 hover:bg-white/[0.06]"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
@@ -255,14 +334,14 @@ export function TeamHub({ t }: { t?: any }) {
                         </div>
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => handleToggle(agent)}
+                            onClick={(event) => { event.stopPropagation(); handleToggle(agent); }}
                             className={`rounded-lg p-1.5 transition-all ${agent.isFrozen ? 'bg-white/5 text-white/30 hover:text-white/50' : 'bg-green-500/10 text-green-400'}`}
                             title={agent.isFrozen ? (t?.activate || 'Activate') : (t?.freeze || 'Freeze')}
                           >
                             {agent.isFrozen ? <Power size={14} /> : <PowerOff size={14} />}
                           </button>
                           <button
-                            onClick={() => handleDelete(agent.id)}
+                            onClick={(event) => { event.stopPropagation(); handleDelete(agent.id); }}
                             className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
                             title={t?.remove || 'Remove'}
                           >
@@ -284,6 +363,7 @@ export function TeamHub({ t }: { t?: any }) {
                           ))}
                         </div>
                       )}
+                      <div className="text-[11px] font-bold text-white/28">{ui('点击查看介绍与调度信息', 'Click for profile and routing details')}</div>
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -303,7 +383,16 @@ export function TeamHub({ t }: { t?: any }) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="lumi-panel space-y-3 border-cyan-500/15 bg-cyan-500/5 p-5 transition-colors hover:border-cyan-500/30"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedAgentId(agent.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedAgentId(agent.id);
+                        }
+                      }}
+                      className="lumi-panel cursor-pointer space-y-3 border-cyan-500/15 bg-cyan-500/5 p-5 transition-colors hover:border-cyan-500/30"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
@@ -317,14 +406,14 @@ export function TeamHub({ t }: { t?: any }) {
                         </div>
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => handleToggle(agent)}
+                            onClick={(event) => { event.stopPropagation(); handleToggle(agent); }}
                             className={`rounded-lg p-1.5 transition-all ${agent.isFrozen ? 'bg-white/5 text-white/30 hover:text-white/50' : 'bg-green-500/10 text-green-400'}`}
                             title={agent.isFrozen ? (t?.activate || 'Activate') : (t?.freeze || 'Freeze')}
                           >
                             {agent.isFrozen ? <Power size={14} /> : <PowerOff size={14} />}
                           </button>
                           <button
-                            onClick={() => void handleTestConnection(agent)}
+                            onClick={(event) => { event.stopPropagation(); void handleTestConnection(agent); }}
                             disabled={testingIds.includes(agent.id)}
                             className="rounded-lg p-1.5 text-cyan-300/65 transition-all hover:bg-cyan-500/10 hover:text-cyan-100 disabled:opacity-30"
                             title={ui('测试连接', 'Test connection')}
@@ -332,7 +421,7 @@ export function TeamHub({ t }: { t?: any }) {
                             <RefreshCw size={14} className={testingIds.includes(agent.id) ? 'animate-spin' : ''} />
                           </button>
                           <button
-                            onClick={() => handleDelete(agent.id)}
+                            onClick={(event) => { event.stopPropagation(); handleDelete(agent.id); }}
                             className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
                             title={t?.remove || 'Remove'}
                           >
@@ -385,6 +474,7 @@ export function TeamHub({ t }: { t?: any }) {
                           {agent.lastRunOutput}
                         </div>
                       )}
+                      <div className="text-[11px] font-bold text-cyan-100/30">{ui('点击查看连接详情与介绍', 'Click for connection details and profile')}</div>
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -393,6 +483,180 @@ export function TeamHub({ t }: { t?: any }) {
           )}
         </>
       )}
+
+      <AnimatePresence>
+        {selectedAgent && (
+          <motion.div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedAgentId(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              className="lumi-panel max-h-[86vh] w-full max-w-3xl overflow-hidden border-white/10 bg-[#080d16]/95"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(() => {
+                const isExternal = selectedAgent.runtime === 'external';
+                const meta = healthMeta(selectedAgent);
+                const config = parseConfig(selectedAgent);
+                const runtimeConfig = parseRuntimeConfig(selectedAgent);
+                const tags = listFrom(selectedAgent.skillTags);
+                const knowledgeDomains = listFrom(selectedAgent.knowledgeDomains).length > 0
+                  ? listFrom(selectedAgent.knowledgeDomains)
+                  : listFrom(config.knowledgeDomains);
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] p-5">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${isExternal ? 'border-cyan-300/15 bg-cyan-500/10 text-cyan-300' : 'border-white/10 bg-white/[0.04] text-white/65'}`}>
+                          {isExternal ? <ExternalLink size={20} /> : <Bot size={20} />}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="truncate text-lg font-black text-white/90">{selectedAgent.name}</h3>
+                            <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white/45">
+                              {isExternal ? ui('外部', 'External') : ui('内部', 'Internal')}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold ${meta.className}`}>
+                              {meta.icon}
+                              {meta.label}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-white/40">{selectedAgent.category || 'general'} · {dispatchState(selectedAgent)}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedAgentId(null)}
+                        className="lumi-icon-button h-8 w-8 rounded-lg"
+                        title={ui('关闭', 'Close')}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+
+                    <div className="custom-scrollbar max-h-[calc(86vh-88px)] space-y-4 overflow-y-auto p-5">
+                      <section className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/50">
+                          <Info size={14} />
+                          {ui('介绍', 'Profile')}
+                        </div>
+                        <p className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm leading-relaxed text-white/62">
+                          {agentDescription(selectedAgent)}
+                        </p>
+                      </section>
+
+                      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-white/35">{ui('运行方式', 'Runtime')}</div>
+                          <div className="mt-1 text-sm font-bold text-white/70">{isExternal ? 'CLI Bridge' : 'Lumi Worker'}</div>
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-white/35">{ui('记忆范围', 'Memory')}</div>
+                          <div className="mt-1 text-sm font-bold text-white/70">{selectedAgent.memoryScope || 'shared'}</div>
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-white/35">{ui('自主等级', 'Autonomy')}</div>
+                          <div className="mt-1 text-sm font-bold text-white/70">{selectedAgent.autonomyLevel || 'reactive'}</div>
+                        </div>
+                      </section>
+
+                      <section className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/50">
+                          <Tags size={14} />
+                          {ui('能力标签', 'Capabilities')}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tags.length > 0 ? tags.map((tag: string) => (
+                            <span key={tag} className="rounded-full border border-cyan-300/12 bg-cyan-500/10 px-2 py-1 text-[11px] font-bold uppercase text-cyan-200/65">{tag}</span>
+                          )) : (
+                            <span className="text-xs text-white/35">{ui('暂无能力标签', 'No skill tags yet')}</span>
+                          )}
+                          {knowledgeDomains.map((domain: string) => (
+                            <span key={domain} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold uppercase text-white/45">{domain}</span>
+                          ))}
+                        </div>
+                      </section>
+
+                      {isExternal && (
+                        <section className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/50">
+                            <Terminal size={14} />
+                            {ui('外部连接', 'External Connection')}
+                          </div>
+                          <div className="rounded-xl border border-cyan-300/10 bg-cyan-500/[0.04] p-3">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <div>
+                                <div className="text-[10px] font-black uppercase tracking-widest text-cyan-100/35">{ui('连接类型', 'Connection Type')}</div>
+                                <div className="mt-1 text-sm text-cyan-100/70">{ui('本机命令模板', 'Local command template')}</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-black uppercase tracking-widest text-cyan-100/35">{ui('工作目录', 'Working Directory')}</div>
+                                <div className="mt-1 truncate text-sm text-cyan-100/70">{runtimeConfig.cwd || ui('默认服务目录', 'Default server directory')}</div>
+                              </div>
+                            </div>
+                            <pre className="custom-scrollbar mt-3 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/45 p-3 text-xs text-white/45">{selectedAgent.externalCommand || ui('未配置命令', 'No command configured')}</pre>
+                          </div>
+                        </section>
+                      )}
+
+                      <section className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white/50">
+                          <Activity size={14} />
+                          {ui('最近运行', 'Recent Run')}
+                        </div>
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+                          <div className="flex flex-wrap gap-3 text-xs text-white/40">
+                            <span>{ui('状态', 'Status')}: {selectedAgent.lastRunStatus || '-'}</span>
+                            <span>{ui('耗时', 'Duration')}: {selectedAgent.lastRunDurationMs != null ? `${selectedAgent.lastRunDurationMs}ms` : '-'}</span>
+                            <span>{ui('检查', 'Checked')}: {formatTime(selectedAgent.lastHealthCheckAt) || '-'}</span>
+                          </div>
+                          {selectedAgent.lastRunOutput && (
+                            <div className="custom-scrollbar mt-3 max-h-32 overflow-auto rounded-lg bg-black/30 p-3 text-xs leading-relaxed text-white/48">
+                              {selectedAgent.lastRunOutput}
+                            </div>
+                          )}
+                        </div>
+                      </section>
+
+                      <div className="flex flex-wrap justify-end gap-2 border-t border-white/[0.06] pt-4">
+                        {isExternal && (
+                          <button
+                            onClick={() => void handleTestConnection(selectedAgent)}
+                            disabled={testingIds.includes(selectedAgent.id)}
+                            className="lumi-button h-9 px-3 text-xs"
+                          >
+                            <RefreshCw size={13} className={testingIds.includes(selectedAgent.id) ? 'animate-spin' : ''} />
+                            {ui('测试连接', 'Test Connection')}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleToggle(selectedAgent)}
+                          className="lumi-button h-9 px-3 text-xs"
+                        >
+                          {selectedAgent.isFrozen ? <Power size={13} /> : <PowerOff size={13} />}
+                          {selectedAgent.isFrozen ? ui('启用', 'Activate') : ui('暂停', 'Pause')}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(selectedAgent.id)}
+                          className="lumi-button h-9 border-red-400/15 bg-red-500/10 px-3 text-xs text-red-200/70 hover:bg-red-500/15"
+                        >
+                          <Trash2 size={13} />
+                          {ui('移除', 'Remove')}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
