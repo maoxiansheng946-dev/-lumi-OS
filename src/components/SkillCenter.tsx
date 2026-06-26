@@ -62,6 +62,7 @@ interface MarketplaceSkill {
   requiresSetup?: boolean; setupNote?: string;
   npmPackage?: string; repoUrl?: string;
   runtime?: 'internal' | 'external'; externalCommand?: string;
+  externalAgentId?: string; externalHealthStatus?: string;
 }
 
 interface InstalledSkill {
@@ -169,6 +170,147 @@ function getSkillAvailability(
     detail: lang === 'zh' ? '官方内置技能，安装并连接后可直接调用。' : 'Official bundled skill. Install and connect it to call it.',
     tone: 'green',
   };
+}
+
+function getDisplayAvailability(
+  skill: MarketplaceSkill,
+  installedSkills: InstalledSkill[],
+  savedKeys: Record<string, boolean>,
+  lang: 'en' | 'zh',
+): SkillAvailability {
+  const installedSkill = findInstalledSkillForMarket(skill, installedSkills);
+  if (installedSkill?.broken) {
+    return {
+      label: lang === 'zh' ? '需修复' : 'Needs repair',
+      detail: lang === 'zh' ? '本地技能包不完整，修复后才能调用。' : 'Local package is incomplete and needs repair before use.',
+      tone: 'red',
+      installedSkill,
+    };
+  }
+  if (installedSkill?.startupError || (installedSkill?.enabled && !installedSkill.connected)) {
+    return {
+      label: lang === 'zh' ? '已安装未连接' : 'Installed, not connected',
+      detail: installedSkill.startupError || (lang === 'zh' ? '已安装，但本地服务还没有连上 Lumi。' : 'Installed, but its local service is not connected to Lumi yet.'),
+      tone: 'amber',
+      installedSkill,
+    };
+  }
+  if (installedSkill?.connected) {
+    return {
+      label: lang === 'zh' ? '可调用' : 'Callable',
+      detail: lang === 'zh' ? '已连接到 Lumi，可以在聊天、调度和工具调用中使用。' : 'Connected to Lumi and available for chat, orchestration, and tool calls.',
+      tone: 'green',
+      installedSkill,
+    };
+  }
+  if (installedSkill && !installedSkill.enabled) {
+    return {
+      label: lang === 'zh' ? '已安装未启用' : 'Installed, disabled',
+      detail: lang === 'zh' ? '技能已在本机，但当前被关闭。' : 'The skill exists locally, but is currently disabled.',
+      tone: 'white',
+      installedSkill,
+    };
+  }
+  if (skill.installed) {
+    if (skill.runtime === 'external' && skill.externalHealthStatus === 'online') {
+      return {
+        label: lang === 'zh' ? '可调用' : 'Callable',
+        detail: lang === 'zh' ? '已在 Team 且连接测试通过，Lumi 可以把任务调度给它。' : 'In Team with a passing connection test, so Lumi can schedule work to it.',
+        tone: 'green',
+      };
+    }
+    return {
+      label: lang === 'zh' ? '已安装未连接' : 'Installed, not connected',
+      detail: skill.runtime === 'external'
+        ? (lang === 'zh' ? '已加入 Team，需要在 Team 里通过连接测试后才会参与调度。' : 'Added to Team. Run a Team connection test before Lumi schedules it.')
+        : (lang === 'zh' ? '已安装，但当前连接状态还没变为可调用。' : 'Installed, but it has not reported a callable connection yet.'),
+      tone: 'amber',
+    };
+  }
+  if (skill.runtime === 'external') {
+    return {
+      label: lang === 'zh' ? '外部 Agent' : 'External Agent',
+      detail: lang === 'zh' ? '安装会把它加入 Team，通过本机 CLI 桥接，连接测试通过后再参与调度。' : 'Install adds it to Team as a local CLI-backed agent, then a health test enables orchestration.',
+      tone: 'cyan',
+    };
+  }
+  if ((skill.requiresApiKey && skill.apiKeyEnv && !savedKeys[skill.apiKeyEnv]) || skill.requiresSetup) {
+    return {
+      label: lang === 'zh' ? '需配置' : 'Needs configuration',
+      detail: skill.requiresApiKey && skill.apiKeyEnv
+        ? (lang === 'zh' ? `需要配置 ${skill.apiKeyEnv} 后才能真实调用。` : `Configure ${skill.apiKeyEnv} before real calls can run.`)
+        : (skill.setupNote || (lang === 'zh' ? '需要先完成本机依赖或账号配置。' : 'Requires local dependencies or account setup before use.')),
+      tone: 'amber',
+    };
+  }
+  return {
+    label: lang === 'zh' ? '仅可安装' : 'Installable',
+    detail: lang === 'zh' ? '当前只是大厅里的可安装技能；安装并连接后 Lumi 才能调用。' : 'Available in the hall only; Lumi can call it after install and connection.',
+    tone: 'white',
+  };
+}
+
+function getInstalledSkillAvailability(skill: InstalledSkill, lang: 'en' | 'zh'): SkillAvailability {
+  if (skill.broken) {
+    return {
+      label: lang === 'zh' ? '需修复' : 'Needs repair',
+      detail: lang === 'zh' ? '本地技能包不完整，修复后才能调用。' : 'Local package is incomplete and needs repair before use.',
+      tone: 'red',
+      installedSkill: skill,
+    };
+  }
+  if (skill.startupError || (skill.enabled && !skill.connected)) {
+    return {
+      label: lang === 'zh' ? '已安装未连接' : 'Installed, not connected',
+      detail: skill.startupError || (lang === 'zh' ? '本地服务还没有连上 Lumi。' : 'The local service is not connected to Lumi yet.'),
+      tone: 'amber',
+      installedSkill: skill,
+    };
+  }
+  if (skill.connected) {
+    return {
+      label: lang === 'zh' ? '可调用' : 'Callable',
+      detail: lang === 'zh' ? '已连接到 Lumi，可以参与工具调用。' : 'Connected to Lumi and available for tool calls.',
+      tone: 'green',
+      installedSkill: skill,
+    };
+  }
+  return {
+    label: lang === 'zh' ? '已安装未启用' : 'Installed, disabled',
+    detail: lang === 'zh' ? '技能已在本机，但当前被关闭。' : 'The skill exists locally, but is currently disabled.',
+    tone: 'white',
+    installedSkill: skill,
+  };
+}
+
+function isExternalRuntimeSkill(skill?: Partial<MarketplaceSkill | ExternalResult>): boolean {
+  return Boolean(skill && 'runtime' in skill && skill.runtime === 'external');
+}
+
+function getInstallActionText(skill: Partial<MarketplaceSkill | ExternalResult>, installed: boolean, lang: 'en' | 'zh', t: any): string {
+  if (installed) return isExternalRuntimeSkill(skill) ? (lang === 'zh' ? '已在 Team' : 'In Team') : (t.installedStatus || 'Installed');
+  return isExternalRuntimeSkill(skill) ? (lang === 'zh' ? '加入 Team' : 'Add to Team') : (t.installBtn || 'Install');
+}
+
+function SkillStatusCallout({ availability, compact = false }: { availability: SkillAvailability; compact?: boolean }) {
+  const icon = availability.tone === 'green'
+    ? <CheckCircle size={compact ? 11 : 13} />
+    : availability.tone === 'cyan'
+      ? <ExternalLink size={compact ? 11 : 13} />
+      : availability.tone === 'amber' || availability.tone === 'red'
+        ? <AlertTriangle size={compact ? 11 : 13} />
+        : <ShieldCheck size={compact ? 11 : 13} />;
+  return (
+    <div className={`rounded-xl border ${compact ? 'px-3 py-2' : 'px-3.5 py-3'} ${AVAILABILITY_CLASSES[availability.tone]}`}>
+      <div className="flex items-center gap-1.5 text-[12px] font-black uppercase">
+        {icon}
+        <span>{availability.label}</span>
+      </div>
+      <p className={`${compact ? 'line-clamp-1 text-[11px]' : 'text-xs'} mt-1 leading-relaxed opacity-75`}>
+        {availability.detail}
+      </p>
+    </div>
+  );
 }
 
 /** Normalized external result from npm or GitHub */
@@ -337,6 +479,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
   const handleInstall = async (skill: MarketplaceSkill | ExternalResult) => {
     if ('installed' in skill && skill.installed) return;
+    const externalRuntime = isExternalRuntimeSkill(skill);
     setInstalling(skill.id);
     try {
       const body: any = { skillId: skill.id, skillName: skill.name, installSource: skill.installSource };
@@ -351,7 +494,13 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`"${skill.name}" ${t.skillInstalledToast}`);
+        if (externalRuntime || data.agentId) {
+          toast.success(data.message || `"${skill.name}" ${lang === 'zh' ? '已加入 Team' : 'added to Team'}`);
+          window.dispatchEvent(new CustomEvent('lumi:agents-changed', { detail: { agentId: data.agentId, name: skill.name } }));
+          window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'team', agentId: data.agentId } }));
+        } else {
+          toast.success(`"${skill.name}" ${t.skillInstalledToast}`);
+        }
         if (socket) socket.emit('skill:installed', { skillId: skill.id, name: skill.name });
         fetchInstalled(); fetchMarketplace();
         // Clear external results after successful install
@@ -474,8 +623,13 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     } catch {}
   };
 
-  // Filter & sort
-  const filteredMarket = marketSkills.filter(s => {
+  // Filter & sort. External-runtime agents live in Team, not the Skill Hall.
+  const skillHallMarketSkills = marketSkills.filter(s => s.runtime !== 'external');
+  const skillHallCategories = categories.filter(cat => skillHallMarketSkills.some(s => s.category === cat));
+  const isExternalFeaturedSkill = useCallback((skill: typeof FEATURED_SKILLS[number]) => (
+    marketSkills.some(s => s.id === `skill-${skill.id}` && s.runtime === 'external')
+  ), [marketSkills]);
+  const filteredMarket = skillHallMarketSkills.filter(s => {
     if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.description.toLowerCase().includes(search.toLowerCase())) return false;
     if (activeCategory && s.category !== activeCategory) return false;
     return true;
@@ -507,7 +661,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     (skill.enabled && !skill.connected);
   const shouldOfferRepair = (skill: InstalledSkill) => hasSkillRuntimeIssue(skill);
   const getFeaturedSkill = useCallback((skill: typeof FEATURED_SKILLS[number]): MarketplaceSkill => (
-    marketSkills.find(s => s.id === `skill-${skill.id}`) || {
+    skillHallMarketSkills.find(s => s.id === `skill-${skill.id}`) || {
       id: `skill-${skill.id}`,
       name: lang === 'zh' ? skill.zhName : skill.name,
       description: lang === 'zh' ? skill.zhDesc : skill.desc,
@@ -519,7 +673,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       installSource: 'bundled' as const,
       installed: false,
     }
-  ), [lang, marketSkills]);
+  ), [lang, skillHallMarketSkills]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -590,9 +744,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
             <div className="grid grid-cols-1 gap-4">
               {/* Hero cards: first 2 skills */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {FEATURED_SKILLS.slice(0, 2).map((skill, idx) => {
+                {FEATURED_SKILLS.slice(0, 2).filter(skill => !isExternalFeaturedSkill(skill)).map((skill, idx) => {
                   const featuredSkill = getFeaturedSkill(skill);
-                  const availability = getSkillAvailability(featuredSkill, installedSkills, savedKeys, lang);
+                  const availability = getDisplayAvailability(featuredSkill, installedSkills, savedKeys, lang);
                   const isInstalled = featuredSkill.installed || !!availability.installedSkill;
                   const isInstalling = installing === `skill-${skill.id}`;
                   return (
@@ -619,21 +773,19 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                           </div>
                         </div>
                         <p className="text-sm text-white/50 leading-relaxed">{skill.desc}</p>
-                        <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-1 text-[12px] font-bold ${AVAILABILITY_CLASSES[availability.tone]}`}>
-                          <ShieldCheck size={11} /> {availability.label}
-                        </span>
+                        <SkillStatusCallout availability={availability} />
                         <div className="flex items-center gap-3">
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!featuredSkill.installed) handleInstall(featuredSkill);
+                              if (!isInstalled) handleInstall(featuredSkill);
                             }}
                             disabled={isInstalled || isInstalling}
                             className={`text-xs font-bold px-5 py-2.5 h-auto rounded-xl transition-all ${
                               isInstalled ? 'bg-green-500/20 text-green-400' : 'bg-white text-black hover:scale-105'
                             }`}
                           >
-                            {isInstalled ? <><CheckCircle size={14} className="mr-1" /> {t.installedStatus || 'Installed'}</> : isInstalling ? <><RefreshCw size={14} className="mr-1 animate-spin" /> {t.installingStatus || 'Installing...'}</> : <><Download size={14} className="mr-1" /> {t.installBtn || 'Install'}</>}
+                            {isInstalled ? <><CheckCircle size={14} className="mr-1" /> {getInstallActionText(featuredSkill, true, lang, t)}</> : isInstalling ? <><RefreshCw size={14} className="mr-1 animate-spin" /> {t.installingStatus || 'Installing...'}</> : <>{isExternalRuntimeSkill(featuredSkill) ? <ExternalLink size={14} className="mr-1" /> : <Download size={14} className="mr-1" />} {getInstallActionText(featuredSkill, false, lang, t)}</>}
                           </Button>
                           <span className="text-xs text-white/45 font-mono">{t.tryPrompt || 'Try: '}"{skill.prompt.slice(0, 40)}..."</span>
                         </div>
@@ -645,9 +797,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
               {/* Remaining 4 skills in a 2x2 grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {FEATURED_SKILLS.slice(2).map(skill => {
+                {FEATURED_SKILLS.slice(2).filter(skill => !isExternalFeaturedSkill(skill)).map(skill => {
                   const featuredSkill = getFeaturedSkill(skill);
-                  const availability = getSkillAvailability(featuredSkill, installedSkills, savedKeys, lang);
+                  const availability = getDisplayAvailability(featuredSkill, installedSkills, savedKeys, lang);
                   const isInstalled = featuredSkill.installed || !!availability.installedSkill;
                   const isInstalling = installing === `skill-${skill.id}`;
                   return (
@@ -665,19 +817,22 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-white/80 text-sm">{skill.name}</h4>
-                        <p className="text-xs text-white/55 leading-relaxed line-clamp-1">{availability.label} · {skill.prompt}</p>
+                        <p className="text-xs text-white/55 leading-relaxed line-clamp-1">{skill.prompt}</p>
+                        <div className="mt-2">
+                          <SkillStatusCallout availability={availability} compact />
+                        </div>
                       </div>
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!featuredSkill.installed) handleInstall(featuredSkill);
+                          if (!isInstalled) handleInstall(featuredSkill);
                         }}
                         disabled={isInstalled || isInstalling}
                         className={`text-xs font-bold px-3 py-1.5 h-auto rounded-lg shrink-0 transition-all ${
                           isInstalled ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/60 hover:bg-white/20'
                         }`}
                       >
-                        {isInstalled ? <><CheckCircle size={12} /> {t.installedStatus || 'Installed'}</> : isInstalling ? <><RefreshCw size={12} className="animate-spin" /> {t.installingStatus || 'Installing...'}</> : <><Download size={12} /> {t.installBtn || 'Install'}</>}
+                        {isInstalled ? <><CheckCircle size={12} /> {getInstallActionText(featuredSkill, true, lang, t)}</> : isInstalling ? <><RefreshCw size={12} className="animate-spin" /> {t.installingStatus || 'Installing...'}</> : <>{isExternalRuntimeSkill(featuredSkill) ? <ExternalLink size={12} /> : <Download size={12} />} {getInstallActionText(featuredSkill, false, lang, t)}</>}
                       </Button>
                     </motion.div>
                   );
@@ -721,7 +876,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                 >
                   {t.allCategories || 'All'}
                 </button>
-                {categories.map(cat => (
+                {skillHallCategories.map(cat => (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(activeCategory === cat ? '' : cat)}
@@ -749,7 +904,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <AnimatePresence>
                 {sortedMarket.map(skill => {
-                  const availability = getSkillAvailability(skill, installedSkills, savedKeys, lang);
+                  const availability = getDisplayAvailability(skill, installedSkills, savedKeys, lang);
                   const runtimeInstalled = !!availability.installedSkill;
                   const isInstalled = skill.installed || runtimeInstalled;
                   return (
@@ -783,18 +938,18 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                             <Wrench size={8} /> Setup
                           </span>
                         )}
-                        <span className={`flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-bold ${AVAILABILITY_CLASSES[availability.tone]}`} title={availability.detail}>
-                          <ShieldCheck size={10} /> {availability.label}
-                        </span>
                         {isInstalled && (
                           <span className="flex items-center gap-1 px-2 py-1 bg-green-500/10 rounded-full text-[12px] font-bold uppercase text-green-400">
-                            <CheckCircle size={10} /> {t.installedStatus || 'Installed'}
+                            <CheckCircle size={10} /> {getInstallActionText(skill, true, lang, t)}
                           </span>
                         )}
                       </div>
                     </div>
 
                     <p className="text-xs text-white/50 leading-relaxed mb-4 line-clamp-2">{skill.description}</p>
+                    <div className="mb-4">
+                      <SkillStatusCallout availability={availability} />
+                    </div>
 
                     {/* Setup note */}
                     {skill.requiresSetup && skill.setupNote && (
@@ -840,11 +995,11 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                         }`}
                       >
                         {isInstalled ? (
-                          <><CheckCircle size={12} className="mr-1" /> {t.installedStatus || 'Installed'}</>
+                          <><CheckCircle size={12} className="mr-1" /> {getInstallActionText(skill, true, lang, t)}</>
                         ) : installing === skill.id ? (
                           <><RefreshCw size={12} className="mr-1 animate-spin" /> {t.installingStatus || 'Installing...'}</>
                         ) : (
-                          <><Download size={12} className="mr-1" /> {t.installBtn || 'Install'}</>
+                          <>{isExternalRuntimeSkill(skill) ? <ExternalLink size={12} className="mr-1" /> : <Download size={12} className="mr-1" />} {getInstallActionText(skill, false, lang, t)}</>
                         )}
                       </Button>
                     </div>
@@ -987,7 +1142,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <AnimatePresence>
-                  {installedSkills.map(skill => (
+                  {installedSkills.map(skill => {
+                    const availability = getInstalledSkillAvailability(skill, lang);
+                    return (
                     <motion.div
                       key={skill.name}
                       initial={{ opacity: 0, y: 10 }}
@@ -1034,6 +1191,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                       </div>
 
                       <p className="text-xs text-white/50 leading-relaxed mb-4 line-clamp-2">{skill.description}</p>
+                      <div className="mb-4">
+                        <SkillStatusCallout availability={availability} compact />
+                      </div>
 
                       {/* Tags */}
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1068,7 +1228,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                         </span>
                       </div>
                     </motion.div>
-                  ))}
+                  );})}
                 </AnimatePresence>
               </div>
             )}
@@ -1110,7 +1270,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       </AnimatePresence>
       <AnimatePresence>
         {detailSkill && (
-          <SkillDetailPane detailSkill={detailSkill} setDetailSkill={setDetailSkill} t={t} lang={lang} marketSkills={marketSkills} installedSkills={installedSkills} installing={installing} repairing={repairing} savedKeys={savedKeys} keyInputs={keyInputs} setKeyInputs={setKeyInputs} savingKey={savingKey} handleInstall={handleInstall} handleSaveKey={handleSaveKey} handleToggle={handleToggle} handleUninstall={handleUninstall} handleRepair={handleRepair} />
+          <SkillDetailPane detailSkill={detailSkill} setDetailSkill={setDetailSkill} t={t} lang={lang} marketSkills={skillHallMarketSkills} installedSkills={installedSkills} installing={installing} repairing={repairing} savedKeys={savedKeys} keyInputs={keyInputs} setKeyInputs={setKeyInputs} savingKey={savingKey} handleInstall={handleInstall} handleSaveKey={handleSaveKey} handleToggle={handleToggle} handleUninstall={handleUninstall} handleRepair={handleRepair} />
         )}
       </AnimatePresence>
     </div>
@@ -1141,7 +1301,10 @@ function SkillDetailPane({ detailSkill, setDetailSkill, t, lang, marketSkills, i
     ? detailSkill
     : marketSkills.find(s => s.id === `skill-${detailSkill.name}`);
   const marketAvailability = mSkill
-    ? getSkillAvailability(mSkill, installedSkills, savedKeys, lang)
+    ? getDisplayAvailability(mSkill, installedSkills, savedKeys, lang)
+    : undefined;
+  const installedAvailability = !mSkill && !isMarketSkill && detailSkill
+    ? getInstalledSkillAvailability(detailSkill, lang)
     : undefined;
   const resolvedInstalledSkill = marketAvailability?.installedSkill;
   const marketInstalled = Boolean(mSkill?.installed || resolvedInstalledSkill);
@@ -1218,14 +1381,8 @@ function SkillDetailPane({ detailSkill, setDetailSkill, t, lang, marketSkills, i
         {mSkill?.description ?? detailSkill.description}
       </p>
 
-      {marketAvailability && (
-        <div className={`rounded-2xl border p-4 ${AVAILABILITY_CLASSES[marketAvailability.tone]}`}>
-          <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase">
-            <ShieldCheck size={13} /> {marketAvailability.label}
-          </div>
-          <p className="text-sm leading-relaxed opacity-80">{marketAvailability.detail}</p>
-        </div>
-      )}
+      {marketAvailability && <SkillStatusCallout availability={marketAvailability} />}
+      {!marketAvailability && installedAvailability && <SkillStatusCallout availability={installedAvailability} />}
 
       {mSkill?.runtime === 'external' && (
         <div className="p-4 bg-cyan-500/5 border border-cyan-500/10 rounded-2xl space-y-2">
@@ -1236,7 +1393,7 @@ function SkillDetailPane({ detailSkill, setDetailSkill, t, lang, marketSkills, i
             <p className="text-sm font-mono text-cyan-300/70 break-all">{mSkill.externalCommand}</p>
           )}
           <p className="text-[12px] text-cyan-400/60">
-            This skill runs as an external CLI agent.
+            {lang === 'zh' ? '它会作为 Team 里的外部 Agent 运行，通过本机 CLI 连接，测试通过后再参与调度。' : 'This skill runs as a Team external agent through a local CLI and joins orchestration after a passing test.'}
           </p>
         </div>
       )}
@@ -1356,11 +1513,11 @@ function SkillDetailPane({ detailSkill, setDetailSkill, t, lang, marketSkills, i
             }`}
           >
             {marketInstalled ? (
-              <><CheckCircle size={14} className="mr-1" /> {t.installedStatus || 'Installed'}</>
+              <><CheckCircle size={14} className="mr-1" /> {getInstallActionText(mSkill, true, lang, t)}</>
             ) : installing === mSkill.id ? (
               <><RefreshCw size={14} className="mr-1 animate-spin" /> {t.installingStatus || 'Installing...'}</>
             ) : (
-              <><Download size={14} className="mr-1" /> {t.installBtn || 'Install'}</>
+              <>{isExternalRuntimeSkill(mSkill) ? <ExternalLink size={14} className="mr-1" /> : <Download size={14} className="mr-1" />} {getInstallActionText(mSkill, false, lang, t)}</>
             )}
           </Button>
         ) : detailSkill ? (

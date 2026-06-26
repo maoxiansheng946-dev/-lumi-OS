@@ -20,6 +20,12 @@ export function createAgentForSkill(
     installSource?: string;
     runtime?: 'internal' | 'external';
     externalCommand?: string;
+    scope?: {
+      ownerUid?: string;
+      userId?: string;
+      domain?: string;
+      orgId?: string;
+    };
   },
   io?: { emit: (event: string, data: any) => void },
 ): string | null {
@@ -27,47 +33,120 @@ export function createAgentForSkill(
     const db = readDB();
     if (!db.agents) db.agents = [];
 
-    const agentId = `skill_${skillName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-
-    // Don't duplicate if already exists
-    if (db.agents.find((a: any) => a.id === agentId)) return agentId;
-
     const category = mapCategory(skillInfo.category || 'general');
-    const tags = skillInfo.skillTags || [skillName.toLowerCase(), category];
     const description = skillInfo.description || `Auto-generated agent for skill: ${skillName}`;
     const runtime = skillInfo.runtime || 'internal';
     const externalCommand = skillInfo.externalCommand;
+    const baseAgentId = `skill_${skillName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const agentId = scopedAgentId(baseAgentId, skillInfo.scope);
+    const tags = Array.from(new Set([
+      ...(skillInfo.skillTags || []),
+      skillName.toLowerCase(),
+      category,
+      ...(runtime === 'external' ? ['external', 'cli'] : []),
+    ].map(tag => String(tag || '').trim()).filter(Boolean)));
+    const now = new Date().toISOString();
+
+    const existing = db.agents.find((a: any) =>
+      (a.id === agentId || a.id === baseAgentId) && agentMatchesScope(a, skillInfo.scope),
+    );
+    if (existing) {
+      let changed = false;
+      if (runtime === 'external') {
+        if (existing.runtime !== 'external') {
+          existing.runtime = 'external';
+          changed = true;
+        }
+        if (!existing.healthStatus) {
+          existing.healthStatus = 'untested';
+          changed = true;
+        }
+        if (externalCommand && existing.externalCommand !== externalCommand) {
+          existing.externalCommand = externalCommand;
+          changed = true;
+        }
+      }
+      const existingTags = Array.isArray(existing.skillTags)
+        ? existing.skillTags
+        : String(existing.skillTags || '').split(',').map(tag => tag.trim()).filter(Boolean);
+      const mergedTags = Array.from(new Set([...existingTags, ...tags]));
+      if (mergedTags.length !== existingTags.length) {
+        existing.skillTags = mergedTags;
+        changed = true;
+      }
+      if (changed) {
+        writeDB(db);
+        io?.emit('agent:created', { id: agentId, name: skillName, skillTags: mergedTags, runtime: existing.runtime, healthStatus: existing.healthStatus });
+      }
+      return agentId;
+    }
 
     db.agents.push({
       id: agentId,
       name: skillName,
       category,
-      config: JSON.stringify({ description, installSource: skillInfo.installSource || 'marketplace' }),
+      config: JSON.stringify({
+        description,
+        installSource: skillInfo.installSource || 'marketplace',
+        teamSource: 'skill_hall',
+        runtime,
+        ...(externalCommand ? { externalCommand } : {}),
+      }),
       data: '{}',
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      lastActiveAt: now,
       status: 'active',
       personalityId: 'lumi',
       modelPreference: '',
       memoryScope: 'shared',
       autonomyLevel: 'reactive',
-      runtimeConfig: '{}',
+      runtimeConfig: JSON.stringify({
+        source: 'skill_hall',
+        connectionType: runtime === 'external' ? 'cli' : 'mcp',
+      }),
       skillTags: tags,
       executionMode: 'lumi',
       allowCrossPollination: true,
       territory: 'open',
       runtime,
+      healthStatus: runtime === 'external' ? 'untested' : 'online',
       ...(externalCommand ? { externalCommand } : {}),
+      ...(skillInfo.scope?.ownerUid ? { ownerUid: skillInfo.scope.ownerUid, userId: skillInfo.scope.userId || skillInfo.scope.ownerUid } : {}),
+      ...(skillInfo.scope?.domain ? { domain: skillInfo.scope.domain, orgId: skillInfo.scope.orgId || '' } : {}),
       autoCreated: true,
     });
 
     writeDB(db);
     console.log(`[SkillAgent] Created team agent for skill "${skillName}" (id: ${agentId}, tags: ${tags.join(', ')})`);
-    io?.emit('agent:created', { id: agentId, name: skillName, skillTags: tags });
+    io?.emit('agent:created', {
+      id: agentId,
+      name: skillName,
+      skillTags: tags,
+      runtime,
+      healthStatus: runtime === 'external' ? 'untested' : 'online',
+      externalCommand,
+    });
     return agentId;
   } catch (err) {
     console.warn(`[SkillAgent] Failed to create agent for "${skillName}":`, (err as Error).message);
     return null;
   }
+}
+
+function scopedAgentId(baseId: string, scope?: { domain?: string; orgId?: string }): string {
+  if (scope?.domain === 'work' && scope.orgId) {
+    const scopeSuffix = scope.orgId.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
+    return scopeSuffix ? `${baseId}_${scopeSuffix}` : baseId;
+  }
+  return baseId;
+}
+
+function agentMatchesScope(agent: any, scope?: { ownerUid?: string; domain?: string; orgId?: string }): boolean {
+  if (!scope) return true;
+  if (scope.domain === 'work') {
+    return (agent.orgId || '') === (scope.orgId || '') && (agent.domain || 'work') === 'work';
+  }
+  return (!agent.orgId || agent.orgId === '') && agent.domain !== 'work' && (!agent.ownerUid || agent.ownerUid === scope.ownerUid);
 }
 
 /** Map marketplace categories to orchestrator categories */

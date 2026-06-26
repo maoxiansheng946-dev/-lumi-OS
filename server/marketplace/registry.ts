@@ -53,6 +53,8 @@ export interface MarketplaceSkill {
   runtime?: 'internal' | 'external';
   /** CLI command template for external-runtime skills */
   externalCommand?: string;
+  externalAgentId?: string;
+  externalHealthStatus?: string;
 }
 
 export interface SkillRating {
@@ -63,8 +65,14 @@ export interface SkillRating {
   timestamp: string;
 }
 
+export interface MarketplaceAgentScope {
+  ownerUid?: string;
+  domain?: string;
+  orgId?: string;
+}
+
 /** Scan bundled directory to discover available skills */
-function discoverBundledSkills(): MarketplaceSkill[] {
+function discoverBundledSkills(scope?: MarketplaceAgentScope): MarketplaceSkill[] {
   const skills: MarketplaceSkill[] = [];
   if (!fs.existsSync(BUNDLED_DIR)) return skills;
 
@@ -77,7 +85,11 @@ function discoverBundledSkills(): MarketplaceSkill[] {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
       const lumi = pkg.lumi || {};
-      const installed = isInstalledSkill(entry.name, lumi.displayName);
+      const runtime = lumi.runtime || 'internal';
+      const teamAgent = runtime === 'external' ? findSkillTeamAgent(entry.name, lumi.displayName, scope) : undefined;
+      const installed = runtime === 'external'
+        ? isInstalledSkill(entry.name, lumi.displayName) || !!teamAgent
+        : isInstalledSkill(entry.name, lumi.displayName);
       skills.push({
         id: `skill-${entry.name}`,
         name: lumi.displayName || toDisplayName(entry.name),
@@ -97,8 +109,10 @@ function discoverBundledSkills(): MarketplaceSkill[] {
         apiKeyUrl: lumi.apiKeyUrl,
         requiresSetup: lumi.requiresSetup || false,
         setupNote: lumi.setupNote,
-        runtime: lumi.runtime || 'internal',
+        runtime,
         externalCommand: lumi.externalCommand,
+        externalAgentId: teamAgent?.id,
+        externalHealthStatus: teamAgent?.healthStatus,
       });
     } catch { /* skip invalid packages */ }
   }
@@ -124,16 +138,50 @@ function isInstalledSkill(dirName: string, displayName?: string): boolean {
   return false;
 }
 
+function agentMatchesMarketplaceScope(agent: any, scope?: MarketplaceAgentScope): boolean {
+  if (!scope) return true;
+  if (scope.domain === 'work') {
+    return (agent.orgId || '') === (scope.orgId || '') && (agent.domain || 'work') === 'work';
+  }
+  return (!agent.orgId || agent.orgId === '') && agent.domain !== 'work' && (!agent.ownerUid || agent.ownerUid === scope.ownerUid);
+}
+
+function findSkillTeamAgent(dirName: string, displayName?: string, scope?: MarketplaceAgentScope): any | undefined {
+  try {
+    const db = readDB();
+    const names = [displayName, toDisplayName(dirName), dirName].filter(Boolean) as string[];
+    const ids = new Set(names.map(name => `skill_${toSkillSlug(name)}`));
+    const slugs = new Set(names.map(name => toSkillSlug(name)));
+    if (!Array.isArray(db.agents)) return undefined;
+    return db.agents.find((agent: any) => {
+      if (agent?.runtime !== 'external') return false;
+      if (!agentMatchesMarketplaceScope(agent, scope)) return false;
+      return ids.has(String(agent.id || '')) || slugs.has(toSkillSlug(agent.name));
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** Get community registry from DB */
-function getCommunityRegistry(): MarketplaceSkill[] {
+function getCommunityRegistry(scope?: MarketplaceAgentScope): MarketplaceSkill[] {
   const db = readDB();
   if (!db.communitySkills) return [];
-  return db.communitySkills.map((s: any) => ({
-    ...s,
-    installSource: 'community' as const,
-    installPath: s.installPath,
-    installed: isInstalledSkill(s.id.replace('skill-', ''), s.name),
-  }));
+  return db.communitySkills.map((s: any) => {
+    const dirName = s.id.replace('skill-', '');
+    const teamAgent = s.runtime === 'external' ? findSkillTeamAgent(dirName, s.name, scope) : undefined;
+    const installed = s.runtime === 'external'
+      ? isInstalledSkill(dirName, s.name) || !!teamAgent
+      : isInstalledSkill(dirName, s.name);
+    return {
+      ...s,
+      installSource: 'community' as const,
+      installPath: s.installPath,
+      installed,
+      externalAgentId: teamAgent?.id,
+      externalHealthStatus: teamAgent?.healthStatus,
+    };
+  });
 }
 
 /** Apply cached translations to a skill list */
@@ -152,9 +200,9 @@ function applyTranslations(skills: MarketplaceSkill[], lang?: string): Marketpla
 }
 
 /** Get all marketplace skills: bundled + community, with download counts & ratings from DB */
-export function getMarketplaceSkills(lang?: string): MarketplaceSkill[] {
-  const bundled = discoverBundledSkills();
-  const community = getCommunityRegistry();
+export function getMarketplaceSkills(lang?: string, scope?: MarketplaceAgentScope): MarketplaceSkill[] {
+  const bundled = discoverBundledSkills(scope);
+  const community = getCommunityRegistry(scope);
   const db = readDB();
 
   const all = [...bundled, ...community];
@@ -179,15 +227,15 @@ export function getMarketplaceSkills(lang?: string): MarketplaceSkill[] {
   return applyTranslations(all, lang);
 }
 
-export function getSkillById(id: string, lang?: string): MarketplaceSkill | undefined {
-  const skill = getMarketplaceSkills().find(s => s.id === id);
+export function getSkillById(id: string, lang?: string, scope?: MarketplaceAgentScope): MarketplaceSkill | undefined {
+  const skill = getMarketplaceSkills(undefined, scope).find(s => s.id === id);
   if (!skill) return undefined;
   return applyTranslations([skill], lang)[0];
 }
 
-export function searchSkills(query: string, lang?: string): MarketplaceSkill[] {
+export function searchSkills(query: string, lang?: string, scope?: MarketplaceAgentScope): MarketplaceSkill[] {
   const q = query.toLowerCase();
-  const skills = applyTranslations(getMarketplaceSkills(), lang);
+  const skills = getMarketplaceSkills(lang, scope);
   return skills.filter(s =>
     s.name.toLowerCase().includes(q) ||
     s.description.toLowerCase().includes(q) ||
@@ -195,9 +243,9 @@ export function searchSkills(query: string, lang?: string): MarketplaceSkill[] {
   );
 }
 
-export function getCategories(lang?: string): string[] {
+export function getCategories(lang?: string, scope?: MarketplaceAgentScope): string[] {
   const categories = new Set<string>();
-  for (const s of getMarketplaceSkills()) {
+  for (const s of getMarketplaceSkills(undefined, scope)) {
     categories.add(translateCategory(s.category, lang));
   }
   return [...categories].sort();

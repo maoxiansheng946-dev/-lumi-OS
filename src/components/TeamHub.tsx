@@ -2,10 +2,35 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Bot, ExternalLink, Trash2, Power, PowerOff, Loader2, RefreshCw, CheckCircle2, AlertTriangle, Clock3, Info, X, ShieldCheck, Terminal, Tags, Activity } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSocket } from '@/hooks/useSocket';
+import { apiFetch } from '@/services/apiClient';
+
+type ExternalCatalogSkill = {
+  id: string;
+  name: string;
+  description?: string;
+  author?: string;
+  category?: string;
+  icon?: string;
+  installSource?: 'bundled' | 'community' | 'npm' | 'github';
+  installPath?: string;
+  installed?: boolean;
+  version?: string;
+  toolCount?: number;
+  runtime?: 'internal' | 'external';
+  externalCommand?: string;
+  externalAgentId?: string;
+  externalHealthStatus?: string;
+  requiresSetup?: boolean;
+  setupNote?: string;
+};
 
 export function TeamHub({ t }: { t?: any }) {
+  const socket = useSocket();
   const [agents, setAgents] = useState<any[]>([]);
+  const [externalCatalog, setExternalCatalog] = useState<ExternalCatalogSkill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingExternalCatalog, setLoadingExternalCatalog] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [showConnectForm, setShowConnectForm] = useState(false);
   const [connectName, setConnectName] = useState('');
@@ -13,11 +38,13 @@ export function TeamHub({ t }: { t?: any }) {
   const [connectSkillTags, setConnectSkillTags] = useState('');
   const [connectCommand, setConnectCommand] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [addingExternalSkillId, setAddingExternalSkillId] = useState<string | null>(null);
   const [testingIds, setTestingIds] = useState<string[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const loadAgentsFailedText = t?.loadAgentsFailed || 'Failed to load agents';
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const catalogLang = isZh ? 'zh' : 'en';
 
   const fetchAgents = useCallback(async () => {
     setLoading(true);
@@ -35,7 +62,41 @@ export function TeamHub({ t }: { t?: any }) {
     setLoading(false);
   }, [loadAgentsFailedText]);
 
-  useEffect(() => { fetchAgents(); }, [fetchAgents]);
+  const fetchExternalCatalog = useCallback(async () => {
+    setLoadingExternalCatalog(true);
+    try {
+      const res = await apiFetch(`/api/marketplace/skills?lang=${catalogLang}`);
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data.error || 'External agent catalog failed');
+      setExternalCatalog((Array.isArray(data) ? data : []).filter((skill: ExternalCatalogSkill) => skill.runtime === 'external'));
+    } catch (err: any) {
+      toast.error(err.message || 'External agent catalog failed');
+    } finally {
+      setLoadingExternalCatalog(false);
+    }
+  }, [catalogLang]);
+
+  useEffect(() => { fetchAgents(); fetchExternalCatalog(); }, [fetchAgents, fetchExternalCatalog]);
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('agent:created', fetchAgents);
+    socket.on('agent:updated', fetchAgents);
+    socket.on('agent:removed', fetchAgents);
+    socket.on('skill:installed', fetchExternalCatalog);
+    return () => {
+      socket.off('agent:created', fetchAgents);
+      socket.off('agent:updated', fetchAgents);
+      socket.off('agent:removed', fetchAgents);
+      socket.off('skill:installed', fetchExternalCatalog);
+    };
+  }, [socket, fetchAgents, fetchExternalCatalog]);
+
+  useEffect(() => {
+    const handleAgentsChanged = () => { fetchAgents(); fetchExternalCatalog(); };
+    window.addEventListener('lumi:agents-changed', handleAgentsChanged);
+    return () => window.removeEventListener('lumi:agents-changed', handleAgentsChanged);
+  }, [fetchAgents, fetchExternalCatalog]);
 
   const handleConnectExternal = async () => {
     if (!connectName.trim() || !connectCommand.trim()) return;
@@ -72,6 +133,38 @@ export function TeamHub({ t }: { t?: any }) {
       toast.error(err.message || t?.connectFailed || 'Connection failed');
     }
     setConnecting(false);
+  };
+
+  const handleAddExternalSkill = async (skill: ExternalCatalogSkill) => {
+    if (skill.installed) {
+      if (skill.externalAgentId) setSelectedAgentId(skill.externalAgentId);
+      return;
+    }
+    setAddingExternalSkillId(skill.id);
+    try {
+      const body: any = {
+        skillId: skill.id,
+        skillName: skill.name,
+        installSource: skill.installSource || 'bundled',
+      };
+      if (skill.installPath) body.installPath = skill.installPath;
+      const res = await apiFetch('/api/marketplace/skills/acquire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'Failed to add external agent');
+      toast.success(data.message || ui(`"${skill.name}" 已加入 Team`, `"${skill.name}" added to Team`));
+      window.dispatchEvent(new CustomEvent('lumi:agents-changed', { detail: { agentId: data.agentId, name: skill.name } }));
+      await Promise.all([fetchAgents(), fetchExternalCatalog()]);
+      if (data.agentId) setSelectedAgentId(data.agentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add external agent');
+    } finally {
+      setAddingExternalSkillId(null);
+    }
   };
 
   const handleTestConnection = async (agent: any) => {
@@ -135,12 +228,24 @@ export function TeamHub({ t }: { t?: any }) {
   const internalAgents = agents.filter(a => a.runtime !== 'external');
   const externalAgents = agents.filter(a => a.runtime === 'external');
   const readyExternalCount = externalAgents.filter(agent => agent.healthStatus === 'online' && agent.isFrozen !== true).length;
+  const installableExternalCount = externalCatalog.filter(skill => !skill.installed).length;
+  const hasTeamContent = agents.length > 0 || loadingExternalCatalog || externalCatalog.length > 0;
   const selectedAgent = selectedAgentId ? agents.find(agent => agent.id === selectedAgentId) || null : null;
 
   const healthMeta = (agent: any) => {
     if (agent.healthStatus === 'online') return { icon: <CheckCircle2 size={13} />, label: ui('可用', 'Online'), className: 'border-emerald-400/15 bg-emerald-500/10 text-emerald-300' };
     if (agent.healthStatus === 'error') return { icon: <AlertTriangle size={13} />, label: ui('异常', 'Error'), className: 'border-red-400/15 bg-red-500/10 text-red-200' };
     return { icon: <Clock3 size={13} />, label: ui('未测试', 'Untested'), className: 'border-white/10 bg-white/[0.04] text-white/45' };
+  };
+
+  const catalogStatusMeta = (skill: ExternalCatalogSkill) => {
+    if (skill.installed && skill.externalHealthStatus === 'online') {
+      return { icon: <CheckCircle2 size={13} />, label: ui('可调用', 'Callable'), className: 'border-emerald-400/15 bg-emerald-500/10 text-emerald-300' };
+    }
+    if (skill.installed) {
+      return { icon: <Clock3 size={13} />, label: ui('已在 Team', 'In Team'), className: 'border-amber-400/15 bg-amber-500/10 text-amber-200' };
+    }
+    return { icon: <ExternalLink size={13} />, label: ui('可加入', 'Available'), className: 'border-cyan-300/15 bg-cyan-500/10 text-cyan-200' };
   };
 
   const formatTime = (value?: string) => {
@@ -209,6 +314,9 @@ export function TeamHub({ t }: { t?: any }) {
             </span>
             <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-1 text-cyan-200/60">
               {ui(`外部就绪 ${readyExternalCount}/${externalAgents.length}`, `${readyExternalCount}/${externalAgents.length} external ready`)}
+            </span>
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1">
+              {ui(`可加入 ${installableExternalCount}`, `${installableExternalCount} available`)}
             </span>
           </div>
         </div>
@@ -291,7 +399,7 @@ export function TeamHub({ t }: { t?: any }) {
           <p className="text-sm text-red-200/80">{loadError}</p>
           <button onClick={() => void fetchAgents()} className="lumi-button mt-4">{t?.retry || 'Retry'}</button>
         </div>
-      ) : agents.length === 0 ? (
+      ) : !hasTeamContent ? (
         <div className="lumi-panel p-16 text-center">
           <Users size={40} className="text-white/45 mx-auto mb-4" />
           <p className="text-white/40 font-bold uppercase tracking-widest text-sm">{t?.noTeamMembers || 'No team members yet'}</p>
@@ -299,6 +407,87 @@ export function TeamHub({ t }: { t?: any }) {
         </div>
       ) : (
         <>
+          {/* External Agent Catalog */}
+          {(loadingExternalCatalog || externalCatalog.length > 0) && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-white/50">{ui('外部 Agent 大厅', 'External Agent Hall')}</h3>
+                <button
+                  onClick={() => void fetchExternalCatalog()}
+                  className="lumi-icon-button h-8 w-8"
+                  title={t?.refresh || 'Refresh'}
+                >
+                  <RefreshCw size={13} className={loadingExternalCatalog ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              {loadingExternalCatalog ? (
+                <div className="lumi-panel p-8 text-center">
+                  <Loader2 size={22} className="mx-auto mb-3 animate-spin text-cyan-200/50" />
+                  <p className="text-xs text-white/35">{ui('正在读取外部 Agent...', 'Loading external agents...')}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {externalCatalog.map((skill) => {
+                    const meta = catalogStatusMeta(skill);
+                    const isAdding = addingExternalSkillId === skill.id;
+                    return (
+                      <motion.div
+                        key={skill.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="lumi-panel space-y-3 border-cyan-500/15 bg-cyan-500/[0.04] p-5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-500/10 text-cyan-300">
+                              <Terminal size={16} />
+                            </span>
+                            <div className="min-w-0">
+                              <h4 className="truncate text-sm font-bold text-white/90">{skill.name}</h4>
+                              <p className="text-[11px] uppercase text-cyan-200/45">{skill.category || 'external'} · {skill.toolCount || 1} {ui('工具', 'tools')}</p>
+                            </div>
+                          </div>
+                          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${meta.className}`}>
+                            {meta.icon}
+                            {meta.label}
+                          </span>
+                        </div>
+                        {skill.description && (
+                          <p className="line-clamp-2 text-xs leading-relaxed text-white/48">{skill.description}</p>
+                        )}
+                        {skill.setupNote && (
+                          <div className="rounded-lg border border-amber-300/10 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-100/55">
+                            {skill.setupNote}
+                          </div>
+                        )}
+                        {skill.externalCommand && (
+                          <div className="truncate rounded-lg bg-black/35 p-2 font-mono text-xs text-cyan-100/40">
+                            {skill.externalCommand}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
+                          <span className="text-[11px] text-white/30">{skill.author || 'Lumi Marketplace'}</span>
+                          <button
+                            onClick={() => void handleAddExternalSkill(skill)}
+                            disabled={isAdding}
+                            className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold transition-colors ${
+                              skill.installed
+                                ? 'border border-green-300/15 bg-green-500/10 text-green-300 hover:bg-green-500/15'
+                                : 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
+                            } disabled:opacity-45`}
+                          >
+                            {isAdding ? <RefreshCw size={12} className="animate-spin" /> : skill.installed ? <CheckCircle2 size={12} /> : <ExternalLink size={12} />}
+                            {skill.installed ? ui('已在 Team', 'In Team') : ui('加入 Team', 'Add to Team')}
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Internal Agents */}
           {internalAgents.length > 0 && (
             <div className="space-y-3">
