@@ -1,81 +1,258 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Building2, Send, Loader2, User, Bot } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
+import { useSocket } from '../../hooks/useSocket';
 import { useT } from '../../lib/useT';
 
 interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  source?: 'socket' | 'history' | 'error' | 'system';
+}
+
+function makeMessageId(prefix = 'org-msg') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeHistoryMessage(item: any): Message | null {
+  if (item?.role === 'tool') return null;
+  const role = item?.role === 'assistant' ? 'assistant' : item?.role === 'user' ? 'user' : null;
+  if (!role) return null;
+  const content = String(item.message || item.response || item.content || '').trim();
+  if (!content) return null;
+  return {
+    id: item.id || makeMessageId('org-history'),
+    role,
+    content,
+    timestamp: item.timestamp ? new Date(item.timestamp).getTime() : Date.now(),
+    source: 'history',
+  };
 }
 
 export function CentralLumiChat() {
   const t = useT();
+  const socket = useSocket();
+  const { orgConnection } = useApp();
   const isZh = t.langCode !== 'en';
-  const ui = (zh: string, en: string) => (isZh ? zh : en);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: ui('你好，我是你们公司的 Lumi。我可以协助查询制度、文化、知识库和组织信息。你想了解什么？', "Hello! I'm your company's Lumi. I can help with policies, culture, knowledge base, and more. What would you like to know?"), timestamp: Date.now() },
-  ]);
+  const ui = useCallback((zh: string, en: string) => (isZh ? zh : en), [isZh]);
+  const greeting = useCallback((): Message => ({
+    id: 'org-lumi-greeting',
+    role: 'assistant',
+    content: ui('你好，我是你们公司的 Lumi。我可以协助查询制度、文化、知识库和组织信息。你想了解什么？', "Hello! I'm your company's Lumi. I can help with policies, culture, knowledge base, and more. What would you like to know?"),
+    timestamp: Date.now(),
+    source: 'system',
+  }), [ui]);
+  const [messages, setMessages] = useState<Message[]>(() => [greeting()]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearActiveRequest = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    activeRequestIdRef.current = null;
+    streamingMessageIdRef.current = null;
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg: Message = { role: 'user', content: input.trim(), timestamp: Date.now() };
+  useEffect(() => {
+    let cancelled = false;
+    const loadConversation = async () => {
+      try {
+        const activeRes = await fetch('/api/conversations/active?domain=work&agentId=lumi', {
+          credentials: 'include',
+        });
+        const activeData = await activeRes.json().catch(() => ({}));
+        const conversationId = activeData.activeConversation?.id;
+        if (!activeRes.ok || !conversationId) {
+          if (!cancelled) setMessages(prev => (prev.length ? prev : [greeting()]));
+          return;
+        }
+        const messagesRes = await fetch(`/api/conversations/${conversationId}/messages?domain=work&limit=80`, {
+          credentials: 'include',
+        });
+        const messagesData = await messagesRes.json().catch(() => ({}));
+        if (!messagesRes.ok) return;
+        const history = Array.isArray(messagesData.messages)
+          ? messagesData.messages.map(normalizeHistoryMessage).filter(Boolean) as Message[]
+          : [];
+        if (!cancelled) setMessages(history.length > 0 ? history : [greeting()]);
+      } catch {
+        if (!cancelled) setMessages(prev => (prev.length ? prev : [greeting()]));
+      }
+    };
+    loadConversation();
+    return () => { cancelled = true; };
+  }, [greeting]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const isCurrent = (data?: { requestId?: string }) => {
+      return Boolean(activeRequestIdRef.current && data?.requestId === activeRequestIdRef.current);
+    };
+
+    const onChunk = (data: { text?: string; agentName?: string; requestId?: string }) => {
+      if (!isCurrent(data) || !data.text) return;
+      setLoading(false);
+      setMessages(prev => {
+        const streamingId = streamingMessageIdRef.current;
+        if (streamingId) {
+          return prev.map(message => (
+            message.id === streamingId
+              ? { ...message, content: message.content + data.text }
+              : message
+          ));
+        }
+        const nextId = makeMessageId('org-stream');
+        streamingMessageIdRef.current = nextId;
+        return [...prev, {
+          id: nextId,
+          role: 'assistant',
+          content: data.text || '',
+          timestamp: Date.now(),
+          source: 'socket',
+        }];
+      });
+    };
+
+    const onResponse = (data: { text?: string; requestId?: string }) => {
+      if (!isCurrent(data)) return;
+      const finalText = (data.text || '').trim();
+      setMessages(prev => {
+        const streamingId = streamingMessageIdRef.current;
+        if (streamingId) {
+          return prev.map(message => (
+            message.id === streamingId
+              ? { ...message, content: finalText || message.content }
+              : message
+          ));
+        }
+        if (!finalText) return prev;
+        return [...prev, {
+          id: makeMessageId('org-response'),
+          role: 'assistant',
+          content: finalText,
+          timestamp: Date.now(),
+          source: 'socket',
+        }];
+      });
+      clearActiveRequest();
+    };
+
+    const onStatus = (data: { status?: string; requestId?: string }) => {
+      if (!isCurrent(data)) return;
+      if (data.status === 'thinking' || data.status === 'responding') {
+        setLoading(true);
+      }
+      if (data.status === 'idle' || data.status === 'error') {
+        clearActiveRequest();
+      }
+    };
+
+    const onError = (data: { message?: string; requestId?: string }) => {
+      if (!isCurrent(data)) return;
+      setMessages(prev => [...prev, {
+        id: makeMessageId('org-error'),
+        role: 'assistant',
+        content: data.message || ui('公司 Lumi 暂时无法回答这个问题。', "Company Lumi can't answer right now."),
+        timestamp: Date.now(),
+        source: 'error',
+      }]);
+      clearActiveRequest();
+    };
+
+    socket.on('agent:chunk', onChunk);
+    socket.on('agent:response', onResponse);
+    socket.on('agent:status', onStatus);
+    socket.on('agent:error', onError);
+
+    return () => {
+      socket.off('agent:chunk', onChunk);
+      socket.off('agent:response', onResponse);
+      socket.off('agent:status', onStatus);
+      socket.off('agent:error', onError);
+      clearActiveRequest();
+    };
+  }, [clearActiveRequest, socket, ui]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    if (!socket) {
+      setMessages(prev => [...prev, {
+        id: makeMessageId('org-error'),
+        role: 'assistant',
+        content: ui('组织聊天通道还没有连接好，请稍后再试。', 'The organization chat channel is not connected yet. Please try again shortly.'),
+        timestamp: Date.now(),
+        source: 'error',
+      }]);
+      return;
+    }
+    if (!orgConnection?.orgId) {
+      setMessages(prev => [...prev, {
+        id: makeMessageId('org-error'),
+        role: 'assistant',
+        content: ui('请先连接或切换到组织工作域。', 'Please connect or switch to an organization work domain first.'),
+        timestamp: Date.now(),
+        source: 'error',
+      }]);
+      return;
+    }
+
+    const requestId = `org_chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const history = messages
+      .filter(message => message.source !== 'error' && message.source !== 'system')
+      .map(message => ({ role: message.role, content: message.content }));
+    const userMsg: Message = {
+      id: makeMessageId('org-user'),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+      source: 'socket',
+    };
+
+    activeRequestIdRef.current = requestId;
+    streamingMessageIdRef.current = null;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      if (activeRequestIdRef.current !== requestId) return;
+      setMessages(prev => [...prev, {
+        id: makeMessageId('org-timeout'),
+        role: 'assistant',
+        content: ui('公司 Lumi 响应超时了，请稍后重试。', 'Company Lumi timed out. Please try again shortly.'),
+        timestamp: Date.now(),
+        source: 'error',
+      }]);
+      clearActiveRequest();
+    }, 60000);
+
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
-
-    try {
-      // Search KB for relevant context
-      const kbRes = await fetch('/api/org/kb/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMsg.content, limit: 3 }),
-        credentials: 'include',
-      });
-      let kbContext = '';
-      if (kbRes.ok) {
-        const results = await kbRes.json().catch(() => []);
-        if (results.length > 0) {
-          kbContext = '\n\nRelevant knowledge base context:\n' +
-            results.map((r: any) => `[${r.title}] ${r.chunk}`).join('\n\n');
-        }
-      }
-
-      // Call LLM with KB context
-      const chatRes = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            { role: 'system', content: `You are the company Lumi, the organizational AI assistant. Answer questions using the provided knowledge base context when available. Be professional, helpful, and aligned with company culture.${kbContext}` },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMsg.content },
-          ],
-        }),
-        credentials: 'include',
-      });
-
-      const data = await chatRes.json().catch(() => ({}));
-      if (!chatRes.ok) throw new Error(data.error || ui('公司 Lumi 暂时无法回答这个问题', "Company Lumi can't answer right now."));
-      const reply = data.text || data.response || data.reply || data.message || ui('我现在处理这个问题有点困难。', "I'm having trouble processing that right now.");
-
-      setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
-    } catch (err: any) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: err?.message || ui('我现在无法连接公司服务，请检查网络或组织服务状态。', "I'm currently unable to reach the company server. Please check your connection."),
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setLoading(false);
-    }
+    socket.emit('agent:chat', {
+      text,
+      history,
+      personalityId: 'lumi',
+      category: 'organization',
+      agentId: 'lumi',
+      domain: 'work',
+      orgId: orgConnection.orgId,
+      source: 'org-chat',
+      requestId,
+    });
   };
 
   return (
@@ -93,9 +270,9 @@ export function CentralLumiChat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <motion.div
-            key={i}
+            key={msg.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
