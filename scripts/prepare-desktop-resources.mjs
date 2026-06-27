@@ -9,7 +9,7 @@ const outDir = path.join(root, 'desktop-resources');
 const includeLocalVoice = process.env.LUMI_DESKTOP_WITH_LOCAL_VOICE === '1';
 
 const runtimeNodeModules = ['sqlite3', 'bindings', 'file-uri-to-path', 'sharp', 'detect-libc', 'semver'];
-const runtimePackageTrees = ['@music163/ncm-cli'];
+const runtimePackageTrees = ['@music163/ncm-cli', 'playwright-core'];
 const runtimeScopedNodeModules = {
   '@img': [
     'colour',

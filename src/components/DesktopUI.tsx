@@ -3735,7 +3735,7 @@ export function DesktopUI({
           t={t}
         />
         <DesktopOnboarding 
-          isOpen={showOnboarding} 
+          isOpen={showOnboarding && sensorPrimerSeen}
           onFinish={() => {
             setShowOnboarding(false);
             localStorage.setItem('lumi_onboarding_seen', 'true');

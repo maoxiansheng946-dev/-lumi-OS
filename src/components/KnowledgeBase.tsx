@@ -62,6 +62,7 @@ function repairKnowledgeFilename(value: string | undefined): string {
 
 export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: KnowledgeBaseProps) {
   const socket = useSocket();
+  const isZh = t?.langCode !== 'en';
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [memories, setMemories] = useState<MemNode[]>([]);
@@ -77,6 +78,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
   const [reflecting, setReflecting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [bulkIngesting, setBulkIngesting] = useState(false);
   const [ingestingFiles, setIngestingFiles] = useState<Set<string>>(() => new Set());
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const lastLoadErrorRef = React.useRef<string | null>(null);
@@ -209,6 +211,11 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
   const partialFileCount = useMemo(() => files.filter(file => (file.extractionStatus || file.status) === 'partial').length, [files]);
   const needsAttentionFileCount = useMemo(() => files.filter(file => ['failed', 'unsupported'].includes(String(file.extractionStatus || file.status || ''))).length, [files]);
   const pendingFileCount = Math.max(0, files.length - absorbedFileCount);
+  const ingestableFiles = useMemo(() => files.filter(file => {
+    const status = String(file.extractionStatus || file.status || '');
+    if (status === 'unsupported') return false;
+    return !fileIsAbsorbed(file) || status === 'partial' || status === 'failed';
+  }), [fileIsAbsorbed, files]);
   const fileSearchResults = search.trim() ? visibleFiles.slice(0, 5) : [];
 
   // Actions
@@ -273,6 +280,50 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
         next.delete(id);
         return next;
       });
+    }
+  };
+
+  const handleIngestAll = async () => {
+    const targets = ingestableFiles;
+    if (targets.length === 0) {
+      toast.info(t.kbNothingToIngest || (isZh ? '没有需要吸收的文件' : 'No files need absorption'));
+      return;
+    }
+
+    const agentId = targetAgentId;
+    setBulkIngesting(true);
+    let absorbed = 0;
+    let failed = 0;
+    try {
+      for (const file of targets) {
+        setIngestingFiles(prev => new Set(prev).add(file.id));
+        try {
+          const res = await fetch(scopedFileUrl('/api/files/ingest'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ fileId: file.id, agentId, domain }),
+          });
+          if (res.ok) absorbed++;
+          else failed++;
+        } catch {
+          failed++;
+        } finally {
+          setIngestingFiles(prev => {
+            const next = new Set(prev);
+            next.delete(file.id);
+            return next;
+          });
+        }
+      }
+      await fetchAll();
+      if (failed > 0) {
+        toast.warning(isZh ? `已吸收 ${absorbed} 个，${failed} 个需要检查` : `${absorbed} absorbed, ${failed} need review`);
+      } else {
+        toast.success(`${t.kbIngested || (isZh ? '已吸收' : 'Absorbed')}: ${absorbed}`);
+      }
+    } finally {
+      setBulkIngesting(false);
     }
   };
 
@@ -462,17 +513,17 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
               </div>
               {pendingFileCount > 0 && (
                 <div className="border-b border-amber-400/10 bg-amber-400/[0.055] px-4 py-2 text-[11px] font-bold leading-5 text-amber-100/68">
-                  {pendingFileCount} {t.kbPendingIngest || 'file(s) waiting to be absorbed by Lumi'}
+                  {pendingFileCount} {t.kbPendingIngest || (isZh ? '个文件等待 Lumi 吸收' : 'file(s) waiting to be absorbed by Lumi')}
                 </div>
               )}
               {partialFileCount > 0 && (
                 <div className="border-b border-blue-400/10 bg-blue-400/[0.055] px-4 py-2 text-[11px] font-bold leading-5 text-blue-100/68">
-                  {partialFileCount} partially absorbed file(s). Configure a vision model for full image reading.
+                  {isZh ? `${partialFileCount} 个文件只完成了部分吸收。配置视觉模型后可重新读取图片内容。` : `${partialFileCount} partially absorbed file(s). Configure a vision model for full image reading.`}
                 </div>
               )}
               {needsAttentionFileCount > 0 && (
                 <div className="border-b border-red-400/10 bg-red-400/[0.055] px-4 py-2 text-[11px] font-bold leading-5 text-red-100/70">
-                  {needsAttentionFileCount} file(s) need review before Lumi can use them.
+                  {isZh ? `${needsAttentionFileCount} 个文件需要检查后 Lumi 才能使用。` : `${needsAttentionFileCount} file(s) need review before Lumi can use them.`}
                 </div>
               )}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
@@ -486,12 +537,12 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                     const partial = knowledgeStatus === 'partial';
                     const failed = knowledgeStatus === 'failed' || knowledgeStatus === 'unsupported';
                     const statusLabel = failed
-                      ? 'needs review'
+                      ? (isZh ? '需检查' : 'needs review')
                       : partial
-                        ? 'partial'
+                        ? (isZh ? '部分吸收' : 'partial')
                         : absorbed
-                          ? (t.kbIngested || 'absorbed')
-                          : (t.kbReadyToIngest || 'pending');
+                          ? (t.kbIngested || (isZh ? '已吸收' : 'absorbed'))
+                          : (t.kbReadyToIngest || (isZh ? '待吸收' : 'pending'));
                     return (
                     <div
                       key={f.id}
@@ -541,7 +592,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                           }}
                           className="shrink-0 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100 transition-colors hover:bg-amber-400/16 disabled:pointer-events-none disabled:opacity-60"
                         >
-                          {ingesting ? (t.loading || 'Loading') : partial ? 'Re-read' : (t.kbIngest || 'Absorb')}
+                          {ingesting ? (t.loading || (isZh ? '读取中' : 'Loading')) : partial ? (isZh ? '重读' : 'Re-read') : (t.kbIngest || (isZh ? '吸收' : 'Absorb'))}
                         </button>
                       )}
                       <ChevronRight size={12} className="text-white/20 shrink-0 group-hover:text-white/40 transition-colors" />
@@ -633,6 +684,16 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                   {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                   {t.kbImport || 'Import'}
                 </button>
+                {ingestableFiles.length > 0 && (
+                  <button
+                    onClick={() => void handleIngestAll()}
+                    disabled={bulkIngesting}
+                    className="flex items-center gap-1.5 bg-black/40 backdrop-blur-xl border border-amber-500/20 rounded-xl px-3 py-2 text-xs font-bold text-amber-300/75 hover:text-amber-200 hover:border-amber-300/40 transition-all disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    {bulkIngesting ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                    {bulkIngesting ? (t.loading || (isZh ? '读取中' : 'Loading')) : `${t.kbIngestAll || (isZh ? '全部吸收' : 'Absorb all')} (${ingestableFiles.length})`}
+                  </button>
+                )}
                 <button
                   onClick={handleAutoOrganize}
                   disabled={organizing}

@@ -8,6 +8,7 @@
 
 import { isCircuitClosed, recordFailure, recordSuccess } from './circuit_breaker';
 import { isCloudRetryable } from './retry';
+import { getKey } from '../config/keys';
 
 // ── Provider Priority Lists ──
 
@@ -158,12 +159,12 @@ export async function withFallback<T>(
  */
 export function getAvailableLLMProviders(): Record<string, boolean> {
   return {
-    deepseek: !!(process.env.DEEPSEEK_API_KEY),
-    qwen: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY),
-    openai: !!(process.env.OPENAI_API_KEY),
-    gemini: !!(process.env.GEMINI_API_KEY),
-    anthropic: !!(process.env.ANTHROPIC_API_KEY),
-    glm: !!(process.env.GLM_API_KEY),
+    deepseek: !!(process.env.DEEPSEEK_API_KEY || getKey('DEEPSEEK_API_KEY')),
+    qwen: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || getKey('DASHSCOPE_API_KEY') || getKey('QWEN_API_KEY')),
+    openai: !!(process.env.OPENAI_API_KEY || getKey('OPENAI_API_KEY')),
+    gemini: !!(process.env.GEMINI_API_KEY || getKey('GEMINI_API_KEY')),
+    anthropic: !!(process.env.ANTHROPIC_API_KEY || getKey('ANTHROPIC_API_KEY')),
+    glm: !!(process.env.GLM_API_KEY || getKey('GLM_API_KEY')),
   };
 }
 
@@ -172,9 +173,9 @@ export function getAvailableLLMProviders(): Record<string, boolean> {
  */
 export function getAvailableSTTProviders(): Record<string, boolean> {
   return {
-    qwen: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY),
-    deepgram: !!(process.env.DEEPGRAM_API_KEY),
-    whisper: !!(process.env.OPENAI_API_KEY),
+    qwen: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || getKey('DASHSCOPE_API_KEY') || getKey('QWEN_API_KEY')),
+    deepgram: !!(process.env.DEEPGRAM_API_KEY || getKey('DEEPGRAM_API_KEY')),
+    whisper: !!(process.env.OPENAI_API_KEY || getKey('OPENAI_API_KEY')),
   };
 }
 
@@ -183,7 +184,7 @@ export function getAvailableSTTProviders(): Record<string, boolean> {
  */
 export function getAvailableTTSProviders(): Record<string, boolean> {
   return {
-    cosyvoice: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY),
-    gptsovits: !!(process.env.GPTSOVITS_API_URL || process.env.GPTSOVITS_ENABLED === 'true'),
+    cosyvoice: !!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || getKey('DASHSCOPE_API_KEY') || getKey('QWEN_API_KEY')),
+    gptsovits: !!(process.env.GPTSOVITS_API_URL || process.env.GPTSOVITS_ENABLED === 'true' || getKey('GPTSOVITS_API_URL')),
   };
 }
