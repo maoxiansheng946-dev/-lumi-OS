@@ -20,7 +20,7 @@ import { socketService } from '@/services/socketService';
 import { useVoiceCall } from '@/hooks/useVoiceCall';
 import { useVoiceCloning } from '@/hooks/useVoiceCloning';
 import { listVoices } from '@/services/voiceService';
-import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
+import WorkflowPanel, { type BackgroundWorkflowTask, type WorkflowStep } from './WorkflowPanel';
 import { WeChatSettings } from './WeChatSettings';
 
 const CHAT_HISTORY_LIMIT = 300;
@@ -219,12 +219,51 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const [searchError, setSearchError] = useState('');
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>('idle');
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [backgroundWorkflowTasks, setBackgroundWorkflowTasks] = useState<BackgroundWorkflowTask[]>([]);
   const { speak, stop, pause, resume, isSpeaking, isPaused } = useTTS();
   const recognition = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const agentNameRef = useRef<string>('Lumi');
   const seenToolEventIds = useRef<Set<string>>(new Set());
   const seenWorkflowToolEvents = useRef<Set<string>>(new Set());
+  const backgroundTaskStatusRef = useRef<Map<string, string>>(new Map());
+
+  const upsertBackgroundWorkflowTask = useCallback((task: BackgroundWorkflowTask) => {
+    if (!task?.id) return;
+    setBackgroundWorkflowTasks(prev => {
+      const existing = prev.findIndex(item => item.id === task.id);
+      const nextTask = { ...prev[existing], ...task };
+      const next = existing >= 0
+        ? prev.map(item => item.id === task.id ? nextTask : item)
+        : [nextTask, ...prev];
+      return next.slice(0, 6);
+    });
+
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+      window.setTimeout(() => {
+        setBackgroundWorkflowTasks(prev => prev.filter(item => item.id !== task.id));
+        backgroundTaskStatusRef.current.delete(task.id);
+      }, 12000);
+    }
+  }, []);
+
+  const cancelBackgroundWorkflowTask = useCallback((taskId: string) => {
+    socket?.emit('agent:background_cancel', { taskId });
+    setBackgroundWorkflowTasks(prev => prev.map(task =>
+      task.id === taskId ? { ...task, status: 'cancelling' } : task
+    ));
+  }, [socket]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/autonomy/background-tasks', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!Array.isArray(data?.tasks)) return;
+        data.tasks.slice(0, 6).forEach((task: BackgroundWorkflowTask) => upsertBackgroundWorkflowTask(task));
+      })
+      .catch(() => {});
+  }, [isOpen, upsertBackgroundWorkflowTask]);
 
   const updateDraftText = useCallback((value: string) => {
     draftTextRef.current = value;
@@ -757,7 +796,60 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         .catch(() => {});
     };
 
+    const normalizeBackgroundTask = (data: any): BackgroundWorkflowTask | null => {
+      const raw = data?.task || data;
+      const id = String(raw?.id || data?.taskId || '');
+      if (!id) return null;
+      const workerNames = Array.isArray(raw?.workerNames)
+        ? raw.workerNames
+        : Array.isArray(raw?.workers)
+          ? raw.workers.map((worker: any) => worker?.name || worker?.id).filter(Boolean)
+          : [];
+      return {
+        id,
+        title: raw?.title || data?.title || id,
+        status: (raw?.status || 'queued') as BackgroundWorkflowTask['status'],
+        workerNames,
+        toolCallsCount: Number(raw?.toolCallsCount || 0),
+        error: raw?.error,
+        resultPreview: raw?.resultPreview,
+        updatedAt: raw?.updatedAt,
+      };
+    };
+
+    const recordBackgroundTaskStep = (task: BackgroundWorkflowTask) => {
+      const previousStatus = backgroundTaskStatusRef.current.get(task.id);
+      if (previousStatus === task.status) return;
+      backgroundTaskStatusRef.current.set(task.id, task.status);
+      const isActive = task.status === 'queued' || task.status === 'running' || task.status === 'cancelling';
+      const isFailed = task.status === 'failed';
+      setWorkflowStatus(isActive ? 'background' : isFailed ? 'error' : 'done');
+      setWorkflowSteps(prev => [...prev, {
+        id: `chat-background-task-${task.id}-${task.status}-${Date.now()}`,
+        type: isFailed ? 'error' : task.status === 'completed' ? 'response' : 'background',
+        text: `${t.workflowBackgroundTask || 'Background task'}: ${task.status}`,
+        detail: task.title || task.id,
+        time: Date.now(),
+      }]);
+    };
+
+    const onDelegation = (data: any) => {
+      const task = normalizeBackgroundTask(data);
+      if (!task) return;
+      upsertBackgroundWorkflowTask(task);
+      recordBackgroundTaskStep(task);
+    };
+
+    const onBackgroundTaskUpdate = (data: any) => {
+      const task = normalizeBackgroundTask(data);
+      if (!task) return;
+      upsertBackgroundWorkflowTask(task);
+      recordBackgroundTaskStep(task);
+    };
+
     socket.on("agent:proactive", onProactive);
+    socket.on("agent:delegation", onDelegation);
+    socket.on("agent:background_task_update", onBackgroundTaskUpdate);
     socket.on("agent:chunk", onChunk);
     socket.on("agent:tool", onTool);
     socket.on("agent:tool_call", onTool);
@@ -769,6 +861,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
 
     return () => {
       socket.off("agent:proactive", onProactive);
+      socket.off("agent:delegation", onDelegation);
+      socket.off("agent:background_task_update", onBackgroundTaskUpdate);
       socket.off("agent:chunk", onChunk);
       socket.off("agent:tool", onTool);
       socket.off("agent:tool_call", onTool);
@@ -1050,7 +1144,7 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   );
   const workflowPanelVisible =
     isOpen &&
-    (workflowStatus !== 'idle' || workflowSteps.length > 0 || workflowHasExecution);
+    (workflowStatus !== 'idle' || workflowSteps.length > 0 || workflowHasExecution || backgroundWorkflowTasks.length > 0);
   const displayMessages = searchQuery.trim()
     ? searchDisplayMessages
     : messages.length > CHAT_RENDER_LIMIT
@@ -1088,6 +1182,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
         steps={workflowSteps}
         t={t}
         placement="corner"
+        backgroundTasks={backgroundWorkflowTasks}
+        onCancelBackgroundTask={cancelBackgroundWorkflowTask}
       />
       <AnimatePresence>
         {showWeChatSettings && (

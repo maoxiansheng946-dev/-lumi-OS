@@ -29,6 +29,17 @@ import { checkLLMAccess, recordUsage, estimateTokens } from "../subscription/pro
 import { recordTokenUsage } from "../llm/token_tracker";
 import { runOrchestratedTask, shouldDistillSkill, buildSkillDescription, classifyComplexity } from "../agents/orchestrator";
 import { buildDelegationAck, shouldDelegateWorkInBackground } from "../agents/background_delegation";
+import {
+  cancelBackgroundTask,
+  completeBackgroundTask,
+  failBackgroundTask,
+  getBackgroundTask,
+  incrementBackgroundTaskToolCalls,
+  isBackgroundTaskCancellationRequested,
+  markBackgroundTaskRunning,
+  registerBackgroundTask,
+  requestCancelBackgroundTask,
+} from "../agents/background_tasks";
 import { runNLChainer, shouldChainTask } from "../agents/nl_chainer";
 import { autoInstallForTask } from "../agents/auto_installer";
 import { adjustMusicPlayback, getMusicFailureMessage, isMusicAdjustmentRequest, isMusicPlaybackRequest, searchAndPlay } from "../music/search_play";
@@ -196,6 +207,35 @@ export function registerChatHandler(
       socket.emit("agent:status", { status: "idle", source: "chat" });
       socket.emit("agent:response", { text: "[Cancelled]", agentName: "Lumi", source: "chat" });
     }
+  });
+
+  socket.on("agent:background_cancel", (data: { taskId?: string }) => {
+    const uid = userIdFn(socket);
+    const taskId = typeof data?.taskId === 'string' ? data.taskId : '';
+    if (!taskId) {
+      socket.emit("agent:background_task_update", {
+        taskId,
+        error: 'Missing background task id',
+        source: 'background_delegation',
+      });
+      return;
+    }
+
+    const task = requestCancelBackgroundTask(taskId, uid);
+    if (!task) {
+      socket.emit("agent:background_task_update", {
+        taskId,
+        error: 'Background task not found',
+        source: 'background_delegation',
+      });
+      return;
+    }
+
+    socket.emit("agent:background_task_update", {
+      taskId: task.id,
+      task,
+      source: 'background_delegation',
+    });
   });
 
   socket.on("agent:chat", async (data: { text?: string; history?: any[]; attachments?: any[]; personalityId?: string; category?: string; agentId?: string; domain?: string; orgId?: string | null; mode?: string; source?: string; requestId?: string }) => {
@@ -846,13 +886,10 @@ export function registerChatHandler(
         });
 
         if (delegationDecision.shouldDelegate) {
-          const backgroundTaskId = `bg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-          const workerNames = availableWorkerAgents.map((agent: any) => String(agent.name || agent.id)).slice(0, 3);
-          responseText = buildDelegationAck(workerNames, backgroundTaskId);
-          llmWasCalled = false;
-
-          emitAgent("agent:delegation", {
-            taskId: backgroundTaskId,
+          const backgroundTask = registerBackgroundTask({
+            userId: uid,
+            title: visibleUserText.slice(0, 140) || storedUserContent.slice(0, 140) || 'Background task',
+            prompt: text,
             reason: delegationDecision.reason,
             complexity: backgroundComplexity,
             workers: availableWorkerAgents.slice(0, 6).map((agent: any) => ({
@@ -860,6 +897,22 @@ export function registerChatHandler(
               name: agent.name,
               category: agent.category,
             })),
+          });
+          const backgroundTaskId = backgroundTask.id;
+          const workerNames = backgroundTask.workerNames.slice(0, 3);
+          responseText = buildDelegationAck(workerNames, backgroundTaskId);
+          llmWasCalled = false;
+
+          emitAgent("agent:delegation", {
+            taskId: backgroundTaskId,
+            task: backgroundTask,
+            reason: delegationDecision.reason,
+            complexity: backgroundComplexity,
+            workers: backgroundTask.workers,
+          });
+          emitAgent("agent:background_task_update", {
+            taskId: backgroundTaskId,
+            task: backgroundTask,
           });
           pushNotification(uid, {
             type: 'background_delegation',
@@ -875,6 +928,15 @@ export function registerChatHandler(
                 source: 'background_delegation',
                 requestId: backgroundTaskId,
                 taskId: backgroundTaskId,
+                conversationId,
+                agentId: conversationAgentId,
+              });
+            };
+            const emitTaskUpdate = (task = getBackgroundTask(backgroundTaskId, uid)) => {
+              if (!task) return;
+              emitBackground("agent:background_task_update", {
+                taskId: task.id,
+                task,
               });
             };
             const persistBackgroundResult = (content: string, toolCalls?: ToolExecutionRecord[]) => {
@@ -918,6 +980,8 @@ export function registerChatHandler(
 
             (async () => {
               try {
+                const runningTask = markBackgroundTaskRunning(backgroundTaskId);
+                if (runningTask) emitTaskUpdate(runningTask);
                 emitBackground("agent:status", {
                   status: "thinking",
                   agentName: "Lumi Orchestrator",
@@ -926,7 +990,14 @@ export function registerChatHandler(
                 });
                 const orchResult = await runOrchestratedTask(
                   text,
-                  { userId: uid, personalityId, domain: resolvedDomain, orgId: resolvedOrgId, desktopRelay },
+                  {
+                    userId: uid,
+                    personalityId,
+                    domain: resolvedDomain,
+                    orgId: resolvedOrgId,
+                    desktopRelay,
+                    isCancelled: () => isBackgroundTaskCancellationRequested(backgroundTaskId),
+                  },
                   { provider: activeProvider as any, model: activeModel },
                   llmGetters,
                   (message) => emitBackground("agent:chunk", { text: message, agentName: "Lumi Orchestrator" }),
@@ -938,6 +1009,10 @@ export function registerChatHandler(
                       result: record.result || '',
                       error: record.error,
                     });
+                    if (record.result !== undefined || record.error !== undefined) {
+                      const updatedTask = incrementBackgroundTaskToolCalls(backgroundTaskId);
+                      if (updatedTask) emitTaskUpdate(updatedTask);
+                    }
                     const payload: Record<string, any> = {
                       correlationId: record.id,
                       toolCallId: record.id,
@@ -958,6 +1033,9 @@ export function registerChatHandler(
                 if (!orchResult) {
                   throw new Error('No worker agent accepted the delegated task.');
                 }
+                if (isBackgroundTaskCancellationRequested(backgroundTaskId)) {
+                  throw new Error('Workflow cancelled');
+                }
 
                 let finalText = orchResult.responseText || '后台子 agent 已完成任务，但没有返回详细文本。';
                 const guarded = guardCompletionClaims({
@@ -969,6 +1047,15 @@ export function registerChatHandler(
                 if (guarded.blocked) finalText = guarded.text;
 
                 const completionText = `后台子 agent 完成了：${text.slice(0, 80)}\n\n${finalText}`;
+                const completedTask = completeBackgroundTask(backgroundTaskId, completionText);
+                if (completedTask) emitTaskUpdate(completedTask);
+                if (completedTask?.status === 'cancelled') {
+                  const cancelText = `Background task cancelled: ${text.slice(0, 80)}`;
+                  persistBackgroundResult(cancelText, backgroundToolRecords);
+                  emitBackground("agent:response", { text: cancelText, agentName: personality.name });
+                  emitBackground("agent:status", { status: "idle", agentName: personality.name, phase: 'background' });
+                  return;
+                }
                 persistBackgroundResult(completionText, backgroundToolRecords);
                 emitBackground("agent:response", { text: completionText, agentName: personality.name });
                 emitBackground("agent:proactive", {
@@ -994,6 +1081,23 @@ export function registerChatHandler(
                   });
                 }
               } catch (bgErr: any) {
+                const bgMessage = bgErr?.message || String(bgErr);
+                if (isBackgroundTaskCancellationRequested(backgroundTaskId) || /cancelled|canceled/i.test(bgMessage)) {
+                  const cancelledTask = cancelBackgroundTask(backgroundTaskId);
+                  if (cancelledTask) emitTaskUpdate(cancelledTask);
+                  const cancelText = `Background task cancelled: ${text.slice(0, 80)}`;
+                  persistBackgroundResult(cancelText, backgroundToolRecords);
+                  emitBackground("agent:response", { text: cancelText, agentName: personality.name });
+                  emitBackground("agent:status", { status: "idle", agentName: personality.name, phase: 'background' });
+                  pushNotification(uid, {
+                    type: 'background_cancelled',
+                    title: 'Background task cancelled',
+                    message: cancelText.slice(0, 180),
+                  });
+                  return;
+                }
+                const failedTask = failBackgroundTask(backgroundTaskId, bgMessage);
+                if (failedTask) emitTaskUpdate(failedTask);
                 const errorText = `后台子 agent 处理受阻：${bgErr?.message || String(bgErr)}`;
                 persistBackgroundResult(errorText, backgroundToolRecords);
                 emitBackground("agent:response", { text: errorText, agentName: personality.name });

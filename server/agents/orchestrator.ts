@@ -73,6 +73,7 @@ export interface OrchestrationContext {
   orgId?: string;
   availableAgentIds?: string[];
   desktopRelay?: (toolName: string, args: Record<string, any>) => Promise<string>;
+  isCancelled?: () => boolean;
 }
 
 export interface OrchestrationToolMeta {
@@ -188,6 +189,12 @@ function recordExternalAgentRun(agentId: string, result: { success: boolean; out
     });
     writeDB(db);
   } catch {}
+}
+
+function throwIfCancelled(context: OrchestrationContext): void {
+  if (context.isCancelled?.()) {
+    throw new Error('Workflow cancelled');
+  }
 }
 
 // ── Complexity classification ──
@@ -725,10 +732,13 @@ async function executeWorkerTask(
   onTool?: OrchestrationToolCallback,
 ): Promise<{ subTaskId: string; output: string; agentId: string }> {
   const { subTask, agent } = assignment;
+  throwIfCancelled(context);
 
   // External agents: dispatch via CLI (OpenClaw, Hermes, etc.)
   if (agent.runtime === 'external' && agent.externalCommand) {
-    return executeExternalWorkerTask(assignment);
+    const result = await executeExternalWorkerTask(assignment);
+    throwIfCancelled(context);
+    return result;
   }
 
   const agentsToTry = [
@@ -737,6 +747,7 @@ async function executeWorkerTask(
   ];
 
   for (let attempt = 0; attempt < agentsToTry.length; attempt++) {
+    throwIfCancelled(context);
     const currentAgent = agentsToTry[attempt];
     const isRetry = attempt > 0;
 
@@ -780,6 +791,7 @@ async function executeWorkerTask(
         userId: context.userId,
         requestConfirmation: async () => true,
         desktopRelay: context.desktopRelay,
+        isCancelled: context.isCancelled,
         llmGetters,
         onToolStart: (record: { id: string; name: string; arguments: Record<string, any> }) => {
           onTool?.({
@@ -825,6 +837,7 @@ async function executeWorkerTask(
         ),
         timeoutPromise,
       ]);
+      throwIfCancelled(context);
 
       // Record token usage for each LLM call within this worker
       for (const u of (result.usageRecords || [])) {
@@ -841,6 +854,7 @@ async function executeWorkerTask(
         agentId: currentAgent.id,
       };
     } catch (err) {
+      throwIfCancelled(context);
       if (attempt < agentsToTry.length - 1) {
         console.warn(`[Orchestrator] Worker '${currentAgent.name}' failed (attempt ${attempt + 1}/${agentsToTry.length}), trying next...`, String(err).slice(0, 80));
         continue;
@@ -879,6 +893,7 @@ export async function executeWorkflow(
   const usedAgentIds = new Set<string>();
 
   for (const group of groups) {
+    throwIfCancelled(context);
     // Execute group in parallel
     const groupResults = await Promise.all(
       group.map(a => {
@@ -895,9 +910,11 @@ export async function executeWorkflow(
       }
     }
     allResults.push(...groupResults);
+    throwIfCancelled(context);
   }
 
   // Aggregate results
+  throwIfCancelled(context);
   const aggregatedOutput = aggregateResults(allResults, assignments);
 
   // Crystallize workflow result as a growth memory for future reuse
@@ -1129,6 +1146,7 @@ export async function runOrchestratedTask(
   onProgress?: (message: string) => void,
   onTool?: OrchestrationToolCallback,
 ): Promise<OrchestratedResult | null> {
+  throwIfCancelled(context);
   const complexity = classifyComplexity(text, context);
   if (complexity !== 'complex' && complexity !== 'moderate') return null;
 
@@ -1136,7 +1154,9 @@ export async function runOrchestratedTask(
   const availableAgents = (db.agents || []).filter((a: any) => agentAvailableForContext(a, context));
   if (availableAgents.length < 1) return null;
 
+  throwIfCancelled(context);
   const subTasks = await decomposeTask(text, llmConfig, context, llmGetters);
+  throwIfCancelled(context);
   const capped = complexity === 'moderate'
     ? subTasks.slice(0, Math.min(2, subTasks.length))
     : subTasks;
@@ -1146,11 +1166,14 @@ export async function runOrchestratedTask(
   const assignments = matchWorkers(capped, availableAgents);
   onProgress?.(`[Orchestrator] Assigned to ${assignments.length} worker(s)\n`);
 
+  throwIfCancelled(context);
   const workflowResult = await executeWorkflow(assignments, context, llmConfig, llmGetters, availableAgents, onTool);
+  throwIfCancelled(context);
 
   const aggregated = complexity === 'moderate' && capped.length <= 2
     ? workflowResult.aggregatedOutput
     : await aggregateWithLLM(workflowResult, text, llmConfig, llmGetters, context.userId);
+  throwIfCancelled(context);
 
   // Record workflow pattern for future skill distillation
   const skillTags = capped.map(s => s.requiredSkill);

@@ -12,12 +12,25 @@ export interface WorkflowStep {
 
 type WorkflowStatus = 'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error';
 
+export interface BackgroundWorkflowTask {
+  id: string;
+  title?: string;
+  status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
+  workerNames?: string[];
+  toolCallsCount?: number;
+  error?: string;
+  resultPreview?: string;
+  updatedAt?: string;
+}
+
 interface WorkflowPanelProps {
   visible: boolean;
   agentStatus: WorkflowStatus;
   steps: WorkflowStep[];
   t?: any;
   placement?: 'center' | 'corner';
+  backgroundTasks?: BackgroundWorkflowTask[];
+  onCancelBackgroundTask?: (taskId: string) => void;
 }
 
 function StatusLights({ status }: { status: WorkflowPanelProps['agentStatus'] }) {
@@ -96,9 +109,56 @@ function StepIcon({ type }: { type: WorkflowStep['type'] }) {
   }
 }
 
-export default function WorkflowPanel({ visible, agentStatus, steps, t, placement = 'center' }: WorkflowPanelProps) {
+function taskStatusLabel(status: BackgroundWorkflowTask['status'], t?: any): string {
+  switch (status) {
+    case 'queued':
+      return t?.workflowTaskQueued || 'Queued';
+    case 'running':
+      return t?.workflowTaskRunning || 'Running';
+    case 'cancelling':
+      return t?.workflowTaskCancelling || 'Cancelling';
+    case 'completed':
+      return t?.workflowTaskCompleted || 'Completed';
+    case 'failed':
+      return t?.workflowTaskFailed || 'Failed';
+    case 'cancelled':
+      return t?.workflowTaskCancelled || 'Cancelled';
+  }
+}
+
+function taskStatusClass(status: BackgroundWorkflowTask['status']): string {
+  switch (status) {
+    case 'queued':
+      return 'border-white/10 bg-white/[0.04] text-white/55';
+    case 'running':
+      return 'border-cyan-300/20 bg-cyan-300/10 text-cyan-200';
+    case 'cancelling':
+      return 'border-amber-300/20 bg-amber-300/10 text-amber-200';
+    case 'completed':
+      return 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200';
+    case 'failed':
+      return 'border-red-300/20 bg-red-300/10 text-red-200';
+    case 'cancelled':
+      return 'border-white/10 bg-white/[0.04] text-white/45';
+  }
+}
+
+function canCancelTask(status: BackgroundWorkflowTask['status']): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+export default function WorkflowPanel({
+  visible,
+  agentStatus,
+  steps,
+  t,
+  placement = 'center',
+  backgroundTasks = [],
+  onCancelBackgroundTask,
+}: WorkflowPanelProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const latestStep = steps[steps.length - 1];
+  const visibleBackgroundTasks = backgroundTasks.slice(0, 3);
   const isCorner = placement === 'corner';
   const verticalOffset = isCorner ? 20 : -20;
   const positionClass = isCorner
@@ -132,6 +192,50 @@ export default function WorkflowPanel({ visible, agentStatus, steps, t, placemen
                 {steps.length > 0 ? `${steps.length} ${t?.workflowSteps || 'steps'}` : ''}
               </span>
             </div>
+
+            {visibleBackgroundTasks.length > 0 && (
+              <div className="space-y-2">
+                {visibleBackgroundTasks.map((task) => {
+                  const workers = task.workerNames?.filter(Boolean).slice(0, 3).join(', ');
+                  const detail = [
+                    workers,
+                    task.toolCallsCount ? `${task.toolCallsCount} ${t?.workflowTaskTools || 'tool calls'}` : '',
+                  ].filter(Boolean).join(' / ');
+                  return (
+                    <div
+                      key={task.id}
+                      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2"
+                    >
+                      <BrainCircuit size={14} className="shrink-0 text-cyan-200" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-xs font-bold text-white/85">
+                            {task.title || task.id}
+                          </span>
+                          <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-black uppercase ${taskStatusClass(task.status)}`}>
+                            {taskStatusLabel(task.status, t)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-white/45">
+                          {task.error || task.resultPreview || detail || task.id}
+                        </div>
+                      </div>
+                      {onCancelBackgroundTask && canCancelTask(task.status) && (
+                        <button
+                          type="button"
+                          onClick={() => onCancelBackgroundTask(task.id)}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition-colors hover:border-red-300/30 hover:bg-red-400/10 hover:text-red-200"
+                          title={t?.workflowTaskCancel || 'Cancel background task'}
+                          aria-label={t?.workflowTaskCancel || 'Cancel background task'}
+                        >
+                          <XCircle size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {latestStep && (
               <div className="border-l border-white/10 pl-3 py-0.5">

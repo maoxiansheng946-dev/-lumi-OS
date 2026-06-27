@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { getGateConfig, saveGateConfig } from '../autonomy/safety_gate';
 import { getTaskQueue, cancelTask, getTaskHistory } from '../autonomy/task_queue';
+import { listBackgroundTasks, requestCancelBackgroundTask } from '../agents/background_tasks';
 
 export function autonomyRoutes(): Router {
   const router = Router();
@@ -31,6 +32,16 @@ export function autonomyRoutes(): Router {
     const ok = cancelTask(req.params.id);
     if (!ok) return res.status(404).json({ error: 'Task not found or not cancellable' });
     res.json({ id: req.params.id, cancelled: true });
+  });
+
+  router.get('/background-tasks', requireAuth, (req, res) => {
+    res.json({ tasks: listBackgroundTasks(req.user!.uid) });
+  });
+
+  router.post('/background-tasks/:id/cancel', requireAuth, (req, res) => {
+    const task = requestCancelBackgroundTask(req.params.id, req.user!.uid);
+    if (!task) return res.status(404).json({ error: 'Background task not found' });
+    res.json({ task });
   });
 
   return router;

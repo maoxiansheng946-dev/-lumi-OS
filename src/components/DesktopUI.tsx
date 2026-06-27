@@ -93,7 +93,7 @@ import { AutonomousFeed } from './AutonomousFeed';
 import { SystemExplorer } from './SystemExplorer';
 const NexusGlobe = lazy(() => import('./NexusGlobe/NexusGlobe').then(m => ({ default: m.NexusGlobe })));
 const InkWorldLazy = lazy(() => import('./InkWorld').then(m => ({ default: m.InkWorld })));
-import WorkflowPanel, { type WorkflowStep } from './WorkflowPanel';
+import WorkflowPanel, { type BackgroundWorkflowTask, type WorkflowStep } from './WorkflowPanel';
 import { useWakeWord } from '../hooks/useWakeWord';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ToolConfirmDialog } from './ToolConfirmDialog';
@@ -1064,8 +1064,10 @@ export function DesktopUI({
   const [showMcpPanel, setShowMcpPanel] = useState(false);
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking' | 'background' | 'executing' | 'waiting_confirmation' | 'done' | 'error'>('idle');
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [backgroundWorkflowTasks, setBackgroundWorkflowTasks] = useState<BackgroundWorkflowTask[]>([]);
   const [pendingOperationMode, setPendingOperationMode] = useState<OperationMode | null>(null);
   const seenWorkflowToolEvents = useRef<Set<string>>(new Set());
+  const backgroundTaskStatusRef = useRef<Map<string, string>>(new Map());
   const [meetingNotesOpen, setMeetingNotesOpen] = useState(false);
   const [meetingStartedAt, setMeetingStartedAt] = useState<number | null>(() => {
     const saved = localStorage.getItem('lumi_meeting_started_at');
@@ -1799,6 +1801,42 @@ export function DesktopUI({
     return () => { socket.off('mcp:activity', handler); };
   }, [socket]);
 
+  const upsertBackgroundWorkflowTask = useCallback((task: BackgroundWorkflowTask) => {
+    if (!task?.id) return;
+    setBackgroundWorkflowTasks(prev => {
+      const existing = prev.findIndex(item => item.id === task.id);
+      const nextTask = { ...prev[existing], ...task };
+      const next = existing >= 0
+        ? prev.map(item => item.id === task.id ? nextTask : item)
+        : [nextTask, ...prev];
+      return next.slice(0, 6);
+    });
+
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+      window.setTimeout(() => {
+        setBackgroundWorkflowTasks(prev => prev.filter(item => item.id !== task.id));
+        backgroundTaskStatusRef.current.delete(task.id);
+      }, 12000);
+    }
+  }, []);
+
+  const cancelBackgroundWorkflowTask = useCallback((taskId: string) => {
+    socket?.emit('agent:background_cancel', { taskId });
+    setBackgroundWorkflowTasks(prev => prev.map(task =>
+      task.id === taskId ? { ...task, status: 'cancelling' } : task
+    ));
+  }, [socket]);
+
+  useEffect(() => {
+    fetch('/api/autonomy/background-tasks', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!Array.isArray(data?.tasks)) return;
+        data.tasks.slice(0, 6).forEach((task: BackgroundWorkflowTask) => upsertBackgroundWorkflowTask(task));
+      })
+      .catch(() => {});
+  }, [upsertBackgroundWorkflowTask]);
+
   // Workflow status listener — agent:status, agent:tool_call, agent:response, agent:error
   useEffect(() => {
     if (!socket) return;
@@ -1947,7 +1985,61 @@ export function DesktopUI({
       }
     };
 
+    const normalizeBackgroundTask = (data: any): BackgroundWorkflowTask | null => {
+      const raw = data?.task || data;
+      const id = String(raw?.id || data?.taskId || '');
+      if (!id) return null;
+      const workerNames = Array.isArray(raw?.workerNames)
+        ? raw.workerNames
+        : Array.isArray(raw?.workers)
+          ? raw.workers.map((worker: any) => worker?.name || worker?.id).filter(Boolean)
+          : [];
+      return {
+        id,
+        title: raw?.title || data?.title || id,
+        status: (raw?.status || 'queued') as BackgroundWorkflowTask['status'],
+        workerNames,
+        toolCallsCount: Number(raw?.toolCallsCount || 0),
+        error: raw?.error,
+        resultPreview: raw?.resultPreview,
+        updatedAt: raw?.updatedAt,
+      };
+    };
+
+    const recordBackgroundTaskStep = (task: BackgroundWorkflowTask) => {
+      const previousStatus = backgroundTaskStatusRef.current.get(task.id);
+      if (previousStatus === task.status) return;
+      backgroundTaskStatusRef.current.set(task.id, task.status);
+      const isActive = task.status === 'queued' || task.status === 'running' || task.status === 'cancelling';
+      const isFailed = task.status === 'failed';
+      setAgentStatus(isActive ? 'background' : isFailed ? 'error' : 'done');
+      if (isActive) showWallpaperWorkPrompt();
+      setWorkflowSteps(prev => [...prev, {
+        id: `background-task-${task.id}-${task.status}-${Date.now()}`,
+        type: isFailed ? 'error' : task.status === 'completed' ? 'response' : 'background',
+        text: `${t.workflowBackgroundTask || 'Background task'}: ${task.status}`,
+        detail: task.title || task.id,
+        time: Date.now(),
+      }]);
+    };
+
+    const onDelegation = (data: any) => {
+      const task = normalizeBackgroundTask(data);
+      if (!task) return;
+      upsertBackgroundWorkflowTask(task);
+      recordBackgroundTaskStep(task);
+    };
+
+    const onBackgroundTaskUpdate = (data: any) => {
+      const task = normalizeBackgroundTask(data);
+      if (!task) return;
+      upsertBackgroundWorkflowTask(task);
+      recordBackgroundTaskStep(task);
+    };
+
     socket.on('agent:status', onStatus);
+    socket.on('agent:delegation', onDelegation);
+    socket.on('agent:background_task_update', onBackgroundTaskUpdate);
     socket.on('agent:tool_call', onToolCall);
     socket.on('agent:tool', onToolCall);
     socket.on('agent:confirm_tool', onConfirmTool);
@@ -2038,6 +2130,8 @@ export function DesktopUI({
 
     return () => {
       socket.off('agent:status', onStatus);
+      socket.off('agent:delegation', onDelegation);
+      socket.off('agent:background_task_update', onBackgroundTaskUpdate);
       socket.off('agent:tool_call', onToolCall);
       socket.off('agent:tool', onToolCall);
       socket.off('agent:confirm_tool', onConfirmTool);
@@ -2764,7 +2858,8 @@ export function DesktopUI({
     !chatOpen && (
       agentStatus !== 'idle' ||
       workflowSteps.length > 0 ||
-      workflowHasExecution
+      workflowHasExecution ||
+      backgroundWorkflowTasks.length > 0
     );
 
   const tutorialLabel = t.showTutorial || (lang === 'zh' ? '教程' : 'Tutorial');
@@ -3688,6 +3783,8 @@ export function DesktopUI({
         steps={workflowSteps}
         t={t}
         placement={isWallpaperMode ? 'center' : 'corner'}
+        backgroundTasks={backgroundWorkflowTasks}
+        onCancelBackgroundTask={cancelBackgroundWorkflowTask}
       />
       <AnimatePresence>
         {wallpaperWorkPromptVisible && !isWallpaperMode && !chatOpen && (
