@@ -660,6 +660,13 @@ async function externalResearchPlanHandler(args: Record<string, any>): Promise<s
   const companyNames = listArg(args, 'companyNames');
   const queries = buildSearchQueries({ ...args, caseType, facts, issues });
   const courtLevels = ['最高人民法院', '高级人民法院', '中级人民法院', '基层人民法院'];
+  const loginActions = EXTERNAL_LEGAL_SOURCES
+    .filter(source => source.presetId)
+    .map(source => `- ${source.label} (${source.presetId})
+  1. web_login_profile_save_from_preset {"presetId":"${source.presetId}"}
+  2. web_login_run {"profileId":"${source.presetId}","headless":false}
+  3. 律师在网页内检索、筛选、摘录，并回填来源登记表。`)
+    .join('\n');
 
   return `# 半自动外部检索行动单
 
@@ -682,16 +689,19 @@ async function externalResearchPlanHandler(args: Record<string, any>): Promise<s
 5. 企查查 / 国家企业信用信息公示系统：核验公司和被执行人情况。
 6. 人民法院在线服务：仅用于半自动立案材料核对和人工提交。
 
-## 四、站点打开清单
+## 四、网页登录动作
+${loginActions}
+
+## 五、站点打开清单
 ${EXTERNAL_LEGAL_SOURCES.map(source => {
   const preset = source.presetId ? `presetId: ${source.presetId}` : '无需登录预设或使用通用网页登录';
   return `- ${source.label}（${preset}）：${source.use}\n  ${source.url}`;
 }).join('\n')}
 
-## 五、检索词
+## 六、检索词
 ${queries.map((q, index) => `${index + 1}. ${q}`).join('\n')}
 
-## 六、来源登记表字段
+## 七、来源登记表字段
 | 来源 | 检索词 | 标题/案号 | 法院层级 | 裁判日期/发布日期 | 链接 | 关键摘录 | 对我方有利点 | 不利/区分点 | 复核人 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 | 待登记 |
