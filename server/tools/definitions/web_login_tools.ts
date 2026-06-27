@@ -20,7 +20,7 @@ function scopeFromContext(context?: { userId?: string; domain?: string; orgId?: 
 export function registerWebLoginTools(registry: ToolRegistry): void {
   registry.register({
     name: 'web_login_site_presets',
-    description: 'List built-in website login presets, currently focused on authorized legal research sites such as 法信 and 中国裁判文书网.',
+    description: 'List built-in website login presets, focused on authorized legal research and filing sites such as 法信、中国裁判文书网、人民法院案例库、企查查、法蝉、Alpha.',
     parameters: {
       type: 'object',
       properties: {
@@ -40,7 +40,7 @@ export function registerWebLoginTools(registry: ToolRegistry): void {
     name: 'web_login_profile_save_from_preset',
     description: [
       'Create or update a local authorized login profile from a built-in site preset.',
-      'Useful for legal research sites like 法信 or 中国裁判文书网.',
+      'Useful for legal research and filing sites like 法信、中国裁判文书网、人民法院案例库、企查查、法蝉、Alpha, or 人民法院在线服务.',
       'Passwords are encrypted locally. Do not use without explicit user authorization.',
     ].join(' '),
     parameters: {

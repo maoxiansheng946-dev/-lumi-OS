@@ -24,7 +24,7 @@ import {
   type LegalCaseStage,
 } from '../../lib/legalCaseStore';
 
-type LegalView = 'workspace' | 'bid' | 'case-search' | 'asset-trace' | 'contract-review' | 'strategy' | 'verify' | 'import';
+type LegalView = 'workspace' | 'packet' | 'triad' | 'external-research' | 'bid' | 'case-search' | 'asset-trace' | 'contract-review' | 'strategy' | 'verify' | 'import';
 
 interface NavItem {
   id: LegalView;
@@ -112,6 +112,9 @@ export function LegalHub() {
 
   const navItems: NavItem[] = useMemo(() => [
     { id: 'workspace', label: ui('案件工作台', 'Case Workspace'), icon: <FolderOpen size={16} /> },
+    { id: 'packet', label: ui('文书包', 'Packet'), icon: <ClipboardList size={16} /> },
+    { id: 'triad', label: ui('三段论', 'Triad'), icon: <Gavel size={16} /> },
+    { id: 'external-research', label: ui('外部检索', 'Research'), icon: <Search size={16} /> },
     { id: 'bid', label: t.legalBidWorkbench, icon: <FileText size={16} /> },
     { id: 'case-search', label: t.legalCaseSearch, icon: <Search size={16} /> },
     { id: 'asset-trace', label: t.legalAssetTrace, icon: <Crosshair size={16} /> },
@@ -317,6 +320,9 @@ export function LegalHub() {
             ui={ui}
           />
         );
+      case 'packet': return <LegalPacketView caseFile={activeCase} onAddMaterial={addMaterial} />;
+      case 'triad': return <LegalTriadView caseFile={activeCase} onAddMaterial={addMaterial} />;
+      case 'external-research': return <LegalExternalResearchView caseFile={activeCase} onAddMaterial={addMaterial} />;
       case 'bid': return <LegalBidWorkbench onSwitchView={setView} />;
       case 'case-search': return <LegalCaseSearch />;
       case 'asset-trace': return <LegalAssetTrace />;
@@ -868,6 +874,342 @@ function LegalActionButton({ icon, title, desc, onClick }: { icon: React.ReactNo
       <div className="text-sm font-bold text-white/82">{title}</div>
       <div className="mt-1 text-xs leading-5 text-white/35">{desc}</div>
     </button>
+  );
+}
+
+function legalCaseDraftContext(caseFile?: LegalCaseFile | null): string {
+  if (!caseFile) return '';
+  return [
+    caseFile.title && `案件：${caseFile.title}`,
+    caseFile.caseNumber && `案号：${caseFile.caseNumber}`,
+    caseFile.party && `当事人：${caseFile.party}`,
+    caseFile.cause && `案由：${caseFile.cause}`,
+    caseFile.court && `法院：${caseFile.court}`,
+    caseFile.judge && `承办法官：${caseFile.judge}`,
+    caseFile.notes && `事实摘要/待补材料：\n${caseFile.notes}`,
+    ...(caseFile.materials || []).slice(0, 6).map(material => `材料：${material.title}\n${material.content || ''}`),
+  ].filter(Boolean).join('\n\n');
+}
+
+function LegalPacketView({
+  caseFile,
+  onAddMaterial,
+}: {
+  caseFile?: LegalCaseFile | null;
+  onAddMaterial?: (type: LegalCaseMaterial['type'], title: string, content?: string, source?: LegalCaseMaterial['source']) => void;
+}) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const defaultFacts = useMemo(() => legalCaseDraftContext(caseFile), [caseFile]);
+  const [role, setRole] = useState('原告');
+  const [facts, setFacts] = useState(defaultFacts);
+  const [claims, setClaims] = useState('');
+  const [evidence, setEvidence] = useState('');
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setFacts(defaultFacts);
+    setResult('');
+  }, [defaultFacts]);
+
+  const generate = async () => {
+    if ((!facts.trim() && !evidence.trim()) || loading) return;
+    setLoading(true);
+    setResult('');
+    try {
+      const message = [
+        '请使用 legal_generate_litigation_packet 工具生成半自动诉讼文书包。',
+        `案件名称：${caseFile?.title || caseFile?.caseNumber || '未命名案件'}`,
+        `我方身份：${role}`,
+        `案由：${caseFile?.cause || ''}`,
+        `法院：${caseFile?.court || ''}`,
+        `当事人：${caseFile?.party || ''}`,
+        `诉请/目标：${claims}`,
+        `事实：\n${facts}`,
+        `证据：\n${evidence}`,
+        '要求：输出必须保留律师确认点，不要自动提交或宣称可直接使用。',
+      ].join('\n\n');
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, stream: false }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('文书包生成失败', 'Packet generation failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
+    } catch (err: any) {
+      setResult(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const archive = () => {
+    if (!result || !onAddMaterial) return;
+    onAddMaterial('pleading', `${caseFile?.title || caseFile?.caseNumber || ui('案件', 'Case')} 半自动文书包`, result, 'tool');
+  };
+
+  return (
+    <LegalTwoPaneTool
+      icon={<ClipboardList size={22} />}
+      accent="amber"
+      title={ui('半自动诉讼文书包', 'Semi-Automated Litigation Packet')}
+      desc={ui('生成起诉/答辩/质证/委托/立案组卷工作底稿，提交和签发保留人工确认。', 'Draft complaint/defense/evidence/retainer/filing work papers with human confirmation gates.')}
+      left={(
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input value={role} onChange={event => setRole(event.target.value)} placeholder={ui('我方身份：原告/被告', 'Role: plaintiff/defendant')} className="lumi-field h-10 rounded-lg" />
+            <input value={claims} onChange={event => setClaims(event.target.value)} placeholder={ui('诉请、抗辩目标或办理目标', 'Claims, defenses, or objective')} className="lumi-field h-10 rounded-lg" />
+          </div>
+          <textarea value={facts} onChange={event => setFacts(event.target.value)} placeholder={ui('案件事实、时间线、当事人信息...', 'Facts, timeline, parties...')} className="mt-3 min-h-[240px] w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-amber-400/35" />
+          <textarea value={evidence} onChange={event => setEvidence(event.target.value)} placeholder={ui('已有证据、对方材料、缺证点...', 'Evidence, opponent materials, gaps...')} className="mt-3 min-h-[140px] w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-amber-400/35" />
+          <button onClick={generate} disabled={loading || (!facts.trim() && !evidence.trim())} className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <ClipboardList size={16} />}
+            {loading ? ui('生成中...', 'Generating...') : ui('生成文书包', 'Generate Packet')}
+          </button>
+        </>
+      )}
+      result={result}
+      emptyText={ui('半自动文书包会显示在这里。', 'The packet will appear here.')}
+      archiveLabel={ui('归档到案件', 'Archive to Case')}
+      onArchive={result ? archive : undefined}
+    />
+  );
+}
+
+function LegalTriadView({
+  caseFile,
+  onAddMaterial,
+}: {
+  caseFile?: LegalCaseFile | null;
+  onAddMaterial?: (type: LegalCaseMaterial['type'], title: string, content?: string, source?: LegalCaseMaterial['source']) => void;
+}) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const defaultFacts = useMemo(() => legalCaseDraftContext(caseFile), [caseFile]);
+  const [issue, setIssue] = useState(caseFile?.cause || '');
+  const [facts, setFacts] = useState(defaultFacts);
+  const [evidence, setEvidence] = useState('');
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setIssue(caseFile?.cause || '');
+    setFacts(defaultFacts);
+    setResult('');
+  }, [caseFile?.cause, defaultFacts]);
+
+  const analyze = async () => {
+    if (!facts.trim() || loading) return;
+    setLoading(true);
+    setResult('');
+    try {
+      const message = [
+        '请使用 legal_triad_analysis 工具进行法律三段论分析。',
+        `争议焦点/法律问题：${issue || caseFile?.cause || '待确认'}`,
+        `我方身份：${caseFile?.stage || '待确认'}`,
+        `案件事实：\n${facts}`,
+        `证据材料：\n${evidence}`,
+      ].join('\n\n');
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, stream: false }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('三段论分析失败', 'Triad analysis failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
+    } catch (err: any) {
+      setResult(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const archive = () => {
+    if (!result || !onAddMaterial) return;
+    onAddMaterial('note', `${caseFile?.title || caseFile?.caseNumber || ui('案件', 'Case')} 三段论分析`, result, 'tool');
+  };
+
+  return (
+    <LegalTwoPaneTool
+      icon={<Gavel size={22} />}
+      accent="emerald"
+      title={ui('三段论法律分析', 'Legal Triad Analysis')}
+      desc={ui('按大前提、小前提、结论整理法律适用，并保留法条、类案和证据复核点。', 'Structure legal application into rule, facts/evidence, and conclusion with review checkpoints.')}
+      left={(
+        <>
+          <input value={issue} onChange={event => setIssue(event.target.value)} placeholder={ui('争议焦点或法律问题', 'Issue or legal question')} className="lumi-field h-10 w-full rounded-lg" />
+          <textarea value={facts} onChange={event => setFacts(event.target.value)} placeholder={ui('案件事实...', 'Facts...')} className="mt-3 min-h-[300px] w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-emerald-400/35" />
+          <textarea value={evidence} onChange={event => setEvidence(event.target.value)} placeholder={ui('证据材料、质证点、待补材料...', 'Evidence, objections, gaps...')} className="mt-3 min-h-[120px] w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-emerald-400/35" />
+          <button onClick={analyze} disabled={loading || !facts.trim()} className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Gavel size={16} />}
+            {loading ? ui('分析中...', 'Analyzing...') : ui('生成三段论', 'Generate Triad')}
+          </button>
+        </>
+      )}
+      result={result}
+      emptyText={ui('三段论分析结果会显示在这里。', 'Triad analysis will appear here.')}
+      archiveLabel={ui('归档到案件', 'Archive to Case')}
+      onArchive={result ? archive : undefined}
+    />
+  );
+}
+
+function LegalExternalResearchView({
+  caseFile,
+  onAddMaterial,
+}: {
+  caseFile?: LegalCaseFile | null;
+  onAddMaterial?: (type: LegalCaseMaterial['type'], title: string, content?: string, source?: LegalCaseMaterial['source']) => void;
+}) {
+  const t = useT();
+  const isZh = t.langCode !== 'en';
+  const ui = (zh: string, en: string) => (isZh ? zh : en);
+  const defaultFacts = useMemo(() => legalCaseDraftContext(caseFile), [caseFile]);
+  const [issues, setIssues] = useState(caseFile?.cause || '');
+  const [companies, setCompanies] = useState(caseFile?.party || '');
+  const [facts, setFacts] = useState(defaultFacts);
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setIssues(caseFile?.cause || '');
+    setCompanies(caseFile?.party || '');
+    setFacts(defaultFacts);
+    setResult('');
+  }, [caseFile?.cause, caseFile?.party, defaultFacts]);
+
+  const generate = async () => {
+    if (!facts.trim() && !issues.trim() && !companies.trim()) return;
+    setLoading(true);
+    setResult('');
+    try {
+      const message = [
+        '请使用 legal_external_research_plan 工具生成半自动外部检索行动单。',
+        `案由：${caseFile?.cause || ''}`,
+        `事实：\n${facts}`,
+        `争议焦点：${issues}`,
+        `公司/被执行人：${companies}`,
+        '要求：输出网页登录预设、检索顺序、检索词和来源登记表。不要要求把第三方平台数据导入 Lumi。',
+      ].join('\n\n');
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, stream: false }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ui('外部检索计划生成失败', 'Research plan failed'));
+      setResult(data.text || data.response || data.reply || data.message || JSON.stringify(data));
+    } catch (err: any) {
+      setResult(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const archive = () => {
+    if (!result || !onAddMaterial) return;
+    onAddMaterial('note', `${caseFile?.title || caseFile?.caseNumber || ui('案件', 'Case')} 外部检索行动单`, result, 'tool');
+  };
+
+  return (
+    <LegalTwoPaneTool
+      icon={<Search size={22} />}
+      accent="cyan"
+      title={ui('半自动外部检索', 'Semi-Automated External Research')}
+      desc={ui('生成打开外部法律网站的检索词、网页登录预设和来源登记表；内容由律师在网页内确认。', 'Generate search terms, login presets, and source logs for external legal sites.')}
+      left={(
+        <>
+          <input value={issues} onChange={event => setIssues(event.target.value)} placeholder={ui('争议焦点，多个用逗号分隔', 'Issues, comma-separated')} className="lumi-field h-10 w-full rounded-lg" />
+          <input value={companies} onChange={event => setCompanies(event.target.value)} placeholder={ui('公司/被执行人名称，多个用逗号分隔', 'Companies/debtors, comma-separated')} className="lumi-field mt-3 h-10 w-full rounded-lg" />
+          <textarea value={facts} onChange={event => setFacts(event.target.value)} placeholder={ui('案件事实和检索背景...', 'Facts and research context...')} className="mt-3 min-h-[340px] w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-cyan-400/35" />
+          <button onClick={generate} disabled={loading || (!facts.trim() && !issues.trim() && !companies.trim())} className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/15 px-4 py-2.5 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/25 disabled:opacity-50">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            {loading ? ui('生成中...', 'Generating...') : ui('生成检索行动单', 'Generate Plan')}
+          </button>
+        </>
+      )}
+      result={result}
+      emptyText={ui('外部检索行动单会显示在这里。', 'External research plan will appear here.')}
+      archiveLabel={ui('归档到案件', 'Archive to Case')}
+      onArchive={result ? archive : undefined}
+    />
+  );
+}
+
+function LegalTwoPaneTool({
+  icon,
+  accent,
+  title,
+  desc,
+  left,
+  result,
+  emptyText,
+  archiveLabel,
+  onArchive,
+}: {
+  icon: React.ReactNode;
+  accent: 'amber' | 'emerald' | 'cyan';
+  title: string;
+  desc: string;
+  left: React.ReactNode;
+  result: string;
+  emptyText: string;
+  archiveLabel?: string;
+  onArchive?: () => void;
+}) {
+  const color = {
+    amber: 'border-amber-400/20 bg-amber-500/10 text-amber-300 focus:border-amber-400/35',
+    emerald: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 focus:border-emerald-400/35',
+    cyan: 'border-cyan-400/20 bg-cyan-500/10 text-cyan-300 focus:border-cyan-400/35',
+  }[accent];
+  return (
+    <div className="h-full overflow-y-auto p-6 text-white">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <section className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex items-start gap-3">
+            <span className={`flex h-10 w-10 items-center justify-center rounded-lg border ${color}`}>
+              {icon}
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold text-white">{title}</h2>
+              <p className="mt-1 text-sm leading-6 text-white/50">{desc}</p>
+            </div>
+          </div>
+        </section>
+        <section className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">{left}</div>
+          <div className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-white">Output</h3>
+              {onArchive && (
+                <button onClick={onArchive} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/65 transition hover:bg-white/10 hover:text-white">
+                  <FolderOpen size={14} />
+                  {archiveLabel || 'Archive'}
+                </button>
+              )}
+            </div>
+            <div className="min-h-[460px] flex-1 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 custom-scrollbar">
+              {result ? (
+                <article className="whitespace-pre-wrap text-sm leading-7 text-white/78">{result}</article>
+              ) : (
+                <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-2 text-center text-sm text-white/40">
+                  <FileText size={32} className="text-white/20" />
+                  <span>{emptyText}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
