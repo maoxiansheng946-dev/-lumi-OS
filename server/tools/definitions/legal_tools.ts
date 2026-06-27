@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { ToolRegistry } from '../registry';
 import { parseDocument, extractLegalMetadata } from '../../legal/parser';
@@ -364,6 +365,156 @@ function collectMaterialFiles(folderPath: string, recursive: boolean, maxFiles: 
   };
   visit(root);
   return out;
+}
+
+function expandLocalPath(input: string): string {
+  const raw = String(input || '').trim().replace(/^["']|["']$/g, '');
+  if (!raw) return '';
+  const home = os.homedir();
+  if (/^~(?=$|[\\/])/.test(raw)) return raw.replace(/^~(?=$|[\\/])/, home);
+  if (/^(桌面|desktop)(?=$|[\\/])/i.test(raw)) {
+    return path.join(home, 'Desktop', raw.replace(/^(桌面|desktop)[\\/]?/i, ''));
+  }
+  if (/^(文档|documents?)(?=$|[\\/])/i.test(raw)) {
+    return path.join(home, 'Documents', raw.replace(/^(文档|documents?)[\\/]?/i, ''));
+  }
+  return raw;
+}
+
+function resolveLegalFolderPath(folderPath: string, folderName: string): string {
+  const direct = expandLocalPath(folderPath);
+  if (direct && fs.existsSync(path.resolve(direct)) && fs.statSync(path.resolve(direct)).isDirectory()) {
+    return path.resolve(direct);
+  }
+
+  const name = safeFileSegment(folderName || folderPath, '').replace(/_/g, ' ').trim();
+  if (!name) return direct ? path.resolve(direct) : '';
+
+  const home = os.homedir();
+  const bases = [
+    path.join(home, 'Desktop'),
+    path.join(home, '桌面'),
+    path.join(home, 'Documents'),
+    path.join(home, 'Downloads'),
+    process.env.OneDrive ? path.join(process.env.OneDrive, 'Desktop') : '',
+    process.cwd(),
+  ].filter(Boolean);
+
+  for (const base of bases) {
+    try {
+      if (!fs.existsSync(base)) continue;
+      const exact = path.join(base, name);
+      if (fs.existsSync(exact) && fs.statSync(exact).isDirectory()) return path.resolve(exact);
+      const entries = fs.readdirSync(base, { withFileTypes: true });
+      const hit = entries.find(entry => entry.isDirectory() && entry.name.includes(name));
+      if (hit) return path.resolve(path.join(base, hit.name));
+    } catch { /* ignore inaccessible folders */ }
+  }
+
+  return direct ? path.resolve(direct) : '';
+}
+
+function legalOutputDirName(input: string): string {
+  return safeFileSegment(input || 'Lumi代理词草稿', 'Lumi代理词草稿');
+}
+
+function buildEvidencePurpose(name: string, text: string): string {
+  const source = `${name}\n${text}`;
+  if (/合同|协议|订单|报价|补充协议/.test(source)) return '证明双方法律关系、权利义务、履行条件及违约责任约定。';
+  if (/转账|银行|流水|付款|收款|发票|收据|对账|结算/.test(source)) return '证明款项支付、结算金额、欠款金额或损失计算基础。';
+  if (/微信|短信|邮件|聊天|催告|通知|函/.test(source)) return '证明沟通过程、通知送达、催告事实、对方确认或抗辩内容。';
+  if (/送货|签收|验收|交付|物流|出库/.test(source)) return '证明合同履行、交付、验收或对方接收事实。';
+  if (/起诉状|答辩状|申请书|裁判|判决|裁定|庭审|笔录/.test(source)) return '证明诉讼程序、对方主张、法院查明事实或既有裁判情况。';
+  if (/营业执照|身份证|统一社会信用代码|法定代表人/.test(source)) return '证明当事人主体资格、身份信息和诉讼主体适格。';
+  return '证明案件相关事实，具体证明目的待律师结合原件和争议焦点复核。';
+}
+
+function inferFolderCaseType(corpus: string, explicit = ''): string {
+  if (explicit) return explicit;
+  if (/买卖合同|货款|供货|订单|对账/.test(corpus)) return '买卖合同纠纷';
+  if (/借款|借条|本金|利息|还款/.test(corpus)) return '民间借贷纠纷';
+  if (/劳动|工资|加班|解除劳动|社保/.test(corpus)) return '劳动争议';
+  if (/租赁|租金|房屋|承租|出租/.test(corpus)) return '租赁合同纠纷';
+  if (/建设工程|施工|工程款|竣工|结算/.test(corpus)) return '建设工程施工合同纠纷';
+  if (/侵权|损害|赔偿|过错|事故/.test(corpus)) return '侵权责任纠纷';
+  return '民事纠纷';
+}
+
+function extractFolderParties(corpus: string): string {
+  const matches = Array.from(corpus.matchAll(/(?:原告|被告|上诉人|被上诉人|申请人|被申请人|甲方|乙方|委托人|受托人)[：:\s]*([\u4e00-\u9fa5A-Za-z0-9（）()·._-]{2,50})/g))
+    .map(match => match[0].replace(/\s+/g, ' ').trim());
+  return Array.from(new Set(matches)).slice(0, 12).join('；');
+}
+
+function summarizeFilesForFolder(files: Array<{ name: string; path: string; format: string; chars: number; excerpt: string }>): string {
+  return files.map((file, index) =>
+    `${index + 1}. ${file.name}（${file.format}，${file.chars}字）\n   路径：${file.path}\n   摘要：${file.excerpt.slice(0, 240).replace(/\s+/g, ' ')}`,
+  ).join('\n');
+}
+
+function buildFolderEvidenceTable(files: Array<{ name: string; excerpt: string; path: string }>): string {
+  if (files.length === 0) {
+    return '| 编号 | 证据名称 | 来源 | 证明目的 | 原件/复印件 | 复核状态 |\n| --- | --- | --- | --- | --- | --- |\n| 1 | 待补充 | 案件文件夹 | 待补充 | 待核对 | 律师复核 |';
+  }
+  const rows = files.map((file, index) =>
+    `| ${index + 1} | ${file.name} | ${file.path} | ${buildEvidencePurpose(file.name, file.excerpt)} | 待核对 | 律师复核 |`,
+  );
+  return ['| 编号 | 证据名称 | 来源 | 证明目的 | 原件/复印件 | 复核状态 |', '| --- | --- | --- | --- | --- | --- |', ...rows].join('\n');
+}
+
+async function readLegalFolderMaterials(args: Record<string, any>): Promise<{
+  folderPath: string;
+  filesRead: Array<{ name: string; path: string; format: string; chars: number; excerpt: string }>;
+  skipped: Array<{ path: string; reason: string }>;
+  corpus: string;
+}> {
+  const folderPath = resolveLegalFolderPath(textArg(args, 'folderPath'), textArg(args, 'folderName'));
+  if (!folderPath || !fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    throw new Error(`案件文件夹不存在或无法访问：${textArg(args, 'folderPath') || textArg(args, 'folderName') || '(未提供)'}`);
+  }
+
+  const recursive = args.recursive !== false;
+  const maxFiles = Math.max(1, Math.min(Number(args.maxFiles) || 80, 200));
+  const maxChars = Math.max(10000, Math.min(Number(args.maxChars) || 220000, 800000));
+  const files = collectMaterialFiles(folderPath, recursive, maxFiles);
+  const filesRead: Array<{ name: string; path: string; format: string; chars: number; excerpt: string }> = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
+  let corpus = '';
+
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (!LEGAL_MATERIAL_EXTENSIONS.has(ext)) {
+      skipped.push({
+        path: file,
+        reason: LEGAL_IMAGE_EXTENSIONS.has(ext)
+          ? '图片/扫描件需先用 ocr_image_file 识别，或在聊天中上传后让 Lumi OCR'
+          : `暂不支持该格式：${ext || '无扩展名'}`,
+      });
+      continue;
+    }
+    if (corpus.length >= maxChars) {
+      skipped.push({ path: file, reason: '已达到本次读取字数上限' });
+      continue;
+    }
+    const parsed = await parseDocument(file);
+    if (!parsed?.text?.trim()) {
+      skipped.push({ path: file, reason: '解析失败或文本为空' });
+      continue;
+    }
+    const text = parsed.text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    const remaining = maxChars - corpus.length;
+    const clipped = text.slice(0, remaining);
+    corpus += `\n\n# ${path.basename(file)}\n${clipped}`;
+    filesRead.push({
+      name: path.basename(file),
+      path: file,
+      format: parsed.format,
+      chars: text.length,
+      excerpt: text.slice(0, 1500),
+    });
+  }
+
+  return { folderPath, filesRead, skipped, corpus: corpus.trim() };
 }
 
 // ── legal_search_case ───────────────────────────────────────────────────
@@ -1172,6 +1323,218 @@ ${commonReview.map(item => `- ${item}`).join('\n')}
 `);
 }
 
+// ── legal_analyze_folder_and_draft_argument ────────────────────────────
+
+async function analyzeFolderAndDraftArgumentHandler(args: Record<string, any>, context?: any): Promise<string> {
+  const read = await readLegalFolderMaterials(args);
+  const folderBaseName = path.basename(read.folderPath);
+  const caseName = textArg(args, 'caseName') || folderBaseName || '未命名案件';
+  const caseType = inferFolderCaseType(read.corpus, textArg(args, 'caseType') || textArg(args, 'matterType'));
+  const role = roleLabel(textArg(args, 'role') || textArg(args, 'clientRole'));
+  const objective = textArg(args, 'objective') || textArg(args, 'claims') || '形成代理词草稿并准备律师复核';
+  const parties = textArg(args, 'parties') || extractFolderParties(read.corpus) || '待从主体材料中补充';
+
+  if (read.filesRead.length === 0) {
+    const skipped = read.skipped.map(item => `- ${item.path}: ${item.reason}`).join('\n') || '- 未发现可读材料';
+    return `未能从案件文件夹中读取到可分析的文本材料。
+
+文件夹：${read.folderPath}
+
+## 暂未读取材料
+${skipped}
+
+请确认文件夹路径是否正确；若材料主要是图片/扫描件，请先使用 OCR 识别后再生成代理词。`;
+  }
+
+  const evidenceTable = buildFolderEvidenceTable(read.filesRead);
+  const fileSummary = summarizeFilesForFolder(read.filesRead);
+  const issues = inferDisputeFocuses({
+    caseName,
+    role,
+    caseType,
+    facts: read.corpus,
+    materials: read.corpus,
+    evidence: evidenceTable,
+  });
+  const issueLines = issues.map((issue, index) => `${index + 1}. ${issue}`).join('\n');
+  const skippedLines = read.skipped.length
+    ? read.skipped.map(item => `- ${item.path}: ${item.reason}`).join('\n')
+    : '- 无';
+
+  const analysisPrompt = `你是一名诉讼律师助理。请根据本地案件文件夹材料，形成可保存的案件分析工作底稿。
+
+## 案件信息
+- 案件名称：${caseName}
+- 案由/类型：${caseType}
+- 我方身份：${role}
+- 当事人：${parties}
+- 办理目标：${objective}
+
+## 已读取文件
+${fileSummary.slice(0, 8000)}
+
+## 材料正文节选
+${read.corpus.slice(0, 24000)}
+
+## 底层处理逻辑
+${LEGAL_REASONING_BASELINE}
+
+## 输出要求
+1. 整理案件事实时间线。
+2. 提炼争议焦点和待证事实。
+3. 指出证据缺口和质证风险。
+4. 给出代理词写作方向。
+5. 所有法条、案例只能标注“待检索/待核验”，不得编造。
+请用中文 Markdown 输出。`;
+
+  let analysis = '';
+  try {
+    analysis = await runLegalLLM(analysisPrompt, context, 3500) || '';
+  } catch { /* fall through */ }
+  if (!analysis) {
+    analysis = `# ${caseName} 案情分析工作底稿
+
+## 一、案件概要
+- 案由/类型：${caseType}
+- 我方身份：${role}
+- 当事人：${parties}
+- 办理目标：${objective}
+
+## 二、已读取材料
+${fileSummary}
+
+## 三、初步争议焦点
+${issueLines}
+
+## 四、证据目录草稿
+${evidenceTable}
+
+## 五、证据缺口与质证风险
+- 图片、扫描件、加密文件或无法解析文件需补 OCR 或重新提供可读版本。
+- 所有证据需核对原件、形成时间、来源、页码和证明目的。
+- 法条、类案、裁判规则进入代理词前必须另行检索并登记来源。
+
+## 六、代理词写作方向
+- 围绕争议焦点逐项绑定事实和证据。
+- 对证据不足部分标注“待补证”，避免写成确定性事实。
+- 根据我方身份选择请求支持或抗辩驳回的表达。`;
+  } else {
+    analysis = sanitizeLegalWorkProductOutput(analysis);
+  }
+
+  const argumentDraft = await generateArgumentOrOpinionHandler({
+    caseName,
+    role,
+    documentType: '代理词',
+    caseType,
+    facts: read.corpus.slice(0, 45000),
+    issues,
+    evidence: evidenceTable,
+    opponentMaterials: textArg(args, 'opponentMaterials'),
+    objective,
+    materials: read.corpus.slice(0, 45000),
+  }, context);
+
+  const researchPlan = `# ${caseName} 外部检索与复核清单
+
+## 一、法条核验
+- 先检索国家法律法规数据库，确认拟引用法律、司法解释是否现行有效。
+- 代理词中所有条款号、施行日期、修订状态均需复核。
+
+## 二、类案检索
+1. 人民法院案例库：检索权威案例和裁判规则。
+2. 中国裁判文书网：按最高人民法院 > 高级人民法院 > 中级人民法院 > 基层人民法院顺序筛选。
+3. 法蝉 / Alpha：使用律所授权账号补充商业库资料。
+
+## 三、推荐检索词
+${buildSearchQueries({ caseType, facts: read.corpus, issues }).map((query, index) => `${index + 1}. ${query}`).join('\n')}
+
+## 四、人工确认点
+- 争议焦点、证据取舍、法条引用、类案引用和对外提交文本必须由律师复核。
+- 外部平台材料属于授权网页登录协作；确认后的摘录或下载文件再导入知识库。
+`;
+
+  const readReport = `# ${caseName} 文件夹读取报告
+
+## 一、读取结果
+- 文件夹：${read.folderPath}
+- 已读取：${read.filesRead.length} 个文件
+- 暂未读取：${read.skipped.length} 个文件
+- 文本总量：${read.corpus.length} 字
+
+## 二、已读取文件
+${fileSummary}
+
+## 三、暂未读取文件
+${skippedLines}
+
+## 四、说明
+- 图片、扫描件、加密 PDF、损坏文件可能需要 OCR 或人工转换后再分析。
+- 本报告和后续文书为律师工作底稿，不作为最终法律意见。
+`;
+
+  const outputDir = textArg(args, 'outputDir')
+    ? path.resolve(expandLocalPath(textArg(args, 'outputDir')))
+    : path.join(read.folderPath, legalOutputDirName(textArg(args, 'outputDirName') || 'Lumi代理词草稿'));
+  const writeFiles = args.writeFiles !== false;
+  const outputs: Array<{ name: string; path?: string; content: string }> = [
+    { name: '00_文件夹读取报告.md', content: readReport },
+    { name: '01_案情分析与争议焦点.md', content: analysis },
+    { name: '02_证据目录草稿.md', content: `# ${caseName} 证据目录草稿\n\n${evidenceTable}\n\n## 复核提示\n- 提交前逐项核对真实性、合法性、关联性、页码和原件状态。\n- 证明目的需与最终争议焦点保持一致。\n` },
+    { name: '03_代理词草稿.md', content: argumentDraft },
+    { name: '04_外部检索与复核清单.md', content: researchPlan },
+  ];
+
+  if (writeFiles) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    for (const item of outputs) {
+      const target = path.join(outputDir, item.name);
+      fs.writeFileSync(target, item.content, 'utf-8');
+      item.path = target;
+    }
+  }
+
+  let kbLine = '';
+  if (args.importToKb === true || args.confirmedForKb === true) {
+    const orgId = textArg(args, 'orgId') || context?.orgId || 'default';
+    const userId = textArg(args, 'userId') || context?.userId || 'system';
+    const article = createLegalArticle(orgId, userId, {
+      title: `${caseName} 代理词工作底稿`,
+      content: outputs.map(item => `# ${item.name}\n\n${item.content}`).join('\n\n---\n\n'),
+      articleType: 'pleading',
+      category: 'legal_pleading',
+      tags: ['legal:folder-argument', `caseName:${caseName}`, `caseType:${caseType}`],
+      metadata: { articleType: 'pleading' },
+    });
+    const indexed = await indexLegalArticle(orgId, article.id);
+    kbLine = `\n- 知识库：已导入 articleId=${article.id}，索引块数=${indexed}`;
+  }
+
+  return `# 案件文件夹代理词生成完成
+
+## 一、处理结果
+- 案件：${caseName}
+- 文件夹：${read.folderPath}
+- 已读取材料：${read.filesRead.length} 个
+- 暂未读取材料：${read.skipped.length} 个
+- 案由/类型：${caseType}
+- 我方身份：${role}
+- 输出模式：${writeFiles ? '已保存文件' : '仅生成预览'}${kbLine}
+
+## 二、生成文件
+${outputs.map(item => `- ${item.name}${item.path ? `：${item.path}` : ''}`).join('\n')}
+
+## 三、初步争议焦点
+${issueLines}
+
+## 四、未读取材料提示
+${skippedLines}
+
+## 五、边界
+- 代理词是律师工作底稿，不能直接作为最终庭审发表或提交文本。
+- 未核验法条、类案、证据原件和页码前，正式文书中应保留“待检索/待核验/待补证”标记。`;
+}
+
 // ── legal_import_materials_to_kb ────────────────────────────────────────
 
 async function importMaterialsToKbHandler(args: Record<string, any>, context?: any): Promise<string> {
@@ -1940,6 +2303,39 @@ export function registerLegalTools(registry: ToolRegistry): void {
       },
     },
     handler: generateArgumentOrOpinionHandler,
+    permission: 'user',
+    securityLevel: 'safe',
+  });
+
+  registry.register({
+    name: 'legal_analyze_folder_and_draft_argument',
+    description: '一句话案件文件夹代理词 — 读取本地案件材料文件夹，自动分析案情、提炼争议焦点、整理证据目录、生成代理词草稿，并默认保存 Markdown 工作底稿到案件文件夹下。适合用户说“读取桌面某案件文件夹，分析并生成代理词”。图片/扫描件会提示 OCR，不编造法条和类案。',
+    parameters: {
+      type: 'object',
+      properties: {
+        folderPath: { type: 'string', description: '本地案件材料文件夹路径，例如 C:\\Users\\name\\Desktop\\张三借款案；也支持“桌面\\张三借款案”' },
+        folderName: { type: 'string', description: '如果未提供完整路径，可提供桌面/文档/下载目录中的文件夹名称或关键词' },
+        caseName: { type: 'string', description: '案件名称或简称，默认使用文件夹名' },
+        role: { type: 'string', description: '我方身份：原告/被告/申请人/被申请人等' },
+        clientRole: { type: 'string', description: '我方身份别名，和 role 二选一' },
+        caseType: { type: 'string', description: '案由或案件类型，未提供时从材料推断' },
+        matterType: { type: 'string', description: '案由或案件类型别名' },
+        parties: { type: 'string', description: '当事人身份信息摘要' },
+        objective: { type: 'string', description: '办理目标或代理词立场' },
+        claims: { type: 'string', description: '诉请、抗辩目标或结论请求' },
+        opponentMaterials: { type: 'string', description: '对方主张、起诉状、答辩意见或代理意见摘要，可为空' },
+        outputDir: { type: 'string', description: '可选输出目录，默认在案件文件夹下创建 Lumi代理词草稿' },
+        outputDirName: { type: 'string', description: '默认输出目录名称' },
+        writeFiles: { type: 'boolean', description: '是否写入 Markdown 文件，默认 true；false 时只返回预览' },
+        recursive: { type: 'boolean', description: '是否递归读取子目录，默认 true' },
+        maxFiles: { type: 'number', description: '最多读取文件数，默认 80，最高 200' },
+        maxChars: { type: 'number', description: '最多提取文本字数，默认 220000，最高 800000' },
+        importToKb: { type: 'boolean', description: '律师确认后是否把生成的工作底稿导入组织知识库，默认 false' },
+        orgId: { type: 'string', description: '组织 ID，默认上下文 orgId 或 default' },
+        userId: { type: 'string', description: '操作用户 ID，默认上下文 userId 或 system' },
+      },
+    },
+    handler: analyzeFolderAndDraftArgumentHandler,
     permission: 'user',
     securityLevel: 'safe',
   });

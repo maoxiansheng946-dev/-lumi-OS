@@ -77,6 +77,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
     'legal_prepare_filing_handoff',
     'legal_extract_dispute_focus',
     'legal_generate_argument_or_opinion',
+    'legal_analyze_folder_and_draft_argument',
     'legal_import_materials_to_kb',
     'legal_process_notice_link',
     'legal_external_source_status',
@@ -159,7 +160,7 @@ const ROUTES: RouteDefinition[] = [
     category: 'legal',
     reason: 'legal casework or legal research request',
     patterns: [
-      /法律|律师|律所|案件|案号|案由|类案|法条|法院|裁判文书|人民法院案例库|法信|法蝉|企查查|国家企业信用|委托书|代理词|证据目录|起诉状|要素式诉状|答辩状|质证|文书包|立案|网上立案|立案网|法院在线服务|外部检索|法律意见书|合同审查|合同模板|标书|投标书|财产线索|被执行人|股权穿透|诉讼|仲裁|争议焦点|庭审笔录|庭审提纲|法律分析|应对策略|焦点提炼|材料入库|导入知识库|知识库导入|外部数据源|数据源接入|开庭通知|法院通知|送达通知|短信链接|通知链接|送达链接/u,
+      /法律|律师|律所|案件|案号|案由|类案|法条|法院|裁判文书|人民法院案例库|法信|法蝉|企查查|国家企业信用|委托书|代理词|证据目录|起诉状|要素式诉状|答辩状|质证|文书包|立案|网上立案|立案网|法院在线服务|外部检索|法律意见书|合同审查|合同模板|标书|投标书|财产线索|被执行人|股权穿透|诉讼|仲裁|争议焦点|庭审笔录|庭审提纲|法律分析|应对策略|焦点提炼|案件文件夹|材料文件夹|文件夹.*代理词|材料入库|导入知识库|知识库导入|外部数据源|数据源接入|开庭通知|法院通知|送达通知|短信链接|通知链接|送达链接/u,
       /\b(legal|lawyer|lawsuit|court|judgment|casework|contract\s+review|power\s+of\s+attorney|complaint|defense|pleading|evidence|filing|bid|tender|qichacha|alpha|fachan|notice\s+link|court\s+notice)\b/i,
     ],
     exact: ['mcp_legal-casework_legal_case_folder_workflow'],
