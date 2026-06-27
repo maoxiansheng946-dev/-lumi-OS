@@ -35,6 +35,10 @@ export interface ToolContext {
     getArk?: () => any;
     getOllama?: () => any;
     getLmStudio?: () => any;
+    getXiaomi?: () => any;
+    getKimi?: () => any;
+    getGlm?: () => any;
+    getRelay?: () => any;
   };
   /** True when the tool is being used by background autonomous work. */
   autonomous?: boolean;

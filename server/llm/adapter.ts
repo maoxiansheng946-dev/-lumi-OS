@@ -13,6 +13,8 @@ export interface LLMConfig {
   model: string;
   maxTokens?: number;
   userId?: string;
+  domain?: string;
+  orgId?: string;
 }
 
 export interface LLMResult {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { HardcoreBootSequence } from './HardcoreBootSequence';
@@ -1145,6 +1145,12 @@ export function DesktopUI({
     canInterruptFromVoice: ownerVoiceGateOpen,
     canSendMicAudio: ownerVoiceGateOpen,
   });
+  const voiceScopeOptions = useMemo(() => (
+    workDomain === 'work' && orgConnection?.connected && orgConnection?.orgId
+      ? { domain: 'work' as const, orgId: orgConnection.orgId }
+      : { domain: 'personal' as const }
+  ), [orgConnection?.connected, orgConnection?.orgId, workDomain]);
+  const getVoiceScopeOptions = useCallback(() => voiceScopeOptions, [voiceScopeOptions]);
   useEffect(() => {
     void voiceprint.loadTemplates();
   }, [voiceprint.loadTemplates]);
@@ -1162,8 +1168,8 @@ export function DesktopUI({
   const meetingStartAttemptRef = useRef(0);
 
   const startStandardVoiceCall = useCallback(() => {
-    void startCall(selectedVoiceId, activePersonality, activePersonality);
-  }, [activePersonality, selectedVoiceId, startCall]);
+    void startCall(selectedVoiceId, activePersonality, activePersonality, getVoiceScopeOptions());
+  }, [activePersonality, getVoiceScopeOptions, selectedVoiceId, startCall]);
 
   const stopMeetingAudio = useCallback(() => {
     meetingVoiceActiveRef.current = false;
@@ -1192,9 +1198,9 @@ export function DesktopUI({
       if (now - meetingStartAttemptRef.current < 3000) return;
       meetingStartAttemptRef.current = now;
       meetingVoiceActiveRef.current = true;
-      void startCall(selectedVoiceId, activePersonality, activePersonality, { transcriptionOnly: true });
+      void startCall(selectedVoiceId, activePersonality, activePersonality, { ...getVoiceScopeOptions(), transcriptionOnly: true });
     }
-  }, [activePersonality, callState, endCall, operationMode, selectedVoiceId, startCall]);
+  }, [activePersonality, callState, endCall, getVoiceScopeOptions, operationMode, selectedVoiceId, startCall]);
   // Spacebar push-to-talk: track whether this call was started by spacebar
   const isSpacebarRecording = useRef(false);
   const callStateRef = useRef(callState);
@@ -1313,6 +1319,7 @@ export function DesktopUI({
     voiceId: selectedVoiceId,
     personalityId: 'lumi',
     agentId: 'lumi',
+    startCallOptions: voiceScopeOptions,
     onDetection: () => sounds.playWakeChime(),
     canAcceptWake: ownerVoiceGateOpen,
     canSendWakeAudio: ownerVoiceGateOpen,
@@ -2201,10 +2208,10 @@ export function DesktopUI({
         const cs = callStateRef.current;
         if (cs === 'speaking') {
           interrupt();
-          startCall(selectedVoiceId, 'lumi', 'lumi');
+          startCall(selectedVoiceId, 'lumi', 'lumi', getVoiceScopeOptions());
           isSpacebarRecording.current = true;
         } else if (cs === 'idle') {
-          startCall(selectedVoiceId, 'lumi', 'lumi');
+          startCall(selectedVoiceId, 'lumi', 'lumi', getVoiceScopeOptions());
           isSpacebarRecording.current = true;
         }
       }
@@ -2223,7 +2230,7 @@ export function DesktopUI({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isWallpaperMode, toggleWallpaperMode, interrupt, startCall, endCall, selectedVoiceId]);
+  }, [endCall, getVoiceScopeOptions, interrupt, isControlCenterOpen, isSearchOpen, isWallpaperMode, selectedVoiceId, startCall, toggleWallpaperMode]);
 
   const [bootVisible, setBootVisible] = useState(true);
 

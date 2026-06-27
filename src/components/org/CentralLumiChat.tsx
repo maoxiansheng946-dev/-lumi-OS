@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Building2, Send, Loader2, User, Bot } from 'lucide-react';
+import { BrainCircuit, Building2, Send, Loader2, User, Bot, Settings } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import { useSocket } from '../../hooks/useSocket';
 import { useT } from '../../lib/useT';
@@ -11,6 +11,15 @@ interface Message {
   content: string;
   timestamp: number;
   source?: 'socket' | 'history' | 'error' | 'system';
+}
+
+interface OrgLlmPolicy {
+  inheritPersonal?: boolean;
+  configured?: boolean;
+  provider?: string;
+  model?: string;
+  inheritedProvider?: string;
+  inheritedModel?: string;
 }
 
 function makeMessageId(prefix = 'org-msg') {
@@ -48,6 +57,7 @@ export function CentralLumiChat() {
   const [messages, setMessages] = useState<Message[]>(() => [greeting()]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [llmPolicy, setLlmPolicy] = useState<OrgLlmPolicy | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
@@ -66,6 +76,37 @@ export function CentralLumiChat() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLlmPolicy = async () => {
+      if (!orgConnection?.orgId) {
+        setLlmPolicy(null);
+        return;
+      }
+      try {
+        const res = await fetch('/api/preferences/org-llm', { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) setLlmPolicy(data);
+      } catch {
+        if (!cancelled) setLlmPolicy(null);
+      }
+    };
+    void loadLlmPolicy();
+    return () => { cancelled = true; };
+  }, [orgConnection?.orgId]);
+
+  const llmPolicyLabel = llmPolicy
+    ? llmPolicy.inheritPersonal
+      ? ui('继承个人模型', 'Inherits personal model')
+      : ui('组织独立模型', 'Organization model')
+    : ui('模型策略', 'Model policy');
+  const llmPolicyModel = llmPolicy
+    ? `${llmPolicy.provider || llmPolicy.inheritedProvider || '-'} / ${llmPolicy.model || llmPolicy.inheritedModel || '-'}`
+    : ui('加载中', 'Loading');
+  const openOrgSettings = () => {
+    window.dispatchEvent(new CustomEvent('lumi:navigate', { detail: { tab: 'org', sub: 'settings' } }));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -258,13 +299,29 @@ export function CentralLumiChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)]">
       {/* Header */}
-      <div className="flex items-center gap-3 p-6 pb-4 border-b border-white/5">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-6 pb-4 border-b border-white/5">
         <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
           <Building2 size={20} className="text-blue-400" />
         </div>
         <div>
           <h2 className="text-lg font-bold text-white">{t.orgChat}</h2>
           <p className="text-white/55 text-xs">{ui('组织 AI：询问制度、文化和知识', 'Organizational AI — ask about policies, culture, and knowledge')}</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/60" title={llmPolicyModel}>
+            <BrainCircuit size={14} className={llmPolicy?.inheritPersonal ? 'text-white/45' : 'text-blue-300'} />
+            <span className="whitespace-nowrap">{llmPolicyLabel}</span>
+            <span className="hidden max-w-[180px] truncate text-white/35 md:inline">{llmPolicyModel}</span>
+          </div>
+          <button
+            type="button"
+            onClick={openOrgSettings}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/50 transition hover:bg-white/10 hover:text-white"
+            title={ui('组织设置', 'Organization settings')}
+            aria-label={ui('打开组织设置', 'Open organization settings')}
+          >
+            <Settings size={15} />
+          </button>
         </div>
       </div>
 

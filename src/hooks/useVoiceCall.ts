@@ -15,6 +15,8 @@ interface UseVoiceCallOptions {
 
 interface StartCallOptions {
   transcriptionOnly?: boolean;
+  domain?: 'personal' | 'work';
+  orgId?: string;
 }
 
 export function useVoiceCall({ socket, onTranscript, onResponse, canInterruptFromVoice, canSendMicAudio }: UseVoiceCallOptions) {
@@ -575,7 +577,14 @@ export function useVoiceCall({ socket, onTranscript, onResponse, canInterruptFro
       timerInterval.current = setInterval(() => {
         setElapsedSeconds(Math.floor((Date.now() - callStartTime.current) / 1000));
       }, 1000);
-      socket.emit('audio:start', { voiceId, personalityId, agentId, transcriptionOnly: options.transcriptionOnly === true });
+      socket.emit('audio:start', {
+        voiceId,
+        personalityId,
+        agentId,
+        transcriptionOnly: options.transcriptionOnly === true,
+        domain: options.domain || 'personal',
+        orgId: options.domain === 'work' ? options.orgId : undefined,
+      });
     } catch (err: any) {
       transcriptionOnlyRef.current = false;
       setError(err.message || 'Failed to start voice call');

@@ -1,7 +1,7 @@
 import { ParsedToolCall, NormalizedLLMResponse } from '../tools/types';
 import { withCloudResilience } from '../cloud/resilience';
 import { isStrictPrivacy, requireLocalProvider } from '../config/privacy';
-import { getUserPreferredLLM } from './user_preferences';
+import { getScopedPreferredLLM } from './user_preferences';
 import { getUserPreferredVision } from './vision_preferences';
 
 export type MessageContent =
@@ -54,7 +54,7 @@ function isQwenVisionModel(model: string): boolean {
   return /(?:qwen.*vl|vl-|vl_|vision)/i.test(model || '');
 }
 
-function assertQwenAllowedByUserPrefs(config: { provider: string; model: string; userId?: string }): void {
+function assertQwenAllowedByUserPrefs(config: { provider: string; model: string; userId?: string; domain?: string; orgId?: string }): void {
   if (config.provider !== 'qwen') return;
 
   if (!config.userId) {
@@ -67,7 +67,7 @@ function assertQwenAllowedByUserPrefs(config: { provider: string; model: string;
     throw new Error(`Qwen-VL call blocked: current vision provider is ${vision.provider}/${vision.model}. Change Vision Model to Qwen-VL to use Alibaba vision.`);
   }
 
-  const preferred = getUserPreferredLLM(config.userId);
+  const preferred = getScopedPreferredLLM(config.userId, { domain: config.domain, orgId: config.orgId });
   if (preferred.provider !== 'qwen') {
     throw new Error(`Qwen LLM call blocked: current primary reasoning brain is ${preferred.provider}/${preferred.model}. Change Primary Reasoning Brain to Qwen to use Alibaba LLM.`);
   }
@@ -509,7 +509,7 @@ export function parseAnthropicResponse(rawResponse: any): NormalizedLLMResponse 
 export async function makeLLMCall(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto'; model: string; maxTokens?: number; userId?: string },  getDeepSeek: () => any,
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto'; model: string; maxTokens?: number; userId?: string; domain?: string; orgId?: string },  getDeepSeek: () => any,
   getGemini: () => any,
   getOpenAI?: () => any,
   getAnthropic?: () => any,
@@ -675,7 +675,7 @@ function isReasoningModel(model: string): boolean {
 export async function makeLLMCallStreaming(
   messages: NormalizedMessage[],
   toolDeclarations: ToolDeclaration[],
-  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto'; model: string; maxTokens?: number; userId?: string; signal?: AbortSignal },
+  config: { provider: 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto'; model: string; maxTokens?: number; userId?: string; domain?: string; orgId?: string; signal?: AbortSignal },
   onChunk: StreamCallback,
   getDeepSeek: () => any,
   getGemini: () => any,

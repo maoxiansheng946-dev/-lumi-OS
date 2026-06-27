@@ -51,6 +51,7 @@ import { analyzeLikedMusicProfile, formatMusicProfileReport, isMusicProfileAnaly
 import { buildResponseLanguageInstruction } from "../utils/language";
 import { guardCompletionClaims, needsCompletionEvidence } from "../work_product/completion_guard";
 import { buildModelSelfAwareness, buildVisionRoutingOverlay, hasVisionIntent } from "../cognition/vision_routing";
+import { DEFAULT_MODELS, getScopedPreferredLLM } from "../llm/user_preferences";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'lumiOS_default_jwt_secret_2026_local';
 
@@ -603,21 +604,9 @@ export function registerChatHandler(
       // Keep this late so English system/tool context cannot pull the reply language.
       effectiveSystemPrompt += '\n\n' + buildResponseLanguageInstruction(text);
 
-      // Read user's LLM prefs from settings (synced from API Matrix)
-      const userLLMPrefs = (() => {
-        try {
-          const db = readDB();
-          const setting = (db.settings || []).find((s: any) => s.key === `llm_prefs_${uid}`);
-          if (setting) return JSON.parse(setting.value);
-        } catch {}
-        return { provider: '', models: {} };
-      })();
-      const DEFAULT_MODELS: Record<string, string> = {
-        deepseek: 'deepseek-chat', qwen: 'qwen-plus', openai: 'gpt-4o',
-        gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-4-6',
-        ark: 'doubao-1-5-pro-32k', xiaomi: 'xiaomi-chat', kimi: 'moonshot-v1-8k',
-        glm: 'glm-4-plus', relay: 'gpt-4o', ollama: 'qwen2.5:7b', lmstudio: 'local-model',
-      };
+      // Work-domain chats use organization LLM prefs when configured. If the org
+      // has no explicit policy, they visibly inherit the user's personal prefs.
+      const userLLMPrefs = getScopedPreferredLLM(uid, { domain: resolvedDomain, orgId: resolvedOrgId });
       const resolveProvider = (model: string) =>
         model.startsWith('deepseek') ? 'deepseek' as const
         : model.startsWith('qwen') ? 'qwen' as const
@@ -783,7 +772,7 @@ export function registerChatHandler(
         const result = await makeLLMCall(
           messages,
           [],
-          { provider: activeProvider, model: activeProvider === 'deepseek' ? 'deepseek-v4-flash' : activeModel, userId: uid, maxTokens: 60 },
+          { provider: activeProvider, model: activeProvider === 'deepseek' ? 'deepseek-v4-flash' : activeModel, userId: uid, maxTokens: 60, domain: resolvedDomain, orgId: resolvedOrgId },
           llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
           llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
         );
@@ -1257,7 +1246,7 @@ export function registerChatHandler(
             const response = await makeLLMCallStreaming(
               messages,
               [],
-              { provider: activeProvider, model: activeModel, userId: uid, signal: abortController.signal },
+              { provider: activeProvider, model: activeModel, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, signal: abortController.signal },
               onChunk,
               llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
               llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
@@ -1301,7 +1290,7 @@ export function registerChatHandler(
           const result = await runWithTools(
             messages,
             toolRegistry,
-            { provider: activeProvider, model: activeModel, userId: uid },
+            { provider: activeProvider, model: activeModel, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId },
             isSanctuary ? undefined : (record) => {
               allToolRecords.push(record);
               if (isDirectDesktopTool(record.name)) return;
@@ -1405,7 +1394,7 @@ export function registerChatHandler(
                 const fallback = await makeLLMCallStreaming(
                   messages,
                   [],
-                  { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid, signal: abortController.signal },
+                  { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, signal: abortController.signal },
                   (chunk) => {
                     fallbackChunks.push(chunk);
                     emitAgent("agent:chunk", { text: chunk, agentName: personality.name });
@@ -1425,7 +1414,7 @@ export function registerChatHandler(
               } else {
               const fallback = await runWithTools(
                 messages, toolRegistry,
-                { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid },
+                { provider: 'gemini', model: DEFAULT_MODELS.gemini, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId },
                 (record) => {
                   allToolRecords.push(record);
                   if (isDirectDesktopTool(record.name)) return;
@@ -1533,7 +1522,7 @@ export function registerChatHandler(
         // Auto-summarize long conversations (anti-entropy: prevents context overflow)
         const { needed, recentMessages } = checkAutoSummary(conversationId);
         if (needed && recentMessages.length > 0) {
-          summarizeConversationAsync(conversationId, recentMessages, llmGetters, activeProvider, activeModel).catch(
+          summarizeConversationAsync(conversationId, recentMessages, llmGetters, activeProvider, activeModel, uid, resolvedDomain, resolvedOrgId).catch(
             () => {} // Non-critical
           );
         }
@@ -1569,8 +1558,9 @@ export function registerChatHandler(
       if (isCorrection && responseText) {
         try {
           const corrected = await extractMemories(
-            { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider: activeProvider, model: activeModel, treeBranches: [] },
+            { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider: activeProvider, model: activeModel, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, treeBranches: [] },
             llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
+            llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
           );
           for (const mem of corrected.memories) {
             addMemory({
@@ -1592,7 +1582,7 @@ export function registerChatHandler(
                 },
               ],
               [],
-              { provider: 'deepseek', model: 'deepseek-v4-flash', userId: uid, maxTokens: 300 },
+              { provider: 'deepseek', model: 'deepseek-v4-flash', userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, maxTokens: 300 },
               llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
               llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
             );
@@ -1640,17 +1630,18 @@ export function registerChatHandler(
       // Async memory extraction — skip trivial/command messages to reduce noise
       const skipExtractionCategories = ['command', 'file', 'unknown'];
       if (text.length >= 10 && !skipExtractionCategories.includes(cognition.intent.category)) {
-      const branchNodes = queryMemories({ userId: uid, nodeType: 'branch', limit: 50 });
+      const branchNodes = queryMemories({ userId: uid, nodeType: 'branch', limit: 50, domain: resolvedDomain, orgId: resolvedOrgId });
       const treeBranches = branchNodes.map(b => b.content);
       const locationTag = sensory.locationTag || undefined;
       extractMemories(
-        { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider: activeProvider, model: activeModel, treeBranches, locationTag },
+        { userMessage: text, assistantResponse: responseText, existingMemories: relevantMemories.map(m => m.content), provider: activeProvider, model: activeModel, userId: uid, domain: resolvedDomain, orgId: resolvedOrgId, treeBranches, locationTag },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
+        llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
       ).then(extracted => {
         for (const mem of extracted.memories) {
           let parentId: string | null = null;
           if ((mem as any).branchHint) {
-            const branch = ensureBranch(uid, (mem as any).branchHint, agentId || '');
+            const branch = ensureBranch(uid, (mem as any).branchHint, agentId || '', null, { domain: resolvedDomain, orgId: resolvedOrgId });
             parentId = branch.id;
           }
           addMemory({
@@ -1736,6 +1727,9 @@ async function summarizeConversationAsync(
   llmGetters: any,
   provider: string,
   model: string,
+  userId: string,
+  domain: string,
+  orgId?: string,
 ) {
   try {
     const transcript = recentMessages.slice(-30)
@@ -1745,7 +1739,7 @@ async function summarizeConversationAsync(
     const result = await makeLLMCall(
       [{ role: 'user', content: summaryPrompt }],
       [],
-      { provider: provider as any, model, maxTokens: 300 },
+      { provider: provider as any, model, maxTokens: 300, userId, domain, orgId },
       llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
       llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
     );

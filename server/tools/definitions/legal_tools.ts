@@ -23,12 +23,19 @@ async function runLegalLLM(prompt: string, context?: any, maxTokens = 2048): Pro
   const response = await makeLLMCall(
     messages,
     [],
-    getUserPreferredLLMConfig(userId, { maxTokens }),
+    getUserPreferredLLMConfig(userId, { maxTokens, domain: context?.domain, orgId: context?.orgId }),
     getters.getDeepSeek,
     getters.getGemini,
     getters.getOpenAI,
     getters.getAnthropic,
     getters.getQwen,
+    getters.getOllama,
+    getters.getLmStudio,
+    getters.getArk,
+    getters.getXiaomi,
+    getters.getKimi,
+    getters.getGlm,
+    getters.getRelay,
   );
   return response.text || null;
 }

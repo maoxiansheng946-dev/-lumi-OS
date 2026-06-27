@@ -26,6 +26,13 @@ import { ToolExecutionRecord } from "../tools/types";
 import { buildResponseLanguageInstruction } from "../utils/language";
 
 type LLMProvider = 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen' | 'ark' | 'ollama' | 'lmstudio' | 'xiaomi' | 'kimi' | 'glm' | 'relay' | 'auto';
+type ScopedLLMConfig = {
+  provider: LLMProvider;
+  model: string;
+  userId?: string;
+  domain?: string;
+  orgId?: string;
+};
 
 export interface LlmGetters {
   getDeepSeek: () => any;
@@ -388,7 +395,7 @@ Output format:
  */
 export async function decomposeTask(
   text: string,
-  config: { provider: LLMProvider; model: string },
+  config: ScopedLLMConfig,
   context: OrchestrationContext,
   llmGetters: LlmGetters,
 ): Promise<SubTask[]> {
@@ -399,7 +406,14 @@ export async function decomposeTask(
     const result = await makeLLMCall(
       messages,
       [],
-      { provider: config.provider, model: config.model, maxTokens: 2000 },
+      {
+        provider: config.provider,
+        model: config.model,
+        maxTokens: 2000,
+        userId: config.userId || context.userId,
+        domain: config.domain || context.domain,
+        orgId: config.orgId || context.orgId,
+      },
       llmGetters.getDeepSeek,
       llmGetters.getGemini,
       llmGetters.getOpenAI,
@@ -726,7 +740,7 @@ async function executeExternalWorkerTask(
 async function executeWorkerTask(
   assignment: WorkerAssignment,
   context: OrchestrationContext,
-  llmConfig: { provider: LLMProvider; model: string },
+  llmConfig: ScopedLLMConfig,
   llmGetters: LlmGetters,
   fallbackAgents: AgentRecord[],
   onTool?: OrchestrationToolCallback,
@@ -757,6 +771,8 @@ async function executeWorkerTask(
       limit: 3,
       minConfidence: 0.3,
       agentId: currentAgent.id,
+      domain: context.domain,
+      orgId: context.orgId,
     });
 
     const memoryContext = workerMemories.length > 0
@@ -813,7 +829,14 @@ async function executeWorkerTask(
         runWithTools(
           messages,
           toolRegistry,
-          { provider: llmConfig.provider, model: llmConfig.model, maxTokens: 4000, userId: context.userId },
+          {
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            maxTokens: 4000,
+            userId: llmConfig.userId || context.userId,
+            domain: llmConfig.domain || context.domain,
+            orgId: llmConfig.orgId || context.orgId,
+          },
           (record) => onTool?.(record, {
             subTaskId: subTask.id,
             agentId: currentAgent.id,
@@ -882,7 +905,7 @@ async function executeWorkerTask(
 export async function executeWorkflow(
   assignments: WorkerAssignment[],
   context: OrchestrationContext,
-  llmConfig: { provider: LLMProvider; model: string },
+  llmConfig: ScopedLLMConfig,
   llmGetters: LlmGetters,
   fallbackAgents: AgentRecord[] = [],
   onTool?: OrchestrationToolCallback,
@@ -931,6 +954,8 @@ export async function executeWorkflow(
       tier: 'growth',
       perspective: 'lumi_growth',
       importance: 0.7,
+      domain: context.domain,
+      orgId: context.orgId,
     });
     // Mark for cross-agent sharing so other agents can learn from this workflow
     mem.crossAgentShare = true;
@@ -979,9 +1004,10 @@ function aggregateResults(
 export async function aggregateWithLLM(
   workflowResult: WorkflowResult,
   originalTask: string,
-  llmConfig: { provider: LLMProvider; model: string },
+  llmConfig: ScopedLLMConfig,
   llmGetters: LlmGetters,
   userId?: string,
+  scope?: { domain?: string; orgId?: string },
 ): Promise<string> {
   const workerOutputs = workflowResult.subTaskResults
     .map(r => `[${r.subTaskId}] ${compactTextBlock(r.output, 3500, 'worker output')}`)
@@ -999,7 +1025,14 @@ export async function aggregateWithLLM(
     const result = await makeLLMCall(
       messages,
       [],
-      { provider: llmConfig.provider, model: llmConfig.model, maxTokens: 4000, userId },
+      {
+        provider: llmConfig.provider,
+        model: llmConfig.model,
+        maxTokens: 4000,
+        userId,
+        domain: llmConfig.domain || scope?.domain,
+        orgId: llmConfig.orgId || scope?.orgId,
+      },
       llmGetters.getDeepSeek,
       llmGetters.getGemini,
       llmGetters.getOpenAI,
@@ -1141,7 +1174,7 @@ export interface OrchestratedResult {
 export async function runOrchestratedTask(
   text: string,
   context: OrchestrationContext,
-  llmConfig: { provider: LLMProvider; model: string },
+  llmConfig: ScopedLLMConfig,
   llmGetters: LlmGetters,
   onProgress?: (message: string) => void,
   onTool?: OrchestrationToolCallback,
@@ -1172,7 +1205,7 @@ export async function runOrchestratedTask(
 
   const aggregated = complexity === 'moderate' && capped.length <= 2
     ? workflowResult.aggregatedOutput
-    : await aggregateWithLLM(workflowResult, text, llmConfig, llmGetters, context.userId);
+    : await aggregateWithLLM(workflowResult, text, llmConfig, llmGetters, context.userId, { domain: context.domain, orgId: context.orgId });
   throwIfCancelled(context);
 
   // Record workflow pattern for future skill distillation

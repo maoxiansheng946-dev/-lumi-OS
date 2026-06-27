@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, FileText, Mic, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check, Paperclip, Image as ImageIcon, Download, MessageCircle } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Ghost, Zap, Cpu, Sparkles, FileText, Mic, CheckCircle2, Pause, Play, Square, ChevronDown, ChevronRight, XCircle, Copy, Check, Paperclip, Image as ImageIcon, Download, MessageCircle, Briefcase, User } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -133,6 +133,13 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const ui = (zh: string, en: string) => isZh ? zh : en;
   const { platform, isElectron } = usePlatform();
   const { aiConfig, orgConnection, workDomain } = useApp();
+  const isWorkChat = workDomain === 'work' && Boolean(orgConnection?.connected && orgConnection?.orgId);
+  const activeDomain = isWorkChat ? 'work' : 'personal';
+  const activeOrgId = isWorkChat ? orgConnection?.orgId : undefined;
+  const activeDomainLabel = isWorkChat ? ui('公司域 Lumi', 'Company Lumi') : ui('个人 Lumi', 'Personal Lumi');
+  const activeDomainDetail = isWorkChat
+    ? ui('当前消息、附件、记忆和工具调用进入组织工作域。', 'Messages, attachments, memories, and tools are scoped to the organization.')
+    : ui('当前消息只进入个人域，不写入组织知识和组织记忆。', 'Messages stay in your personal domain and do not write to organization knowledge or memory.');
   const socket = socketService.connect();
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>();
   const [voices, setVoices] = useState<any[]>([]);
@@ -294,15 +301,15 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
   const toolFailureHint = t.toolFailureHint || 'Check permission, adjust the request, or ask Lumi to retry.';
   const scopedConversationUrl = useCallback((path: string) => {
     const separator = path.includes('?') ? '&' : '?';
-    return `${path}${separator}domain=${encodeURIComponent(workDomain)}&agentId=${encodeURIComponent(agentId)}`;
-  }, [workDomain, agentId]);
+    return `${path}${separator}domain=${encodeURIComponent(activeDomain)}&agentId=${encodeURIComponent(agentId)}`;
+  }, [activeDomain, agentId]);
   const scopedFileUrl = useCallback((path: string) => {
     const separator = path.includes('?') ? '&' : '?';
-    const orgScope = workDomain === 'work' && orgConnection?.orgId
-      ? `&orgId=${encodeURIComponent(orgConnection.orgId)}`
+    const orgScope = activeDomain === 'work' && activeOrgId
+      ? `&orgId=${encodeURIComponent(activeOrgId)}`
       : '';
-    return `${path}${separator}domain=${encodeURIComponent(workDomain)}${orgScope}`;
-  }, [workDomain, orgConnection?.orgId]);
+    return `${path}${separator}domain=${encodeURIComponent(activeDomain)}${orgScope}`;
+  }, [activeDomain, activeOrgId]);
   const requestMeetingMode = useCallback(() => {
     window.dispatchEvent(new CustomEvent('lumi:request-meeting-mode'));
   }, []);
@@ -994,8 +1001,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
       personalityId: 'lumi',
       category: agentCategory,
       agentId,
-      domain: workDomain,
-      orgId: orgConnection?.orgId || null,
+      domain: activeDomain,
+      orgId: activeOrgId || null,
       source: 'chat',
       requestId,
     });
@@ -1084,8 +1091,8 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
     fileList.forEach(f => formData.append('files', f));
 
     try {
-      formData.append('domain', workDomain);
-      if (workDomain === 'work' && orgConnection?.orgId) formData.append('orgId', orgConnection.orgId);
+      formData.append('domain', activeDomain);
+      if (activeDomain === 'work' && activeOrgId) formData.append('orgId', activeOrgId);
 
       const res = await fetch('/api/files/upload', { method: 'POST', body: formData, credentials: 'include' });
       if (res.ok) {
@@ -1274,11 +1281,11 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           <VoiceCallButton
             callState={callState}
             audioLevel={audioLevel}
-            onStart={() => startCall(selectedVoiceId, 'lumi', agentId)}
+            onStart={() => startCall(selectedVoiceId, 'lumi', agentId, { domain: activeDomain, orgId: activeOrgId })}
             onEnd={endCall}
             hasVoice={voices.length > 0}
           />
-          {workDomain === 'personal' && (
+          {activeDomain === 'personal' && (
             <button
               type="button"
               onClick={() => setShowWeChatSettings(true)}
@@ -1304,11 +1311,17 @@ export function AgentChatPage({ t, user, agent, isOpen, onClose, prefillMessage,
           <div className="text-right sm:text-left">
             <h2 className="text-base md:text-xl font-bold tracking-tight truncate max-w-[120px] sm:max-w-none flex items-center gap-2">
               {agentName}
-              {workDomain === 'work' && orgConnection?.connected && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-medium uppercase tracking-wider">
-                  {t.orgWorkDomain || 'Work'}
-                </span>
-              )}
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                  isWorkChat
+                    ? 'border-blue-500/30 bg-blue-500/15 text-blue-300'
+                    : 'border-white/10 bg-white/5 text-white/45'
+                }`}
+                title={activeDomainDetail}
+              >
+                {isWorkChat ? <Briefcase size={11} /> : <User size={11} />}
+                {activeDomainLabel}
+              </span>
             </h2>
             <p className="text-xs md:text-xs uppercase tracking-widest text-white/40 font-bold">{agentCategory}</p>
           </div>

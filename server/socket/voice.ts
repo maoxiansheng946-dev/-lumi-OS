@@ -17,11 +17,11 @@ import { synthesizeSpeech, getActiveProvider as getTTSProvider, resolveEmotionVo
 import { recordLatency } from "../monitor/latency_store";
 import { getOrCreateActiveConversation, addMessage, getMessagesByTokenBudget, extractTopics, trackTopic, getTopicContext, getConversationSummary } from "../conversation/manager";
 import { processInput, CognitiveContext, extractSentiment } from "../cognition";
-import { runOrchestratedTask, classifyComplexity } from "../agents/orchestrator";
+import { runOrchestratedTask, classifyComplexity, type LlmGetters } from "../agents/orchestrator";
 import { queryMemories, addMemory } from "../memory/store";
 import { matchQuickCommand } from "../cognition/quick_commands";
 import { recordTokenUsage } from "../llm/token_tracker";
-import { getUserPreferredLLMConfig } from "../llm/user_preferences";
+import { DEFAULT_MODELS, getScopedPreferredLLM, getUserPreferredLLMConfig } from "../llm/user_preferences";
 import { getOperationModeConfig, parseStoredOperationMode, OperationMode } from "../cognition/operation_modes";
 import { hasClientActionOnlyIntent, hasExplicitToolIntent, isDiagnosticOrRepairRequest, shouldAllowToolUseForTurn, shouldExposeAgentWork } from "../cognition/tool_intent";
 import { resolveWorkSurfaceRoute } from "../cognition/work_surface";
@@ -42,6 +42,8 @@ interface AudioSession {
   personalityId: string;
   userId: string;
   agentId: string;
+  domain: 'personal' | 'work';
+  orgId: string;
   accumulatedText: string;
   /** TTS is actively playing audio — user can barge-in */
   isSpeaking: boolean;
@@ -270,6 +272,8 @@ function getAudioSession(socket: Socket): AudioSession {
       bargeinTimer: null,
       userId: '',
       agentId: 'lumi',
+      domain: 'personal',
+      orgId: '',
       voiceprintMatched: true,  // default: allow (no voiceprints enrolled yet)
       voiceprintConfidence: 0,
       voiceprintRequired: false,
@@ -298,13 +302,7 @@ async function processVoiceInput(
   socket: Socket,
   session: AudioSession,
   userText: string,
-  llmGetters: {
-    getDeepSeek: () => any;
-    getGemini: () => any;
-    getOpenAI: () => any;
-    getAnthropic: () => any;
-    getQwen: () => any;
-  },
+  llmGetters: LlmGetters,
   sensoryFn: (uid: string) => any,
 ): Promise<void> {
   if (!isVoiceprintGateOpen(session)) {
@@ -332,6 +330,7 @@ async function processVoiceInput(
   socket.emit("agent:status", { status: "thinking", agentName: "Lumi" });
   session.ttsAbortController = new AbortController();
   socket.emit("audio:status", { status: "thinking" });
+  const voiceScope = { domain: session.domain, orgId: session.orgId };
 
   // Cross-session memory retrieval — voice now has access to what was discussed before
   let voiceMemories: any[] = [];
@@ -341,6 +340,8 @@ async function processVoiceInput(
       query: userText,
       limit: 5,
       minConfidence: 0.4,
+      domain: voiceScope.domain,
+      orgId: voiceScope.orgId,
     });
   } catch {}
 
@@ -389,7 +390,7 @@ async function processVoiceInput(
   // Inject compact conversation continuity if available
   let topicContext = '';
   try {
-    const convForTopic = getOrCreateActiveConversation(session.userId, session.agentId);
+    const convForTopic = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
     const summary = getConversationSummary(convForTopic.id);
     if (summary) topicContext += `\n\n## Conversation Context\n${summary}`;
     const tc = getTopicContext(convForTopic.id);
@@ -460,21 +461,12 @@ async function processVoiceInput(
   const clientSelfPrompt = '\n\n' + formatClientSelfPrompt(session.userId);
   const voiceSystemPrompt = fullPersonalityPrompt + interactionOverlay + opModeOverlay + workSurfaceOverlay + visionRoutingOverlay + buildVoiceReplyStyleOverlay() + clientSelfPrompt + topicContext;
 
-  const DEFAULT_MODELS: Record<string, string> = {
-    deepseek: 'deepseek-v4-pro', qwen: 'qwen-plus', openai: 'gpt-4o',
-    gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-4-6',
-  };
-  const userLLMPrefs = (() => {
-    try {
-      const db = readDB();
-      const setting = (db.settings || []).find((s: any) => s.key === `llm_prefs_${session.userId}`);
-      if (setting) return JSON.parse(setting.value);
-    } catch {}
-    return { provider: '', models: {} };
-  })();
-
-  const provider = (userLLMPrefs.provider || 'deepseek') as 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'qwen';
-  const voiceModel = (userLLMPrefs.models || {})[provider] || DEFAULT_MODELS[provider] || 'deepseek-chat';
+  const userLLMPrefs = getScopedPreferredLLM(session.userId, voiceScope);
+  const provider = userLLMPrefs.provider || 'deepseek';
+  const voiceModel = (userLLMPrefs.models || {})[provider]
+    || (provider === 'deepseek' ? 'deepseek-v4-pro' : DEFAULT_MODELS[provider])
+    || userLLMPrefs.model
+    || 'deepseek-chat';
 
   const maxIterations = routedToolPolicy?.maxIterations || personality.toolPolicy.maxIterations || 5;
 
@@ -530,6 +522,8 @@ async function processVoiceInput(
 
   const toolContext = {
     userId: session.userId,
+    domain: voiceScope.domain,
+    orgId: voiceScope.orgId,
     desktopRelay,
     llmGetters,
     source: 'voice',
@@ -634,9 +628,9 @@ async function processVoiceInput(
       responseText = modeSynced ? `已切到${modeLabel}。` : `我收到切换到${modeLabel}的请求了，但前端没有完成切换。`;
       flushSentence(responseText);
       await Promise.allSettled(ttsPromises);
-      const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+      const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
@@ -674,9 +668,9 @@ async function processVoiceInput(
       flushSentence(quickResult.responseText);
       await Promise.allSettled(ttsPromises);
       responseText = quickResult.responseText;
-      const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: quickResult.toolCall ? [quickResult.toolCall] : undefined });
+      const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: quickResult.toolCall ? [quickResult.toolCall] : undefined, domain: voiceScope.domain, orgId: voiceScope.orgId });
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
@@ -701,9 +695,9 @@ async function processVoiceInput(
       flushSentence(responseText);
     }
     await Promise.allSettled(ttsPromises);
-    const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+    const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
     session.isProcessing = false;
     session.isSpeaking = false;
     session.pipelineAbortController = null;
@@ -723,9 +717,9 @@ async function processVoiceInput(
     flushSentence(responseText);
     await Promise.allSettled(ttsPromises);
 
-    const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+    const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
     session.isProcessing = false;
     session.isSpeaking = false;
     session.pipelineAbortController = null;
@@ -773,8 +767,9 @@ async function processVoiceInput(
       const result = await makeLLMCall(
         [{ role: 'system', content: prompt }, { role: 'user', content: userText }],
         [],
-        { provider, model: classifierModel, userId: session.userId, maxTokens: 60 },
+        { provider, model: classifierModel, userId: session.userId, domain: voiceScope.domain, orgId: voiceScope.orgId, maxTokens: 60 },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
+        llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
       );
       recordTokenUsage(session.userId, provider, classifierModel, result.usage, `voice_cls_${Date.now()}`, 'voice');
       return result.text || '{"category":"unknown","confidence":0.5,"entities":{}}';
@@ -788,9 +783,9 @@ async function processVoiceInput(
       flushSentence(responseText);
       await Promise.allSettled(ttsPromises);
       // Persist
-      const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+      const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
       session.isProcessing = false;
       session.isSpeaking = false;
       session.pipelineAbortController = null;
@@ -821,9 +816,9 @@ async function processVoiceInput(
         if (!result.success) socket.emit('music:error', { message: responseText });
         flushSentence(responseText);
         await Promise.allSettled(ttsPromises);
-        const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+        const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
         session.isProcessing = false;
         session.isSpeaking = false;
         session.pipelineAbortController = null;
@@ -837,9 +832,9 @@ async function processVoiceInput(
         socket.emit('music:error', { message: responseText });
         flushSentence(responseText);
         await Promise.allSettled(ttsPromises);
-        const conv = getOrCreateActiveConversation(session.userId, session.agentId);
-        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
-        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice' });
+        const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
+        addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
         session.isProcessing = false;
         session.isSpeaking = false;
         session.pipelineAbortController = null;
@@ -864,15 +859,9 @@ async function processVoiceInput(
 
         const orchResult = await runOrchestratedTask(
           userText,
-          { userId: session.userId, personalityId: session.personalityId, desktopRelay },
+          { userId: session.userId, personalityId: session.personalityId, domain: voiceScope.domain, orgId: voiceScope.orgId, desktopRelay },
           { provider, model: effectiveModel },
-          {
-            getDeepSeek: llmGetters.getDeepSeek,
-            getGemini: llmGetters.getGemini,
-            getOpenAI: llmGetters.getOpenAI,
-            getAnthropic: llmGetters.getAnthropic,
-            getQwen: llmGetters.getQwen,
-          },
+          llmGetters,
           exposeAgentWork ? (msg) => socket.emit("agent:chunk", { text: msg, agentName: "Lumi" }) : undefined,
           (record, meta) => {
             toolResults.push({
@@ -920,7 +909,7 @@ async function processVoiceInput(
       // ── Single-phase: stream LLM → TTS with tool iteration, all inline ──
       // Load recent conversation history for context continuity
       // Include both user & assistant messages with correct roles
-      const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+      const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
       const recentMsgs = getMessagesByTokenBudget(conv.id);
       const voiceHistory: NormalizedMessage[] = recentMsgs.flatMap(normalizeVoiceHistoryRecord);
 
@@ -948,7 +937,7 @@ async function processVoiceInput(
       const streamResult = await makeLLMCallStreaming(
         messages as NormalizedMessage[],
         toolDeclarations,
-        { provider, model: effectiveModel, signal: pipelineAbort?.signal },
+        { provider, model: effectiveModel, userId: session.userId, domain: voiceScope.domain, orgId: voiceScope.orgId, signal: pipelineAbort?.signal },
         (chunk: string) => {
           responseText += chunk;
           if (!deferCompletionSpeech) {
@@ -962,6 +951,7 @@ async function processVoiceInput(
           }
         },
         llmGetters.getDeepSeek, llmGetters.getGemini, llmGetters.getOpenAI, llmGetters.getAnthropic, llmGetters.getQwen,
+        llmGetters.getOllama, llmGetters.getLmStudio, llmGetters.getArk, llmGetters.getXiaomi, llmGetters.getKimi, llmGetters.getGlm, llmGetters.getRelay,
       );
 
       messages.push({
@@ -1049,14 +1039,14 @@ async function processVoiceInput(
     }
 
     // Persist
-    const conv = getOrCreateActiveConversation(session.userId, session.agentId);
+    const conv = getOrCreateActiveConversation(session.userId, session.agentId, voiceScope.domain, voiceScope.orgId);
     if (!conv.title) {
       conv.title = userText.slice(0, 50);
       writeDB(readDB());
     }
-    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice' });
+    addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'user', content: userText, personality: session.personalityId, mode: 'voice', domain: voiceScope.domain, orgId: voiceScope.orgId });
     if (responseText) {
-      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: toolResults.length ? toolResults : undefined });
+      addMessage({ userId: session.userId, agentId: session.agentId, conversationId: conv.id, role: 'assistant', content: responseText, personality: session.personalityId, mode: 'voice', toolCalls: toolResults.length ? toolResults : undefined, domain: voiceScope.domain, orgId: voiceScope.orgId });
     }
     // Topic tracking — extract and record topics for cross-session continuity
     try {
@@ -1124,17 +1114,11 @@ function resetSilenceTimer(session: AudioSession, socket: Socket) {
 
 export function registerVoiceHandlers(
   socket: Socket,
-  llmGetters: {
-    getDeepSeek: () => any;
-    getGemini: () => any;
-    getOpenAI: () => any;
-    getAnthropic: () => any;
-    getQwen: () => any;
-  },
+  llmGetters: LlmGetters,
   sensoryFn: (uid: string) => any,
   getUserId: (s: Socket) => string,
 ) {
-  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string; transcriptionOnly?: boolean }) => {
+  socket.on("audio:start", async (data: { voiceId?: string; personalityId?: string; agentId?: string; transcriptionOnly?: boolean; domain?: 'personal' | 'work'; orgId?: string }) => {
     logger.info(`[Audio] Voice call started by ${socket.id}`);
     const session = getAudioSession(socket);
     session.isActive = true;
@@ -1145,6 +1129,8 @@ export function registerVoiceHandlers(
     session.lastChunkTime = 0;
     session.userId = getUserId(socket);
     session.agentId = data.agentId || 'lumi';
+    session.domain = data.domain === 'work' && data.orgId ? 'work' : 'personal';
+    session.orgId = session.domain === 'work' ? String(data.orgId || '') : '';
     session.transcriptionOnly = data.transcriptionOnly === true;
     const enrolledVoiceprints = session.userId ? getVoiceprints(session.userId) : [];
     session.voiceprintRequired = enrolledVoiceprints.length > 0;
@@ -1470,7 +1456,7 @@ export function registerVoiceHandlers(
     // Fetch a few recent memories for personalization
     let memoryContext = '';
     try {
-      const recentMemories = queryMemories({ userId, limit: 3, minConfidence: 0.5 });
+      const recentMemories = queryMemories({ userId, limit: 3, minConfidence: 0.5, domain: session.domain, orgId: session.orgId });
       if (recentMemories.length > 0) {
         memoryContext = recentMemories.map(m => `- ${m.content.slice(0, 150)}`).join('\n');
       }
@@ -1484,6 +1470,8 @@ export function registerVoiceHandlers(
         query: 'greeting',
         limit: 8,
         minConfidence: 0.5,
+        domain: session.domain,
+        orgId: session.orgId,
       });
       const greetingTexts = recentGreetings
         .filter(m => m.content.includes('[Greeting]') || m.keywords.includes('greeting'))
@@ -1508,7 +1496,7 @@ export function registerVoiceHandlers(
     ].filter(Boolean).join('\n');
 
     try {
-      const greetingLLM = getUserPreferredLLMConfig(session.userId, { maxTokens: 120 });
+      const greetingLLM = getUserPreferredLLMConfig(session.userId, { maxTokens: 120, domain: session.domain, orgId: session.orgId });
       const response = await makeLLMCall(
         [{ role: 'user', content: greetingPrompt }],
         [],
@@ -1518,6 +1506,13 @@ export function registerVoiceHandlers(
         llmGetters.getOpenAI,
         llmGetters.getAnthropic,
         llmGetters.getQwen,
+        llmGetters.getOllama,
+        llmGetters.getLmStudio,
+        llmGetters.getArk,
+        llmGetters.getXiaomi,
+        llmGetters.getKimi,
+        llmGetters.getGlm,
+        llmGetters.getRelay,
       );
 
       recordTokenUsage(session.userId, greetingLLM.provider, greetingLLM.model, response.usage, `voice_greet_${Date.now()}`, 'voice');
@@ -1544,7 +1539,7 @@ export function registerVoiceHandlers(
         confidence: 1.0,
         sourceInteractionId: `greeting_${Date.now()}`,
         agentId: undefined,
-      } as any, { tier: 'episodic', perspective: 'shared_memory', importance: 0.2, source: 'voice' });
+      } as any, { tier: 'episodic', perspective: 'shared_memory', importance: 0.2, domain: session.domain, orgId: session.orgId, source: 'voice' });
       logger.info(`[Greeting] LLM-generated for ${userId}: "${greeting}"`);
     } catch (err: any) {
       logger.warn(`[Greeting] LLM generation failed, using fallback: ${err.message}`);

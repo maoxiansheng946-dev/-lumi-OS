@@ -9,10 +9,11 @@ import { toolRegistry } from "../tools/registry";
 import { scheduler } from "../scheduler";
 import { getCloudHealth } from "../cloud/core";
 import { loadKeys, saveKeys, getKey, getAllKeyNames, isPersistableKeyName } from "../config/keys";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireOrgMember, requireOrgRole } from "../middleware/auth";
 import { getLatencyStats } from "../monitor/latency_store";
 import { mcpManager, getMCPConfig } from "../mcp";
 import { DEFAULT_VISION_MODELS } from "../llm/vision_preferences";
+import { getOrgPreferredLLM, getUserPreferredLLM, upsertOrgPreferredLLM } from "../llm/user_preferences";
 import { getVoicePreference, setVoicePreference, type VoicePreference } from "../config/voice_preference";
 import { getActiveSTTProvider } from "../stt/adapter";
 import { getActiveProvider as getActiveTTSProvider } from "../tts/adapter";
@@ -381,6 +382,72 @@ export function mountSystemRoutes(router: Router, jwtSecret: string, io?: any) {
       res.json(row ? JSON.parse(row.value) : { provider: '', models: {} });
     } catch {
       res.json({ provider: '', models: {} });
+    }
+  });
+
+  router.get("/preferences/org-llm", requireAuth, requireOrgMember, (req, res) => {
+    try {
+      const orgId = req.user!.orgId!;
+      const orgPrefs = getOrgPreferredLLM(orgId);
+      if (orgPrefs?.configured) {
+        return res.json({
+          inheritPersonal: false,
+          configured: true,
+          provider: orgPrefs.provider,
+          model: orgPrefs.model,
+          models: orgPrefs.models,
+          source: 'organization',
+        });
+      }
+      const personal = getUserPreferredLLM(req.user!.uid);
+      res.json({
+        inheritPersonal: true,
+        configured: false,
+        provider: personal.provider,
+        model: personal.model,
+        models: {},
+        inheritedProvider: personal.provider,
+        inheritedModel: personal.model,
+        source: 'personal',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put("/preferences/org-llm", requireAuth, requireOrgRole('owner', 'admin'), (req, res) => {
+    try {
+      const { inheritPersonal, provider, models } = req.body || {};
+      const updated = upsertOrgPreferredLLM(req.user!.orgId!, {
+        inheritPersonal: inheritPersonal === true,
+        provider,
+        models,
+      });
+      if (!updated.configured) {
+        const personal = getUserPreferredLLM(req.user!.uid);
+        return res.json({
+          success: true,
+          inheritPersonal: true,
+          configured: false,
+          provider: personal.provider,
+          model: personal.model,
+          models: {},
+          inheritedProvider: personal.provider,
+          inheritedModel: personal.model,
+          source: 'personal',
+        });
+      }
+      res.json({
+        success: true,
+        inheritPersonal: false,
+        configured: updated.configured,
+        provider: updated.provider,
+        model: updated.model,
+        models: updated.models,
+        source: 'organization',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

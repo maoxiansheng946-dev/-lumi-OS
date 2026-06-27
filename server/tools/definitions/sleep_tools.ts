@@ -46,20 +46,22 @@ export function registerSleepTools(registry: ToolRegistry): void {
     },
     handler: async (args, context) => {
       const userId = context?.userId || 'anonymous';
-      const pref = getUserPreferredLLMConfig(userId, { maxTokens: 900 });
+      const domain = args.domain || context?.domain || 'personal';
+      const orgId = args.orgId || context?.orgId || '';
+      const pref = getUserPreferredLLMConfig(userId, { maxTokens: 900, domain, orgId });
       const report = await runDreamCycle(
         {
           userId,
           provider: pref.provider as any,
           model: pref.model,
-          domain: args.domain || 'personal',
-          orgId: args.orgId || '',
+          domain,
+          orgId,
         },
         {
           force: Boolean(args.force),
           reason: String(args.reason || (args.force ? 'manual_sleep_request' : 'sleep_request')),
-          domain: args.domain || 'personal',
-          orgId: args.orgId || '',
+          domain,
+          orgId,
           minRecentMemories: Number(args.minRecentMemories) || undefined,
           windowHours: Number(args.windowHours) || undefined,
           cooldownHours: Number(args.cooldownHours) || undefined,

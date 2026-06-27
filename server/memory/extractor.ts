@@ -1,5 +1,6 @@
 import { makeLLMCall, NormalizedMessage } from '../llm/providers';
 import { ExtractedMemory } from './types';
+import type { UserLLMProvider } from '../llm/user_preferences';
 
 export interface ExtractedReminder {
   content: string;
@@ -64,9 +65,11 @@ export interface ExtractionContext {
   userMessage: string;
   assistantResponse: string;
   existingMemories: string[];
-  provider: 'deepseek' | 'qwen' | 'openai' | 'gemini' | 'anthropic';
+  provider: UserLLMProvider;
   model: string;
   userId?: string;
+  domain?: string;
+  orgId?: string;
   treeBranches?: string[];
   /** Location tag from sensory context or user message (e.g. 'home', 'office', 'cafe') */
   locationTag?: string;
@@ -79,6 +82,13 @@ export async function extractMemories(
   getOpenAI?: () => any,
   getAnthropic?: () => any,
   getQwen?: () => any,
+  getOllama?: () => any,
+  getLmStudio?: () => any,
+  getArk?: () => any,
+  getXiaomi?: () => any,
+  getKimi?: () => any,
+  getGlm?: () => any,
+  getRelay?: () => any,
 ): Promise<{ memories: (ExtractedMemory & { branchHint?: string })[]; reminders: ExtractedReminder[] }> {
   const existingStr = ctx.existingMemories.length > 0
     ? ctx.existingMemories.map(m => `- ${m}`).join('\n')
@@ -109,12 +119,19 @@ export async function extractMemories(
     const response = await makeLLMCall(
       messages,
       [],
-      { provider: ctx.provider, model: ctx.model, maxTokens: 1024, userId: ctx.userId },
+      { provider: ctx.provider, model: ctx.model, maxTokens: 1024, userId: ctx.userId, domain: ctx.domain, orgId: ctx.orgId },
       getDeepSeek,
       getGemini,
       getOpenAI,
       getAnthropic,
       getQwen,
+      getOllama,
+      getLmStudio,
+      getArk,
+      getXiaomi,
+      getKimi,
+      getGlm,
+      getRelay,
     );
 
     const text = response.text || '';

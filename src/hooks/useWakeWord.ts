@@ -11,7 +11,7 @@ interface UseWakeWordOptions {
   /** Keyword to detect. Default 'Jarvis' */
   keyword?: string;
   /** Ref to the startCall function from useVoiceCall */
-  startCallRef: React.MutableRefObject<((voiceId?: string, personalityId?: string, agentId?: string) => Promise<void>)>;
+  startCallRef: React.MutableRefObject<((voiceId?: string, personalityId?: string, agentId?: string, options?: { transcriptionOnly?: boolean; domain?: 'personal' | 'work'; orgId?: string }) => Promise<void>)>;
   /** Enable/disable wake word */
   enabled?: boolean;
   /** Sensitivity 0-1. Default 0.5 (Picovoice only) */
@@ -22,6 +22,8 @@ interface UseWakeWordOptions {
   personalityId?: string;
   /** Agent ID to pass to startCall */
   agentId?: string;
+  /** Domain scope to pass to the voice call when wake word starts it */
+  startCallOptions?: { domain?: 'personal' | 'work'; orgId?: string };
   /** Called when wake word is detected (before startCall) */
   onDetection?: () => void;
   /** Return false to ignore wake audio/detections, e.g. when voiceprint says this is not the owner. */
@@ -66,6 +68,7 @@ export function useWakeWord({
   voiceId,
   personalityId,
   agentId,
+  startCallOptions,
   onDetection,
   canAcceptWake,
   canSendWakeAudio,
@@ -204,7 +207,7 @@ export function useWakeWord({
         if (isCallActive?.()) {
           onInterrupt?.();
         } else {
-          startCallRef.current?.(voiceId, personalityId, agentId);
+          startCallRef.current?.(voiceId, personalityId, agentId, startCallOptions);
         }
       };
 
@@ -251,7 +254,7 @@ export function useWakeWord({
         setError(msg);
       }
     }
-  }, [voiceId, personalityId, agentId, startCallRef, cleanupAudio, removeWakeHandlers, onDetection, canAcceptWake, canSendWakeAudio, isCallActive, onInterrupt]);
+  }, [voiceId, personalityId, agentId, startCallOptions, startCallRef, cleanupAudio, removeWakeHandlers, onDetection, canAcceptWake, canSendWakeAudio, isCallActive, onInterrupt]);
 
   // ── Picovoice on-device detection (fallback) ──
 
@@ -277,7 +280,7 @@ export function useWakeWord({
           onInterrupt?.();
           return;
         }
-        startCallRef.current?.();
+        startCallRef.current?.(voiceId, personalityId, agentId, startCallOptions);
       };
 
       let engine: any;
@@ -351,7 +354,7 @@ export function useWakeWord({
         setError(msg);
       }
     }
-  }, [accessKey, keyword, sensitivity, voiceId, personalityId, agentId, startCallRef, cleanupAudio, canAcceptWake]);
+  }, [accessKey, keyword, sensitivity, voiceId, personalityId, agentId, startCallOptions, startCallRef, cleanupAudio, canAcceptWake, isCallActive, onDetection, onInterrupt]);
 
   const enable = useCallback(async () => {
     // Stop any existing session first
