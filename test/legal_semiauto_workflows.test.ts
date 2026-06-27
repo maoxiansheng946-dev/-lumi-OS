@@ -1,15 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { makeApp } from './helpers';
 import { ToolRegistry } from '../server/tools/registry';
 import { getWebLoginSitePreset, listWebLoginSitePresets } from '../server/web_login/legal_presets';
 
 let cleanup = () => {};
+let originalOpenAIKey: string | undefined;
 let registerLegalTools: (registry: ToolRegistry) => void;
 let registerWebLoginTools: (registry: ToolRegistry) => void;
 
 beforeAll(async () => {
+  originalOpenAIKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = '';
   const app = await makeApp();
   cleanup = app.cleanup;
   ({ registerLegalTools } = await import('../server/tools/definitions/legal_tools'));
@@ -17,6 +21,8 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  if (originalOpenAIKey === undefined) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = originalOpenAIKey;
   cleanup();
 });
 
@@ -144,6 +150,69 @@ describe('semi-automated legal workflows', () => {
     expect(output).toContain('national-enterprise-credit');
     expect(output).toContain('court-online-service');
     expect(output).toMatch(/来源登记表|来源.*登记/);
+  });
+
+  it('imports local legal materials into the organization knowledge base', async () => {
+    const registry = createLegalRegistry();
+    const KB = await import('../server/org/kb');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumi_legal_materials_'));
+
+    try {
+      fs.writeFileSync(path.join(dir, '起诉状.txt'), [
+        '案由：买卖合同纠纷',
+        '原告主张被告拖欠货款，争议包括付款条件是否成就。',
+        '被告提出质量异议并要求扣减违约金。',
+      ].join('\n'), 'utf-8');
+      fs.writeFileSync(path.join(dir, '证据目录.md'), [
+        '# 证据目录',
+        '1. 合同：证明买卖合同关系。',
+        '2. 质量异议函：证明被告曾提出质量问题。',
+      ].join('\n'), 'utf-8');
+      fs.writeFileSync(path.join(dir, '现场照片.png'), 'not a real image', 'utf-8');
+
+      const output = await registry.execute('legal_import_materials_to_kb', {
+        orgId: 'org-legal-material-import',
+        userId: 'lawyer-1',
+        folderPath: dir,
+        caseName: '材料入库测试案',
+        caseType: '买卖合同纠纷',
+        materialType: '案件材料',
+        tags: ['import-test'],
+      });
+
+      expect(output).toContain('法律材料导入知识库报告');
+      expect(output).toMatch(/成功导入：2 份|成功导入：2/);
+      expect(output).toMatch(/跳过\/失败：1 份|跳过\/失败：1/);
+      expect(output).toContain('起诉状.txt');
+      expect(output).toContain('证据目录.md');
+      expect(output).toContain('ocr_image_file');
+      expect(output).toContain('legal_import_materials_to_kb');
+
+      const results = await KB.searchKnowledgeBase('org-legal-material-import', '质量异议 付款条件', {
+        limit: 5,
+        status: 'published',
+      });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.map(result => result.title)).toEqual(expect.arrayContaining(['起诉状.txt']));
+      expect(results[0].chunk).toMatch(/质量异议|付款条件/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports external source capabilities without overstating web access', async () => {
+    const registry = createLegalRegistry();
+
+    const output = await registry.execute('legal_external_source_status', {});
+
+    expect(output).toContain('外部法律数据源接入状态');
+    expect(output).toContain('企查查');
+    expect(output).toContain('api');
+    expect(output).toMatch(/Alpha|法蝉|中国裁判文书网/);
+    expect(output).toMatch(/授权网页登录协作|网页登录/);
+    expect(output).toMatch(/不绕过验证码|不绕过/);
+    expect(output).not.toMatch(/已接入.*法蝉|已接入.*Alpha|自动抓取.*已完成|批量同步.*已完成/);
   });
 
   it('keeps triad reasoning as underlying logic rather than a standalone UI tab', () => {

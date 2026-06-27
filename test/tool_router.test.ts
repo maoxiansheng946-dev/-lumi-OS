@@ -42,6 +42,8 @@ const DECLARATIONS = [
   'legal_generate_litigation_packet',
   'legal_extract_dispute_focus',
   'legal_generate_argument_or_opinion',
+  'legal_import_materials_to_kb',
+  'legal_external_source_status',
   'legal_external_research_plan',
   'legal_verify_citation',
   'legal_import_judgment',
@@ -113,6 +115,7 @@ describe('tool router', () => {
       'legal_extract_dispute_focus',
       'legal_generate_argument_or_opinion',
       'legal_generate_litigation_packet',
+      'legal_import_materials_to_kb',
     ]));
 
     expect(opinionRoute.categories).toContain('legal');
@@ -120,6 +123,31 @@ describe('tool router', () => {
       'legal_extract_dispute_focus',
       'legal_generate_argument_or_opinion',
       'legal_case_strategy',
+    ]));
+  });
+
+  it('routes material import and source-status requests to legal knowledge tools', () => {
+    const importRoute = routeToolsForTurn(
+      '把这个案件文件夹里的起诉状、证据和庭审笔录导入知识库，后面生成代理词要用',
+      DECLARATIONS,
+    );
+    const sourceRoute = routeToolsForTurn(
+      '外部数据源接入状态说清楚，哪些是企查查 API，哪些只是授权网页登录',
+      DECLARATIONS,
+    );
+
+    expect(importRoute.categories).toContain('legal');
+    expect(importRoute.toolNames).toEqual(expect.arrayContaining([
+      'legal_import_materials_to_kb',
+      'legal_extract_dispute_focus',
+      'read_file',
+      'extract_document_text',
+    ]));
+
+    expect(sourceRoute.categories).toContain('legal');
+    expect(sourceRoute.toolNames).toEqual(expect.arrayContaining([
+      'legal_external_source_status',
+      'web_login_run',
     ]));
   });
 

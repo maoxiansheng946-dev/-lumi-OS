@@ -1,12 +1,15 @@
 /**
  * External legal data source integrations.
  *
- * Level 1 (free, public): 中国裁判文书网, 国家法律法规数据库,
- *   住建部合同模板, 全国法院被执行人信息
- * Level 2 (paid, optional): 企查查 API, 天眼查
+ * Official/API integrations are used only when Lumi has a documented endpoint
+ * and authorized credentials. Third-party legal databases and court websites
+ * without a configured API are handled through authorized browser collaboration
+ * plus user-confirmed material import into the knowledge base.
  */
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import { getKey } from '../config/keys';
 
 // ── Cache ───────────────────────────────────────────────────────────────
 
@@ -35,6 +38,107 @@ function readCache(key: string, ttlMs = 24 * 60 * 60 * 1000): any | null {
 function writeCache(key: string, data: any) {
   ensureCacheDir();
   fs.writeFileSync(path.join(CACHE_DIR, key), JSON.stringify(data, null, 2));
+}
+
+// ── Source capability registry ─────────────────────────────────────────
+
+export type LegalSourceAccessMode = 'api' | 'authorized_browser' | 'manual_import' | 'official_web';
+
+export interface LegalSourceCapability {
+  id: string;
+  label: string;
+  accessMode: LegalSourceAccessMode;
+  configured: boolean;
+  canAutoQuery: boolean;
+  requiresAuthorization: boolean;
+  boundary: string;
+  nextAction: string;
+}
+
+function readSecret(name: keyof import('../config/keys').KeyStore): string {
+  return (process.env[name] || getKey(name) || '').trim();
+}
+
+function qichachaConfig() {
+  const appKey = readSecret('QICHACHA_APP_KEY') || readSecret('QICHACHA_API_KEY');
+  const secretKey = readSecret('QICHACHA_SECRET_KEY');
+  const baseUrl = (readSecret('QICHACHA_BASE_URL') || 'https://api.qichacha.com').replace(/\/+$/, '');
+  return {
+    appKey,
+    secretKey,
+    baseUrl,
+    configured: Boolean(appKey && secretKey),
+  };
+}
+
+export function listLegalSourceCapabilities(): LegalSourceCapability[] {
+  const qcc = qichachaConfig();
+  return [
+    {
+      id: 'qichacha',
+      label: '企查查',
+      accessMode: 'api',
+      configured: qcc.configured,
+      canAutoQuery: qcc.configured,
+      requiresAuthorization: true,
+      boundary: qcc.configured
+        ? '已配置官方 API 凭证时，可按授权额度查询企业信息；不得超出合同、套餐和用途限制。'
+        : '尚未配置官方 API 凭证，只能使用授权网页登录协作。不能承诺自动抓取或批量同步。',
+      nextAction: qcc.configured
+        ? '可直接调用 legal_trace_assets / legal_equity_penetration 进行 API 查询，并保存来源时间。'
+        : '配置 QICHACHA_APP_KEY 与 QICHACHA_SECRET_KEY，或使用 web_login_run 打开 qichacha 登录页。',
+    },
+    {
+      id: 'alpha-lawyer',
+      label: 'Alpha',
+      accessMode: 'authorized_browser',
+      configured: false,
+      canAutoQuery: false,
+      requiresAuthorization: true,
+      boundary: '未发现稳定公开 API 配置；当前按律所账号授权网页登录协作，不复制平台数据库。',
+      nextAction: '使用 web_login_profile_save_from_preset / web_login_run 打开 Alpha，律师确认结果后导入 Lumi 知识库。',
+    },
+    {
+      id: 'fachan',
+      label: '法蝉',
+      accessMode: 'authorized_browser',
+      configured: false,
+      canAutoQuery: false,
+      requiresAuthorization: true,
+      boundary: '当前按第三方法律平台授权网页登录协作处理，不绕过账号权限、验证码、付费墙或下载限制。',
+      nextAction: '使用授权浏览器检索，律师确认摘录后由 Lumi 导入知识库。',
+    },
+    {
+      id: 'china-judgments-online',
+      label: '中国裁判文书网',
+      accessMode: 'authorized_browser',
+      configured: false,
+      canAutoQuery: false,
+      requiresAuthorization: true,
+      boundary: '当前不作为平台数据 API 接入；只做官方网页授权会话、检索辅助和人工确认后的材料导入。',
+      nextAction: '使用授权浏览器检索、下载或复制材料，再调用 legal_import_materials_to_kb 入库。',
+    },
+    {
+      id: 'people-court-case-library',
+      label: '人民法院案例库',
+      accessMode: 'official_web',
+      configured: true,
+      canAutoQuery: false,
+      requiresAuthorization: false,
+      boundary: '按官方网页检索与人工确认处理；引用方式和适用性需由律师复核。',
+      nextAction: '生成检索词并打开官网，确认后导入案例摘录或全文。',
+    },
+    {
+      id: 'national-enterprise-credit',
+      label: '国家企业信用信息公示系统',
+      accessMode: 'official_web',
+      configured: true,
+      canAutoQuery: false,
+      requiresAuthorization: false,
+      boundary: '按官方网站查询处理；遇验证码、地区跳转或频控时由人工完成。',
+      nextAction: '打开官方网页核验主体信息，保存查询时间、主体名称和统一社会信用代码。',
+    },
+  ];
 }
 
 // ── Fetch helper ────────────────────────────────────────────────────────
@@ -81,58 +185,14 @@ export interface JudgmentResult {
   url: string;
 }
 
-/**
- * Search China Judgments Online.
- * NOTE: wenshu.court.gov.cn requires CAPTCHA and session cookies for programmatic access.
- * This is a best-effort public search. For production use, consider the official
- * bulk data subscription or third-tier court API.
- */
 export async function searchWenshu(params: JudgmentSearchParams): Promise<JudgmentResult[]> {
   const ck = cacheKey('wenshu', JSON.stringify(params));
   const cached = readCache(ck, 6 * 60 * 60 * 1000); // 6-hour TTL
   if (cached) return cached;
 
   const results: JudgmentResult[] = [];
-
-  // Construct search URL for wenshu website
-  const qParts: string[] = [];
-  if (params.keyword) qParts.push(params.keyword);
-  if (params.caseNumber) qParts.push(params.caseNumber);
-  if (params.party) qParts.push(params.party);
-  if (params.court) qParts.push(params.court);
-
-  if (qParts.length > 0) {
-    const q = encodeURIComponent(qParts.join(' '));
-    // Use the list page — will return HTML requiring parsing
-    const html = await fetchWithUA(
-      `https://wenshu.court.gov.cn/website/wenshu/181217BMTKHNT2W0/index.html?searchKeyword=${q}`,
-      12000,
-    );
-
-    if (html) {
-      // Extract JSON-LD or embedded data if available
-      try {
-        const dataRe = /window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/;
-        const match = html.match(dataRe);
-        if (match) {
-          const data = JSON.parse(match[1]);
-          const items = data?.result?.list || data?.list || [];
-          for (const item of items) {
-            results.push({
-              title: item.caseName || item.title || '',
-              caseNumber: item.caseCode || item.caseNo || '',
-              court: item.courtName || '',
-              date: item.judgeDate || '',
-              causeOfAction: item.caseCause || '',
-              parties: item.party || '',
-              url: `https://wenshu.court.gov.cn/website/wenshu/${item.docId || ''}`,
-            });
-          }
-        }
-      } catch { /* HTML parse fallback — extract visible case list */ }
-    }
-  }
-
+  // 中国裁判文书网当前按授权网页登录协作处理，不作为平台数据 API 接入。
+  // 律师确认后的下载文件或摘录由 legal_import_materials_to_kb 入库。
   writeCache(ck, results);
   return results;
 }
@@ -232,6 +292,62 @@ export interface CompanyInfo {
     restrictionsCount: number;
   };
   url: string;
+  sourceMode?: 'api' | 'authorized_browser' | 'manual';
+  sourceName?: string;
+  queriedAt?: string;
+}
+
+function qichachaHeaders(config: ReturnType<typeof qichachaConfig>): Record<string, string> {
+  const timespan = String(Date.now());
+  const token = crypto
+    .createHash('md5')
+    .update(`${config.appKey}${timespan}${config.secretKey}`)
+    .digest('hex');
+  return {
+    Token: token,
+    Timespan: timespan,
+    Accept: 'application/json',
+  };
+}
+
+function pickQichachaResult(data: any): any {
+  const result = data?.Result ?? data?.result ?? data?.Data ?? data?.data;
+  if (Array.isArray(result)) return result[0];
+  if (Array.isArray(result?.Result)) return result.Result[0];
+  if (Array.isArray(result?.Items)) return result.Items[0];
+  if (Array.isArray(result?.items)) return result.items[0];
+  return result || data;
+}
+
+function mapQichachaCompany(raw: any, keyword: string): CompanyInfo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = raw.Name || raw.name || raw.CompanyName || raw.companyName || raw.KeyNo || keyword;
+  const keyNo = raw.KeyNo || raw.keyNo || raw.No || raw.id || encodeURIComponent(keyword);
+  return {
+    name,
+    legalPerson: raw.OperName || raw.legalPersonName || raw.LegalPerson || raw.operName || '',
+    registeredCapital: raw.RegistCapi || raw.registeredCapital || raw.RegisteredCapital || '',
+    status: raw.Status || raw.regStatus || raw.StatusCode || raw.status || '',
+    establishDate: raw.StartDate || raw.establishDate || raw.EstablishDate || '',
+    unifiedCode: raw.CreditCode || raw.unifiedCode || raw.CreditNo || raw.No || '',
+    address: raw.Address || raw.address || '',
+    businessScope: raw.Scope || raw.businessScope || raw.BusinessScope || '',
+    shareholders: (raw.Shareholders || raw.shareholders || raw.Partners || []).map((s: any) => ({
+      name: s.Name || s.name || s.StockName || '',
+      ratio: Number.parseFloat(String(s.Ratio || s.ratio || s.StockPercent || 0)) || 0,
+      type: s.Type || s.type || s.StockType || '',
+    })),
+    branches: raw.Branches || raw.branches || [],
+    riskInfo: {
+      enforcementCount: Number(raw.EnforcementCount || raw.enforcementCount || raw.ZhiXingCount || 0),
+      dishonestyCount: Number(raw.DishonestyCount || raw.dishonestyCount || raw.ShiXinCount || 0),
+      restrictionsCount: Number(raw.RestrictionsCount || raw.restrictionsCount || raw.XianGaoCount || 0),
+    },
+    url: `https://www.qcc.com/firm/${keyNo}.html`,
+    sourceMode: 'api',
+    sourceName: '企查查开放平台 API',
+    queriedAt: new Date().toISOString(),
+  };
 }
 
 export async function searchCompany(keyword: string): Promise<CompanyInfo | null> {
@@ -239,76 +355,26 @@ export async function searchCompany(keyword: string): Promise<CompanyInfo | null
   const cached = readCache(ck, 6 * 60 * 60 * 1000);
   if (cached) return cached;
 
-  const apiKey = process.env.QICHACHA_API_KEY;
-  if (apiKey) {
+  const config = qichachaConfig();
+  if (config.configured) {
     try {
-      const res = await fetch(`https://api.qcc.com/Company/Search?key=${encodeURIComponent(keyword)}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+      const endpoint = `${config.baseUrl}/ECIV4/GetBasicDetailsByName?key=${encodeURIComponent(keyword)}`;
+      const res = await fetch(endpoint, {
+        headers: qichachaHeaders(config),
         signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {
         const data = await res.json();
-        const company = data?.Result ?? data;
-        const info: CompanyInfo = {
-          name: company.Name || company.companyName || keyword,
-          legalPerson: company.OperName || company.legalPersonName || '',
-          registeredCapital: company.RegistCapi || company.registeredCapital || '',
-          status: company.Status || company.regStatus || '',
-          establishDate: company.StartDate || company.establishDate || '',
-          unifiedCode: company.CreditCode || company.unifiedCode || '',
-          address: company.Address || company.address || '',
-          businessScope: company.Scope || company.businessScope || '',
-          shareholders: (company.Shareholders || company.shareholders || []).map((s: any) => ({
-            name: s.Name || s.name || '',
-            ratio: s.Ratio || s.ratio || 0,
-            type: s.Type || s.type || '',
-          })),
-          branches: company.Branches || company.branches || [],
-          riskInfo: {
-            enforcementCount: company.EnforcementCount || 0,
-            dishonestyCount: company.DishonestyCount || 0,
-            restrictionsCount: company.RestrictionsCount || 0,
-          },
-          url: `https://www.qcc.com/firm/${keyword}.html`,
-        };
-        writeCache(ck, info);
-        return info;
-      }
-    } catch { /* API failed, fall through to public scraping */ }
-  }
-
-  // Public web search fallback — scrape QCC public page
-  const html = await fetchWithUA(
-    `https://www.qcc.com/web/search?key=${encodeURIComponent(keyword)}`,
-    12000,
-  );
-  if (html) {
-    try {
-      const dataRe = /window\.__NUXT__\s*=\s*({[\s\S]*?});/;
-      const match = html.match(dataRe);
-      if (match) {
-        const data = JSON.parse(match[1]);
-        const result = data?.data?.searchResult?.[0] || data?.state?.data?.searchResult?.[0];
-        if (result) {
-          const info: CompanyInfo = {
-            name: result.name || keyword,
-            legalPerson: result.operName || '',
-            registeredCapital: result.registCapi || '',
-            status: result.status || result.regStatus || '',
-            establishDate: result.startDate || '',
-            unifiedCode: result.creditCode || '',
-            address: result.address || '',
-            businessScope: result.businessScope || '',
-            shareholders: [],
-            branches: [],
-            riskInfo: { enforcementCount: 0, dishonestyCount: 0, restrictionsCount: 0 },
-            url: `https://www.qcc.com/firm/${result.keyNo || keyword}.html`,
-          };
-          writeCache(ck, info);
-          return info;
+        const status = String(data?.Status || data?.status || data?.Code || data?.code || '');
+        if (!status || /^200$|^0$/i.test(status)) {
+          const info = mapQichachaCompany(pickQichachaResult(data), keyword);
+          if (info) {
+            writeCache(ck, info);
+            return info;
+          }
         }
       }
-    } catch { /* parse failed */ }
+    } catch { /* API failed; use authorized browser workflow outside this connector */ }
   }
 
   return null;

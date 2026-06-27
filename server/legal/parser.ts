@@ -3,6 +3,8 @@
  * Supports PDF (judgments, rulings) and DOCX (contracts, bids).
  */
 import fs from 'fs';
+import { extractPptxText } from '../knowledge/pptx';
+import { extractRtfText } from '../knowledge/rtf';
 
 // ── PDF Parsing ─────────────────────────────────────────────────────────
 
@@ -81,6 +83,8 @@ export async function parseDocument(filePath: string): Promise<{ text: string; f
     doc: 'docx',
     xlsx: 'spreadsheet',
     xls: 'spreadsheet',
+    pptx: 'pptx',
+    rtf: 'rtf',
     csv: 'csv',
     txt: 'text',
     md: 'text',
@@ -99,6 +103,13 @@ export async function parseDocument(filePath: string): Promise<{ text: string; f
     if (format === 'spreadsheet') {
       const text = await parseSpreadsheet(filePath);
       return text ? { text, format } : null;
+    }
+    if (format === 'pptx') {
+      const text = await extractPptxText(filePath);
+      return text ? { text, format } : null;
+    }
+    if (format === 'rtf') {
+      return { text: extractRtfText(parseText(filePath)), format };
     }
     if (format === 'csv') {
       return { text: parseText(filePath), format };

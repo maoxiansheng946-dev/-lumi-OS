@@ -12,7 +12,18 @@ import { LUMI_EMBEDDING_MODEL } from './types';
 
 // ── Legal Article Types ──────────────────────────────────────────────────
 
-export type LegalArticleType = 'judgment' | 'statute' | 'contract' | 'bid_template' | 'legal_opinion';
+export type LegalArticleType =
+  | 'judgment'
+  | 'statute'
+  | 'contract'
+  | 'bid_template'
+  | 'legal_opinion'
+  | 'case_material'
+  | 'evidence'
+  | 'pleading'
+  | 'transcript'
+  | 'research_note'
+  | 'company_report';
 
 export interface LegalArticleMeta {
   articleType: LegalArticleType;

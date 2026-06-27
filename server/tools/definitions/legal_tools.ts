@@ -1,12 +1,15 @@
+import fs from 'fs';
+import path from 'path';
 import { ToolRegistry } from '../registry';
 import { parseDocument, extractLegalMetadata } from '../../legal/parser';
 import {
   createLegalArticle, indexLegalArticle,
   searchSimilarCases, searchStatutes, verifyCitation, verifyMultipleCitations,
+  type LegalArticleType,
 } from '../../legal/kb';
 import {
   searchWenshu, searchFLK, searchMOHURDTemplates,
-  searchCompany, searchEnforcementRecords,
+  searchCompany, searchEnforcementRecords, listLegalSourceCapabilities,
 } from '../../legal/sources';
 import { generateEmbedding } from '../../memory/store';
 import { makeLLMCall, type NormalizedMessage } from '../../llm/providers';
@@ -188,6 +191,85 @@ function materialSummary(args: Record<string, any>): string {
   return entries
     .map(([label, value]) => `- ${label}: ${value.slice(0, 500)}`)
     .join('\n');
+}
+
+const LEGAL_MATERIAL_EXTENSIONS = new Set([
+  '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.csv', '.txt', '.md', '.rtf',
+]);
+const LEGAL_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff']);
+
+function normalizeMaterialArticleType(input: string): LegalArticleType {
+  if (/裁判|判决|裁定|judg/i.test(input)) return 'judgment';
+  if (/法条|法规|法律|statute/i.test(input)) return 'statute';
+  if (/合同|协议|contract/i.test(input)) return 'contract';
+  if (/证据|evidence/i.test(input)) return 'evidence';
+  if (/起诉|答辩|申请书|诉状|代理词|pleading/i.test(input)) return 'pleading';
+  if (/笔录|庭审|会议|录音|转写|transcript/i.test(input)) return 'transcript';
+  if (/标书|投标|招标|bid|tender/i.test(input)) return 'bid_template';
+  if (/意见书|法律意见|opinion/i.test(input)) return 'legal_opinion';
+  if (/检索|摘录|类案|research/i.test(input)) return 'research_note';
+  if (/企查查|工商|企业|股东|被执行|company/i.test(input)) return 'company_report';
+  return 'case_material';
+}
+
+function materialCategory(articleType: LegalArticleType): string {
+  return `legal_${articleType}`;
+}
+
+function normalizeTagsFromArgs(args: Record<string, any>, articleType: LegalArticleType, source: string): string[] {
+  const tags = new Set<string>([
+    'legal_material',
+    `material:${articleType}`,
+    `source:${source}`,
+  ]);
+  for (const tag of listArg(args, 'tags')) tags.add(tag);
+  const caseName = textArg(args, 'caseName');
+  const caseType = textArg(args, 'caseType');
+  if (caseName) tags.add(`caseName:${caseName}`);
+  if (caseType) tags.add(`caseType:${caseType}`);
+  return [...tags];
+}
+
+function buildImportedMaterialContent(args: Record<string, any>, item: {
+  title: string;
+  text: string;
+  source: string;
+  format?: string;
+  articleType: LegalArticleType;
+}): string {
+  const header = [
+    '# Lumi 法律材料入库记录',
+    `- 标题: ${item.title}`,
+    `- 来源: ${item.source}`,
+    `- 格式: ${item.format || 'text'}`,
+    `- 材料类型: ${item.articleType}`,
+    `- 案件名称: ${textArg(args, 'caseName') || '未指定'}`,
+    `- 案由/类型: ${textArg(args, 'caseType') || '未指定'}`,
+    `- 导入时间: ${new Date().toISOString()}`,
+    '- 使用边界: 本材料为知识库检索来源，进入正式文书前必须核对原件、来源、页码、形成时间和律师复核意见。',
+  ].join('\n');
+  return `${header}\n\n---\n\n${item.text.trim()}`;
+}
+
+function collectMaterialFiles(folderPath: string, recursive: boolean, maxFiles: number): string[] {
+  const out: string[] = [];
+  const root = path.resolve(folderPath);
+  const visit = (dir: string) => {
+    if (out.length >= maxFiles) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (out.length >= maxFiles) break;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (recursive && !entry.name.startsWith('.')) visit(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      out.push(fullPath);
+    }
+  };
+  visit(root);
+  return out;
 }
 
 // ── legal_search_case ───────────────────────────────────────────────────
@@ -442,6 +524,13 @@ async function traceAssetsHandler(args: Record<string, any>): Promise<string> {
     lines.push(`- 被执行记录: ${company.riskInfo.enforcementCount} 条`);
     lines.push(`- 失信记录: ${company.riskInfo.dishonestyCount} 条`);
     lines.push(`- 限制消费: ${company.riskInfo.restrictionsCount} 条`);
+    lines.push(`- 查询来源: ${company.sourceName || '企业信息数据源'} ${company.queriedAt ? `(${company.queriedAt.slice(0, 10)})` : ''}`);
+  } else {
+    lines.push('## 企业基本信息');
+    lines.push('- 未通过已配置 API 查询到企业信息，或尚未配置企查查官方 API 凭证。');
+    lines.push('- 可执行：web_login_profile_save_from_preset {"presetId":"qichacha"}');
+    lines.push('- 然后执行：web_login_run {"profileId":"qichacha","headless":false}');
+    lines.push('- 律师在授权网页内确认企业信息、股东信息、涉诉/被执行信息后，使用 legal_import_materials_to_kb 导入知识库。');
   }
 
   // 2. Enforcement records
@@ -460,7 +549,7 @@ async function traceAssetsHandler(args: Record<string, any>): Promise<string> {
   lines.push('4. **股权**: 通过股权穿透分析关联企业（见legal_equity_penetration工具）');
   lines.push('5. **婚姻状况**: 建议查询被执行人婚姻登记信息，判断是否涉及夫妻共同财产');
   lines.push('6. **知识产权**: 建议查询被执行人名下专利、商标、著作权');
-  lines.push(`\n*数据来源: 企查查(qcc.com) | 全国法院被执行人信息(zhixing.court.gov.cn) | ${new Date().toISOString().slice(0, 10)}*`);
+  lines.push(`\n*数据来源: ${company?.sourceName || '授权网页登录协作/待人工确认'} | 全国法院被执行人信息(zhixing.court.gov.cn) | ${new Date().toISOString().slice(0, 10)}*`);
 
   return lines.join('\n');
 }
@@ -472,7 +561,16 @@ async function equityPenetrationHandler(args: Record<string, any>): Promise<stri
   if (!companyName) return '请提供公司名称（name参数）';
 
   const company = await searchCompany(companyName);
-  if (!company) return `未找到"${companyName}"的企业信息。请核实公司名称。`;
+  if (!company) {
+    return `未通过已配置 API 查询到"${companyName}"的企业信息，或尚未配置企查查官方 API 凭证。
+
+可执行以下授权网页登录协作：
+1. web_login_profile_save_from_preset {"presetId":"qichacha"}
+2. web_login_run {"profileId":"qichacha","headless":false}
+3. 律师在网页内确认股东、对外投资、风险信息后，使用 legal_import_materials_to_kb 导入 Lumi 知识库。
+
+边界：这不是平台数据接入；不自动抓取、不批量同步、不绕过验证码、付费墙、账号权限或频控。`;
+  }
 
   const lines: string[] = [`# ${companyName} 股权穿透分析\n`];
   lines.push('## 第一层：直接股东');
@@ -497,7 +595,7 @@ async function equityPenetrationHandler(args: Record<string, any>): Promise<stri
   lines.push(`- 注册资本: ${company.registeredCapital}`);
   lines.push('- 建议进一步查询: 银行流水、关联交易、对外投资');
   lines.push('\n*注意: 股权穿透信息基于公开工商数据，实际控制关系需综合判断。*');
-  lines.push(`*数据来源: 企查查(qcc.com) | ${new Date().toISOString().slice(0, 10)}*`);
+  lines.push(`*数据来源: ${company.sourceName || '企查查授权数据源'} | ${new Date().toISOString().slice(0, 10)}*`);
 
   return lines.join('\n');
 }
@@ -902,6 +1000,170 @@ ${commonReview.map(item => `- ${item}`).join('\n')}
 `);
 }
 
+// ── legal_import_materials_to_kb ────────────────────────────────────────
+
+async function importMaterialsToKbHandler(args: Record<string, any>, context?: any): Promise<string> {
+  const orgId = textArg(args, 'orgId') || context?.orgId || 'default';
+  const userId = textArg(args, 'userId') || context?.userId || 'system';
+  const filePath = textArg(args, 'filePath');
+  const folderPath = textArg(args, 'folderPath');
+  const content = textArg(args, 'content');
+  const recursive = args.recursive !== false;
+  const maxFiles = Math.max(1, Math.min(Number(args.maxFiles) || 30, 100));
+  const materialType = textArg(args, 'materialType');
+  const defaultArticleType = normalizeMaterialArticleType(materialType || textArg(args, 'title'));
+
+  if (!filePath && !folderPath && !content) {
+    return '请提供 filePath、folderPath 或 content。Lumi 可以导入本地案件材料、下载后的网页材料或直接粘贴文本。';
+  }
+
+  const imported: Array<{ title: string; articleId: string; chunks: number; category: string }> = [];
+  const skipped: Array<{ source: string; reason: string }> = [];
+
+  const ingestOne = async (source: string, rawText: string, format: string, title: string, articleType: LegalArticleType) => {
+    const text = rawText.trim();
+    if (text.length < 20) {
+      skipped.push({ source, reason: '文本过短或解析为空' });
+      return;
+    }
+    const metadata = articleType === 'judgment' ? extractLegalMetadata(text) : undefined;
+    const article = createLegalArticle(orgId, userId, {
+      title,
+      content: buildImportedMaterialContent(args, { title, text, source, format, articleType }),
+      category: materialCategory(articleType),
+      tags: normalizeTagsFromArgs(args, articleType, source),
+      articleType,
+      metadata: metadata ? {
+        articleType,
+        caseNumber: metadata.caseNumber,
+        court: metadata.court,
+        parties: metadata.parties,
+        causeOfAction: metadata.causeOfAction,
+        judgmentDate: metadata.judgmentDate,
+        statutesCited: metadata.statutesCited,
+        jurisdiction: metadata.court,
+      } : { articleType },
+    });
+    const chunks = await indexLegalArticle(orgId, article.id);
+    imported.push({ title, articleId: article.id, chunks, category: article.category });
+  };
+
+  if (content) {
+    const title = textArg(args, 'title') || textArg(args, 'caseName') || '粘贴法律材料';
+    await ingestOne('pasted-content', content, 'text', title, defaultArticleType);
+  }
+
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      skipped.push({ source: resolved, reason: '文件不存在' });
+    } else if (!fs.statSync(resolved).isFile()) {
+      skipped.push({ source: resolved, reason: '不是文件' });
+    } else if (!LEGAL_MATERIAL_EXTENSIONS.has(path.extname(resolved).toLowerCase())) {
+      const ext = path.extname(resolved).toLowerCase();
+      skipped.push({
+        source: resolved,
+        reason: LEGAL_IMAGE_EXTENSIONS.has(ext)
+          ? '图片材料需先使用 ocr_image_file 提取文字，再将 OCR 文本导入知识库'
+          : `暂不支持该格式：${ext || '无扩展名'}`,
+      });
+    } else {
+      const parsed = await parseDocument(resolved);
+      if (!parsed?.text) {
+        skipped.push({ source: resolved, reason: '解析失败或内容为空' });
+      } else {
+        const inferredType = normalizeMaterialArticleType(materialType || path.basename(resolved));
+        await ingestOne(resolved, parsed.text, parsed.format, textArg(args, 'title') || path.basename(resolved), inferredType);
+      }
+    }
+  }
+
+  if (folderPath) {
+    const resolvedFolder = path.resolve(folderPath);
+    if (!fs.existsSync(resolvedFolder)) {
+      skipped.push({ source: resolvedFolder, reason: '文件夹不存在' });
+    } else if (!fs.statSync(resolvedFolder).isDirectory()) {
+      skipped.push({ source: resolvedFolder, reason: '不是文件夹' });
+    } else {
+      const files = collectMaterialFiles(resolvedFolder, recursive, maxFiles);
+      if (files.length === 0) skipped.push({ source: resolvedFolder, reason: '未找到可导入的文档格式' });
+      for (const file of files) {
+        try {
+          const ext = path.extname(file).toLowerCase();
+          if (!LEGAL_MATERIAL_EXTENSIONS.has(ext)) {
+            skipped.push({
+              source: file,
+              reason: LEGAL_IMAGE_EXTENSIONS.has(ext)
+                ? '图片材料需先使用 ocr_image_file 提取文字，再将 OCR 文本导入知识库'
+                : `暂不支持该格式：${ext || '无扩展名'}`,
+            });
+            continue;
+          }
+          const parsed = await parseDocument(file);
+          if (!parsed?.text) {
+            skipped.push({ source: file, reason: '解析失败或内容为空' });
+            continue;
+          }
+          const inferredType = normalizeMaterialArticleType(materialType || path.basename(file));
+          await ingestOne(file, parsed.text, parsed.format, path.basename(file), inferredType);
+        } catch (err: any) {
+          skipped.push({ source: file, reason: err?.message || '导入失败' });
+        }
+      }
+    }
+  }
+
+  const totalChunks = imported.reduce((sum, item) => sum + item.chunks, 0);
+  const importedLines = imported.length > 0
+    ? imported.map((item, index) =>
+      `${index + 1}. ${item.title}\n   - articleId: ${item.articleId}\n   - category: ${item.category}\n   - indexedChunks: ${item.chunks}`,
+    ).join('\n')
+    : '无';
+  const skippedLines = skipped.length > 0
+    ? skipped.map((item, index) => `${index + 1}. ${item.source} — ${item.reason}`).join('\n')
+    : '无';
+
+  return `# 法律材料导入知识库报告
+
+## 一、导入结果
+- 工具：legal_import_materials_to_kb
+- 组织：${orgId}
+- 成功导入：${imported.length} 份
+- 索引块数：${totalChunks}
+- 跳过/失败：${skipped.length} 份
+
+## 二、已导入材料
+${importedLines}
+
+## 三、跳过/失败材料
+${skippedLines}
+
+## 四、后续可用能力
+- 这些材料已进入组织知识库，可用于案件问答、争议焦点提炼、代理词/法律意见书、证据目录和类案检索底稿。
+- 若 indexedChunks 为 0，通常是当前未配置向量模型；材料仍保存在知识库中，可通过标题、标签和关键词检索。
+- 从外部网站获得的网页、下载文件或摘录，应先由律师确认来源和使用权限，再由本工具入库。
+`;
+}
+
+// ── legal_external_source_status ────────────────────────────────────────
+
+async function externalSourceStatusHandler(): Promise<string> {
+  const rows = listLegalSourceCapabilities().map(source =>
+    `| ${source.label} | ${source.accessMode} | ${source.configured ? '已配置/可用' : '未配置或网页登录'} | ${source.canAutoQuery ? '可以' : '不承诺'} | ${source.boundary} | ${source.nextAction} |`,
+  ).join('\n');
+
+  return `# 外部法律数据源接入状态
+
+| 数据源 | 当前模式 | 状态 | 自动查询 | 边界 | 下一步 |
+| --- | --- | --- | --- | --- | --- |
+${rows}
+
+## 统一口径
+- 只有配置官方 API 凭证并受合同授权的数据源，才称为“平台数据接入”。
+- 其他站点按“授权网页登录协作”处理：Lumi 可打开页面、组织检索词、辅助登记来源，但不绕过验证码、付费墙、账号权限、频控或下载限制。
+- 律师确认后的网页摘录、下载文件和本地材料，可以用 legal_import_materials_to_kb 导入组织知识库。`;
+}
+
 // ── legal_external_research_plan ────────────────────────────────────────
 
 async function externalResearchPlanHandler(args: Record<string, any>): Promise<string> {
@@ -911,6 +1173,7 @@ async function externalResearchPlanHandler(args: Record<string, any>): Promise<s
   const companyNames = listArg(args, 'companyNames');
   const queries = buildSearchQueries({ ...args, caseType, facts, issues });
   const courtLevels = ['最高人民法院', '高级人民法院', '中级人民法院', '基层人民法院'];
+  const sourceCapabilities = listLegalSourceCapabilities();
   const loginActions = EXTERNAL_LEGAL_SOURCES
     .filter(source => source.presetId)
     .map(source => `- ${source.label} (${source.presetId})
@@ -923,8 +1186,12 @@ async function externalResearchPlanHandler(args: Record<string, any>): Promise<s
 
 ## 一、检索边界
 - Lumi 不复制第三方平台数据，不绕过验证码、付费墙、账号权限或频控。
+- 只有已配置官方 API 凭证并受合同授权的数据源，才称为“平台数据接入”；未配置 API 的数据源按授权网页登录协作处理。
 - 使用 web_login_profile_save_from_preset 保存授权站点，再用 web_login_run 打开真实浏览器。
-- 律师在网页内确认检索结果后，将标题、链接、案号、法院、裁判日期、关键摘录和使用理由登记回案件。
+- 律师在网页内确认检索结果后，将标题、链接、案号、法院、裁判日期、关键摘录和使用理由登记回案件；确认后的文件或摘录可由 legal_import_materials_to_kb 自动导入知识库。
+
+## 数据源接入状态
+${sourceCapabilities.map(source => `- ${source.label}: ${source.accessMode} / ${source.configured ? '已配置或官网可用' : '未配置 API'} / ${source.canAutoQuery ? '可自动查询' : '网页登录或人工确认'}`).join('\n')}
 
 ## 二、案件线索
 - 案由/类型：${caseType}
@@ -1123,7 +1390,7 @@ export function registerLegalTools(registry: ToolRegistry): void {
 
   registry.register({
     name: 'legal_trace_assets',
-    description: '财产线索追踪 — 查询被执行人企业信息、公开执行记录、失信记录等财产线索。数据来源：企查查(qcc.com)和全国法院被执行人信息(zhixing.court.gov.cn)。后续可查询婚姻状况和股权穿透。',
+    description: '财产线索追踪 — 查询被执行人企业信息、公开执行记录、失信记录等财产线索。企查查仅在配置官方 API 凭证后自动查询；未配置时输出授权网页登录协作步骤。后续可查询婚姻状况和股权穿透。',
     parameters: {
       type: 'object',
       properties: {
@@ -1138,7 +1405,7 @@ export function registerLegalTools(registry: ToolRegistry): void {
 
   registry.register({
     name: 'legal_equity_penetration',
-    description: '股权穿透分析 — 追溯目标公司的股东结构，多层穿透识别实际控制人和关联财产线索。数据来源：企查查(qcc.com)公开工商信息。',
+    description: '股权穿透分析 — 追溯目标公司的股东结构，多层穿透识别实际控制人和关联财产线索。企查查仅在配置官方 API 凭证后自动查询；未配置时输出授权网页登录协作和材料入库步骤。',
     parameters: {
       type: 'object',
       properties: {
@@ -1232,6 +1499,43 @@ export function registerLegalTools(registry: ToolRegistry): void {
       },
     },
     handler: generateArgumentOrOpinionHandler,
+    permission: 'user',
+    securityLevel: 'safe',
+  });
+
+  registry.register({
+    name: 'legal_import_materials_to_kb',
+    description: '法律材料导入知识库 — Lumi 自主解析本地文件、案件文件夹或粘贴文本，导入组织知识库并建立法律标签。支持起诉状、证据、庭审笔录、合同、裁判文书、网页摘录、检索笔记等材料；外部网站材料需由律师确认来源和权限后再入库。',
+    parameters: {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: '单个本地材料文件路径，支持 PDF/DOCX/XLSX/PPTX/RTF/TXT/MD/CSV' },
+        folderPath: { type: 'string', description: '案件材料文件夹路径，会批量导入支持的文档格式' },
+        content: { type: 'string', description: '直接粘贴的材料文本、网页摘录或律师确认后的外部检索结果' },
+        title: { type: 'string', description: '材料标题，未提供时使用文件名或案件名' },
+        caseName: { type: 'string', description: '案件名称或简称' },
+        caseType: { type: 'string', description: '案由或案件类型' },
+        materialType: { type: 'string', description: '材料类型：起诉状/答辩状/证据/庭审笔录/合同/裁判文书/检索笔记/工商信息等' },
+        tags: { type: 'array', items: { type: 'string' }, description: '附加标签' },
+        recursive: { type: 'boolean', description: '导入文件夹时是否递归子目录，默认 true' },
+        maxFiles: { type: 'number', description: '文件夹导入最大文件数，默认 30，最高 100' },
+        orgId: { type: 'string', description: '组织 ID，默认上下文 orgId 或 default' },
+        userId: { type: 'string', description: '导入人 ID，默认上下文 userId 或 system' },
+      },
+    },
+    handler: importMaterialsToKbHandler,
+    permission: 'user',
+    securityLevel: 'safe',
+  });
+
+  registry.register({
+    name: 'legal_external_source_status',
+    description: '外部法律数据源接入状态 — 明确企查查、Alpha、法蝉、裁判文书网、人民法院案例库、国家企业信用等数据源当前是官方 API 接入、授权网页登录协作还是材料导入，不夸大自动抓取能力。',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+    handler: externalSourceStatusHandler,
     permission: 'user',
     securityLevel: 'safe',
   });
