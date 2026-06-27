@@ -170,7 +170,7 @@ const ROUTES: RouteDefinition[] = [
     category: 'cad_design',
     reason: 'CAD, design, image, or visual production request',
     patterns: [
-      /CAD|DXF|DWG|图纸|平面图|户型|施工图|装修|室内|设计|视觉|品牌|海报|图片|画图|生成图|抠图|改图/u,
+      /CAD|DXF|DWG|图纸|平面图|户型|施工图|装修|室内|水电|草稿图|布置方案|装修方案|设计|视觉|品牌|海报|图片|画图|生成图|抠图|改图/u,
       /\b(cad|dxf|dwg|floor\s*plan|drawing|design|brand|poster|image|render)\b/i,
     ],
     prefixes: ['mcp_cad-drafting_', 'mcp_picture-drawing-assistant_', 'mcp_pikachu-drawing_'],

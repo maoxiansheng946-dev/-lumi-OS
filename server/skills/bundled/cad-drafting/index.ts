@@ -4,6 +4,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { runRenovationFolderWorkflow } from './renovation_workflow';
 
 function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
@@ -25,7 +26,7 @@ function rect(x: number, y: number, w: number, h: number): string {
   return line(x, y, x + w, y) + line(x + w, y, x + w, y + h) + line(x + w, y + h, x, y + h) + line(x, y + h, x, y);
 }
 
-const server = new McpServer({ name: 'cad-drafting', version: '1.0.0' }, { capabilities: { tools: {} } });
+const server = new McpServer({ name: 'cad-drafting', version: '1.1.0' }, { capabilities: { tools: {} } });
 
 server.registerTool('cad_space_program', {
   description: 'Create a room/space program with estimated areas, adjacency notes, and drafting assumptions.',
@@ -105,6 +106,21 @@ server.registerTool('cad_drafting_checklist', {
     'Code, structure, MEP, and site constraints are flagged for professional review.',
   ],
 }));
+
+server.registerTool('cad_renovation_folder_workflow', {
+  description: 'Read a local renovation/floor-plan folder and generate editable DXF drafting bases, a layout draft, MEP point suggestions, proposal notes, and a materials CSV. Does not require AutoCAD; production drawings still require site and professional review.',
+  inputSchema: {
+    folderPath: z.string().describe('Local folder containing sketches, floor-plan images, measurements, notes, PDFs, Office files, or renovation requirements'),
+    projectName: z.string().optional().describe('Project name used in generated documents and CAD titles'),
+    stylePreference: z.string().optional().describe('Preferred interior style, if known'),
+    knownDimensions: z.string().optional().describe('Known overall dimensions or calibration dimensions, for example 9000mm x 7600mm'),
+    budget: z.string().optional().describe('Known budget range'),
+    outputDir: z.string().optional().describe('Optional output directory. Defaults to a LumiCAD renovation folder inside folderPath.'),
+    writeFiles: z.boolean().optional().describe('When true, writes markdown, CSV, DXF, and SVG files. When false, returns previews only.'),
+    maxFiles: z.number().int().min(1).max(400).optional().describe('Maximum number of files to scan recursively'),
+    maxChars: z.number().int().min(10000).max(900000).optional().describe('Maximum extracted text characters to include in analysis'),
+  },
+}, async (args: any) => ok(await runRenovationFolderWorkflow(args)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

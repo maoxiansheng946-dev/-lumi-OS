@@ -40,6 +40,7 @@ const DECLARATIONS = [
   'mcp_legal-casework_legal_document_outline',
   'mcp_neteasemusic_search_song',
   'mcp_cad-drafting_cad_space_program',
+  'mcp_cad-drafting_cad_renovation_folder_workflow',
   'cad_generate_dxf',
   'generate_image',
   'git_status',
@@ -76,6 +77,24 @@ describe('tool router', () => {
     expect(route.toolNames).toContain('mcp_neteasemusic_search_song');
     expect(route.toolNames).not.toContain('mcp_legal-casework_legal_case_folder_workflow');
     expect(route.toolNames).not.toContain('legal_search_case');
+  });
+
+  it('routes renovation drafting folders to CAD and document tools', () => {
+    const route = routeToolsForTurn(
+      '读取桌面装修草稿图文件夹，生成 DXF 底图、平面布置方案、水电点位和装修方案',
+      DECLARATIONS,
+    );
+
+    expect(route.categories).toContain('cad_design');
+    expect(route.toolNames).toEqual(expect.arrayContaining([
+      'mcp_cad-drafting_cad_renovation_folder_workflow',
+      'mcp_cad-drafting_cad_space_program',
+      'cad_generate_dxf',
+      'read_file',
+      'extract_document_text',
+      'ocr_image_file',
+    ]));
+    expect(route.toolNames).not.toContain('mcp_neteasemusic_search_song');
   });
 
   it('routes skill questions to skill management tools', () => {
