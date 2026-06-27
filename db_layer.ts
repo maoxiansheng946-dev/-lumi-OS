@@ -713,6 +713,9 @@ export async function flushDB(): Promise<void> {
     writeDebounceTimer = null;
   }
   try {
+    await writeLock.catch((err) => {
+      console.error('[DB] Previous write failed before flush:', err);
+    });
     await persistMemoryDB();
     dbDirty = false;
   } catch (err) {

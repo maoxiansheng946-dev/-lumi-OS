@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { spawn, ChildProcess } from "child_process";
-import { readDB, writeDB, flushDB, ensureDatabaseInitialized, pruneOldData } from "../../db_layer";
+import { readDB, writeDB, flushDB, ensureDatabaseInitialized, isDbDirty, pruneOldData } from "../../db_layer";
 import { toolRegistry } from "../tools/registry";
 import { registerAllTools } from "../tools/definitions/index";
 import { mcpManager, registerMCPTools } from "../mcp";
@@ -36,6 +36,16 @@ function scheduleFirstBootExploration(delayMs = 30000) {
     } catch (err) {
       console.warn('[Bootstrap] System exploration failed:', (err as Error).message);
     }
+  }, delayMs);
+  if (typeof (timer as any).unref === 'function') (timer as any).unref();
+}
+
+function schedulePostStartupFlush(delayMs: number) {
+  const timer = setTimeout(() => {
+    if (!isDbDirty()) return;
+    flushDB()
+      .then(() => console.log(`[Bootstrap] Database flushed after startup writes (${delayMs}ms)`))
+      .catch((err: any) => console.warn('[Bootstrap] Post-startup database flush failed:', err?.message || err));
   }, delayMs);
   if (typeof (timer as any).unref === 'function') (timer as any).unref();
 }
@@ -184,6 +194,8 @@ export async function bootstrap(ctx: BootstrapContext) {
     });
 
     scheduleFirstBootExploration();
+    schedulePostStartupFlush(5_000);
+    schedulePostStartupFlush(30_000);
   });
 
   // Cleanup on exit

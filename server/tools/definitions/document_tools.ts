@@ -22,6 +22,34 @@ function esc(s: string): string {
   return s.replace(/'/g, "''");
 }
 
+async function parsePdfText(filePath: string): Promise<string> {
+  const buffer = fs.readFileSync(filePath);
+  const pdfModule: any = require('pdf-parse');
+  const legacyParser = typeof pdfModule === 'function'
+    ? pdfModule
+    : typeof pdfModule.default === 'function'
+      ? pdfModule.default
+      : null;
+
+  if (legacyParser) {
+    const result = await legacyParser(buffer);
+    return String(result?.text || '');
+  }
+
+  const PDFParse = pdfModule.PDFParse || pdfModule.default?.PDFParse;
+  if (typeof PDFParse !== 'function') {
+    throw new Error('Unsupported pdf-parse API');
+  }
+
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return String(result?.text || '');
+  } finally {
+    await parser.destroy?.();
+  }
+}
+
 async function readDocx(args: Record<string, any>): Promise<string> {
   const filePath: string = args.filePath || '';
   if (!filePath || !fs.existsSync(filePath)) {
@@ -89,11 +117,10 @@ async function extractDocumentText(args: Record<string, any>): Promise<string> {
       text = wb.SheetNames.map((n: string) => {
         const csv = XLSX.utils.sheet_to_csv(wb.Sheets[n]);
         return `[${n}]\n${csv}`;
-      }).join('\n\n');
+    }).join('\n\n');
       break;
     case '.pdf':
-      const pdfParse = require('pdf-parse');
-      text = (await pdfParse(fs.readFileSync(filePath))).text;
+      text = await parsePdfText(filePath);
       break;
     case '.txt':
     case '.md':
@@ -431,8 +458,7 @@ async function diffDocuments(args: Record<string, any>): Promise<string> {
         return (await mammoth.extractRawText({ path: fp })).value;
       }
       case '.pdf': {
-        const pdfParse = require('pdf-parse');
-        return (await pdfParse(fs.readFileSync(fp))).text;
+        return parsePdfText(fp);
       }
       case '.txt': case '.md': case '.csv':
         return fs.readFileSync(fp, 'utf-8');

@@ -210,7 +210,10 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
   const absorbedFileCount = useMemo(() => files.filter(fileIsAbsorbed).length, [fileIsAbsorbed, files]);
   const partialFileCount = useMemo(() => files.filter(file => (file.extractionStatus || file.status) === 'partial').length, [files]);
   const needsAttentionFileCount = useMemo(() => files.filter(file => ['failed', 'unsupported'].includes(String(file.extractionStatus || file.status || ''))).length, [files]);
-  const pendingFileCount = Math.max(0, files.length - absorbedFileCount);
+  const pendingFileCount = useMemo(() => files.filter(file => {
+    const status = String(file.extractionStatus || file.status || '');
+    return !fileIsAbsorbed(file) && !['failed', 'unsupported'].includes(status);
+  }).length, [fileIsAbsorbed, files]);
   const ingestableFiles = useMemo(() => files.filter(file => {
     const status = String(file.extractionStatus || file.status || '');
     if (status === 'unsupported') return false;
@@ -535,8 +538,12 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                     const ingesting = ingestingFiles.has(f.id);
                     const knowledgeStatus = f.extractionStatus || f.status;
                     const partial = knowledgeStatus === 'partial';
-                    const failed = knowledgeStatus === 'failed' || knowledgeStatus === 'unsupported';
-                    const statusLabel = failed
+                    const failed = knowledgeStatus === 'failed';
+                    const unsupported = knowledgeStatus === 'unsupported';
+                    const needsReview = failed || unsupported;
+                    const statusLabel = unsupported
+                      ? (isZh ? '不支持' : 'unsupported')
+                      : failed
                       ? (isZh ? '需检查' : 'needs review')
                       : partial
                         ? (isZh ? '部分吸收' : 'partial')
@@ -569,7 +576,7 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                             <span className="text-[10px] font-black uppercase tracking-[0.12em] text-white/25">{f.source}</span>
                           )}
                           <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] ${
-                            failed
+                            needsReview
                               ? 'border-red-400/18 bg-red-400/10 text-red-200/75'
                               : partial
                                 ? 'border-blue-400/18 bg-blue-400/10 text-blue-200/75'
@@ -577,12 +584,12 @@ export function KnowledgeBase({ t, isOpen, onClose, domain = 'personal' }: Knowl
                               ? 'border-emerald-400/18 bg-emerald-400/10 text-emerald-200/75'
                               : 'border-amber-400/18 bg-amber-400/10 text-amber-200/75'
                           }`}>
-                            {absorbed && !partial && !failed ? <CheckCircle2 size={9} /> : ingesting ? <Loader2 size={9} className="animate-spin" /> : failed ? <AlertCircle size={9} /> : <Clock size={9} />}
+                            {absorbed && !partial && !needsReview ? <CheckCircle2 size={9} /> : ingesting ? <Loader2 size={9} className="animate-spin" /> : needsReview ? <AlertCircle size={9} /> : <Clock size={9} />}
                             {statusLabel}
                           </span>
                         </div>
                       </div>
-                      {(!absorbed || partial || failed) && (
+                      {(!unsupported && (!absorbed || partial || failed)) && (
                         <button
                           type="button"
                           disabled={ingesting}

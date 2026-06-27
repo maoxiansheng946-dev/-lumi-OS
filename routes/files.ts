@@ -15,7 +15,7 @@ import os from 'os';
 import { spawn } from 'child_process';
 import iconv from 'iconv-lite';
 import { readDB, writeDB } from '../db_layer';
-import { ingestDocument } from '../server/agents/rag';
+import { chunkText, ingestDocument } from '../server/agents/rag';
 import { getDataPath, getDataRoot } from '../server/config/data_path';
 import * as OrgKB from '../server/org/kb';
 import { analyzeScreen } from '../server/llm/adapter';
@@ -382,6 +382,34 @@ async function extractImageKnowledge(filePath: string, userId: string): Promise<
   }
 }
 
+async function extractPdfText(filePath: string): Promise<string> {
+  const buffer = fs.readFileSync(filePath);
+  const pdfModule: any = await import('pdf-parse');
+  const legacyParser = typeof pdfModule.default === 'function'
+    ? pdfModule.default
+    : typeof pdfModule === 'function'
+      ? pdfModule
+      : null;
+
+  if (legacyParser) {
+    const result = await legacyParser(buffer);
+    return String(result?.text || '');
+  }
+
+  const PDFParse = pdfModule.PDFParse || pdfModule.default?.PDFParse;
+  if (typeof PDFParse !== 'function') {
+    throw new Error('Unsupported pdf-parse API');
+  }
+
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return String(result?.text || '');
+  } finally {
+    await parser.destroy?.();
+  }
+}
+
 async function extractKnowledgeFileContent(filePath: string, userId = 'anonymous'): Promise<KnowledgeExtractionResult> {
   const extName = path.extname(filePath);
   try {
@@ -402,9 +430,7 @@ async function extractKnowledgeFileContent(filePath: string, userId = 'anonymous
       return { content, method: 'spreadsheet', status: 'indexed' };
     }
     if (/\.pdf$/i.test(extName)) {
-      const pdfModule: any = await import('pdf-parse');
-      const pdfParse = pdfModule.default || pdfModule;
-      return { content: (await pdfParse(fs.readFileSync(filePath))).text, method: 'pdf', status: 'indexed' };
+      return { content: await extractPdfText(filePath), method: 'pdf', status: 'indexed' };
     }
     if (IMAGE_KNOWLEDGE_EXTS.test(extName)) {
       return await extractImageKnowledge(filePath, userId);
@@ -531,6 +557,38 @@ function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested
 }
 
 // ── GET /files/list — list knowledge base files ──
+function fileMemoryMatchesScope(memory: any, scope: FileScope): boolean {
+  const domain = memory?.domain || 'personal';
+  const orgId = memory?.orgId || '';
+  return domain === scope.domain && orgId === (scope.orgId || '');
+}
+
+function fileMemoryMatchesName(memory: any, filename: string): boolean {
+  const target = filename.normalize('NFC').toLowerCase();
+  const source = String(memory?.sourceInteractionId || '');
+  const sourceBase = source ? path.basename(source).normalize('NFC').toLowerCase() : '';
+  if (sourceBase === target) return true;
+
+  const keywords = Array.isArray(memory?.keywords) ? memory.keywords : [];
+  if (keywords.some((kw: any) => String(kw || '').normalize('NFC').toLowerCase() === `source:${target}`)) return true;
+
+  return String(memory?.content || '').normalize('NFC').startsWith(`[${filename} #`);
+}
+
+function findExistingFileMemories(
+  db: any,
+  filename: string,
+  scope: FileScope,
+  options: { userId?: string; agentId?: string } = {},
+): any[] {
+  return (db.memories || []).filter((memory: any) => {
+    if (memory?.type !== 'knowledge') return false;
+    if (options.userId && memory.userId !== options.userId) return false;
+    if (options.agentId && (memory.agentId || '') !== options.agentId) return false;
+    return fileMemoryMatchesScope(memory, scope) && fileMemoryMatchesName(memory, filename);
+  });
+}
+
 router.get('/files/list', (req: Request, res: Response) => {
   try {
     const scope = getFileScope(req);
@@ -547,7 +605,15 @@ router.get('/files/list', (req: Request, res: Response) => {
     const files: KnowledgeEntry[] = [];
     for (const name of entries) {
       if (name.startsWith('.') || name.startsWith('_')) continue;
-      const meta = fileMeta[name] || { source: 'upload' as const, agentIds: [] as string[] };
+      const inferredMemories = findExistingFileMemories(db, name, scope);
+      const inferredAgentIds = [...new Set(inferredMemories.map((m: any) => String(m.agentId || '').trim()).filter(Boolean))];
+      const meta = {
+        ...(fileMeta[name] || { source: 'upload' as const, agentIds: [] as string[] }),
+        agentIds: [...new Set([...(fileMeta[name]?.agentIds || []), ...inferredAgentIds])],
+      };
+      if (inferredMemories.length > 0 && (!meta.status || meta.status === 'ready' || meta.status === 'failed')) {
+        meta.status = 'indexed';
+      }
       const source = (meta.source as 'upload' | 'generated' | 'ingested') || 'upload';
       files.push(buildEntry(name, source, meta.agentIds, scope, meta.status, meta));
     }
@@ -968,6 +1034,27 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
       db.knowledgeFiles.push(meta);
     }
     if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
+    const existingMemories = scope.domain === 'personal'
+      ? findExistingFileMemories(db, safeName, scope, { userId, agentId })
+      : [];
+    const canReuseExisting = existingMemories.length > 0
+      && !['partial', 'failed'].includes(String(meta.status || meta.extractionStatus || ''));
+    const expectedChunks = content?.trim() ? chunkText(content).length : 0;
+    const hasCompleteExisting = canReuseExisting && (expectedChunks === 0 || existingMemories.length >= expectedChunks);
+    if (hasCompleteExisting) {
+      if (!meta.agentIds.includes(agentId)) meta.agentIds.push(agentId);
+      meta.status = 'indexed';
+      if (content?.trim()) applyExtractionMeta(meta, extraction, content);
+      delete meta.indexingAt;
+      writeDB(db);
+      return res.json({
+        success: true,
+        reused: true,
+        chunkCount: existingMemories.length,
+        memoryIds: existingMemories.map((m: any) => m.id).filter(Boolean),
+        extractionStatus: content?.trim() ? extraction.status : (meta.extractionStatus || 'indexed'),
+      });
+    }
     applyExtractionMeta(meta, extraction, content);
     if (!content || !content.trim()) {
       meta.status = extraction.status === 'failed' ? 'failed' : extraction.status === 'unsupported' ? 'unsupported' : 'ready';
