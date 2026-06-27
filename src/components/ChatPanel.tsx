@@ -617,9 +617,11 @@ export function ChatPanel({ socket, t, onVoiceToggle, isVoiceActive, transcript 
             ))}
           </div>
           {isVoiceActive && transcript && (
-            <div className="text-xs text-purple-300/50 mb-1 flex items-center gap-1">
-              <Mic size={10} className="text-purple-400 animate-pulse" />
-              {transcript}
+            <div className="mb-2 flex w-full justify-center px-1">
+              <div className="inline-flex max-w-full items-start justify-center gap-1.5 rounded-xl border border-purple-400/15 bg-purple-500/10 px-3 py-1.5 text-center text-xs text-purple-200/70">
+                <Mic size={10} className="mt-0.5 shrink-0 text-purple-400 animate-pulse" />
+                <span className="min-w-0 whitespace-normal break-words leading-relaxed">{transcript}</span>
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2">

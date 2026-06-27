@@ -46,9 +46,9 @@ export function VoiceSubtitle({ transcript, responseText, callState, audioLevel,
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] pointer-events-none"
+          className="fixed inset-x-0 bottom-24 z-[200] flex justify-center px-4 pointer-events-none"
         >
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex w-full max-w-[min(92vw,36rem)] flex-col items-center gap-3">
             {/* State indicator */}
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/40 backdrop-blur-xl border border-white/10">
               {isListening && (
@@ -102,9 +102,9 @@ export function VoiceSubtitle({ transcript, responseText, callState, audioLevel,
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="px-5 py-2.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 max-w-md text-center"
+                className="w-fit max-w-full px-5 py-2.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 text-center"
               >
-                <p className="text-sm text-white/70 leading-relaxed">{displayText}</p>
+                <p className="max-w-full whitespace-normal break-words text-sm text-white/70 leading-relaxed">{displayText}</p>
               </motion.div>
             )}
 
@@ -113,9 +113,9 @@ export function VoiceSubtitle({ transcript, responseText, callState, audioLevel,
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="px-5 py-2.5 rounded-2xl bg-celestial-saturn/5 backdrop-blur-xl border border-celestial-saturn/20 max-w-md text-center"
+                className="w-fit max-w-full px-5 py-2.5 rounded-2xl bg-celestial-saturn/5 backdrop-blur-xl border border-celestial-saturn/20 text-center"
               >
-                <p className="text-sm text-celestial-saturn/90 leading-relaxed">{displayResponse}</p>
+                <p className="max-w-full whitespace-normal break-words text-sm text-celestial-saturn/90 leading-relaxed">{displayResponse}</p>
               </motion.div>
             )}
           </div>

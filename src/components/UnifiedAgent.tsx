@@ -373,10 +373,12 @@ export function UnifiedAgent({ t, user, onEnterSanctuary }: { t: any; user: any;
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="absolute top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-celestial-saturn text-black rounded-full shadow-2xl font-bold text-sm flex items-center gap-3 whitespace-nowrap"
+                  className="absolute inset-x-0 top-20 z-50 flex justify-center px-4 pointer-events-none"
                 >
-                  <div className="w-2 h-2 rounded-full bg-black animate-pulse" />
-                  {transcript}
+                  <div className="inline-flex max-w-full items-start justify-center gap-3 rounded-2xl bg-celestial-saturn px-5 py-3 text-center text-sm font-bold text-black shadow-2xl">
+                    <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-black animate-pulse" />
+                    <span className="min-w-0 whitespace-normal break-words leading-relaxed">{transcript}</span>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

@@ -3444,10 +3444,10 @@ export function DesktopUI({
             <div className={`flex flex-col items-center gap-4 mt-8 transition-all duration-1000 ${isWallpaperMode ? 'opacity-0 blur-sm pointer-events-none' : 'opacity-100'}`}>
               <VoicePicker t={t} />
 
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="whitespace-nowrap"
+                className="w-full"
               >
                  <div className="flex flex-col items-center gap-1 group">
                    <span className="text-xs font-black tracking-[0.4em] text-white/40 uppercase group-hover:text-celestial-saturn transition-colors">
@@ -3474,9 +3474,9 @@ export function DesktopUI({
                          initial={{ opacity: 0, y: 20 }}
                          animate={{ opacity: 1, y: 0 }}
                          exit={{ opacity: 0, scale: 0.9 }}
-                         className="mt-6 max-w-sm px-6 py-4 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl text-center shadow-2xl"
+                         className="mt-6 w-fit max-w-[min(92vw,32rem)] px-6 py-4 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl text-center shadow-2xl"
                        >
-                         <p className="text-white/80 text-sm font-medium leading-relaxed italic">
+                         <p className="max-w-full whitespace-normal break-words text-white/80 text-sm font-medium leading-relaxed italic">
                            "{transcript}"
                          </p>
                          <div className="mt-2 flex justify-center gap-1">
