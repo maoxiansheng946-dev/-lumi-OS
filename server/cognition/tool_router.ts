@@ -67,8 +67,11 @@ const TOOL_GROUPS: Record<string, string[]> = {
   legal: [
     'legal_search_case',
     'legal_search_statute',
+    'legal_generate_bid',
     'legal_review_contract',
     'legal_draft_contract',
+    'legal_trace_assets',
+    'legal_equity_penetration',
     'legal_case_strategy',
     'legal_generate_litigation_packet',
     'legal_external_research_plan',
@@ -150,8 +153,8 @@ const ROUTES: RouteDefinition[] = [
     category: 'legal',
     reason: 'legal casework or legal research request',
     patterns: [
-      /法律|律师|律所|案件|案号|案由|类案|法条|法院|裁判文书|法信|委托书|代理词|证据目录|起诉状|答辩状|合同审查|诉讼|仲裁/u,
-      /\b(legal|lawyer|lawsuit|court|judgment|casework|contract\s+review|power\s+of\s+attorney)\b/i,
+      /法律|律师|律所|案件|案号|案由|类案|法条|法院|裁判文书|人民法院案例库|法信|法蝉|企查查|国家企业信用|委托书|代理词|证据目录|起诉状|要素式诉状|答辩状|质证|文书包|立案|外部检索|法律意见书|合同审查|合同模板|标书|投标书|财产线索|被执行人|股权穿透|诉讼|仲裁/u,
+      /\b(legal|lawyer|lawsuit|court|judgment|casework|contract\s+review|power\s+of\s+attorney|complaint|defense|pleading|evidence|filing|bid|tender|qichacha|alpha|fachan)\b/i,
     ],
     exact: ['mcp_legal-casework_legal_case_folder_workflow'],
     prefixes: ['mcp_legal-casework_'],

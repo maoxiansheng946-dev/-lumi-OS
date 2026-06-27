@@ -33,7 +33,16 @@ const DECLARATIONS = [
   'web_login_run',
   'legal_search_case',
   'legal_search_statute',
+  'legal_generate_bid',
   'legal_review_contract',
+  'legal_draft_contract',
+  'legal_trace_assets',
+  'legal_equity_penetration',
+  'legal_case_strategy',
+  'legal_generate_litigation_packet',
+  'legal_external_research_plan',
+  'legal_verify_citation',
+  'legal_import_judgment',
   'authority_research',
   'authority_research_save',
   'mcp_legal-casework_legal_case_folder_workflow',
@@ -68,6 +77,51 @@ describe('tool router', () => {
     ]));
     expect(route.toolNames).not.toContain('mcp_neteasemusic_search_song');
     expect(route.toolNames).not.toContain('mcp_cad-drafting_cad_space_program');
+  });
+
+  it('routes chat-style legal drafting requests without opening the workbench first', () => {
+    const route = routeToolsForTurn(
+      '根据原告起诉状和证据材料，帮我生成答辩状、质证意见和证据反驳表',
+      DECLARATIONS,
+    );
+
+    expect(route.categories).toContain('legal');
+    expect(route.toolNames).toEqual(expect.arrayContaining([
+      'legal_generate_litigation_packet',
+      'legal_case_strategy',
+      'legal_search_statute',
+      'legal_search_case',
+    ]));
+  });
+
+  it('routes voice-style legal commands to external research and browser login tools', () => {
+    const route = routeToolsForTurn(
+      'Lumi 帮我查这个买卖合同纠纷的类案，先去人民法院案例库、裁判文书网、法蝉和企查查，整理外部检索行动单',
+      DECLARATIONS,
+    );
+
+    expect(route.categories).toContain('legal');
+    expect(route.toolNames).toEqual(expect.arrayContaining([
+      'legal_external_research_plan',
+      'web_login_run',
+      'url_fetch_logged_in',
+      'legal_search_case',
+    ]));
+  });
+
+  it('routes spoken bid and asset-tracing requests through legal tools', () => {
+    const bidRoute = routeToolsForTurn('根据招标要求 PDF 自动生成标书框架', DECLARATIONS);
+    const assetRoute = routeToolsForTurn('语音记录一下，查被执行人公司情况和股权穿透', DECLARATIONS);
+
+    expect(bidRoute.categories).toContain('legal');
+    expect(bidRoute.toolNames).toContain('legal_generate_bid');
+    expect(bidRoute.toolNames).toContain('read_pdf');
+
+    expect(assetRoute.categories).toContain('legal');
+    expect(assetRoute.toolNames).toEqual(expect.arrayContaining([
+      'legal_trace_assets',
+      'legal_equity_penetration',
+    ]));
   });
 
   it('routes music requests away from legal tools', () => {
