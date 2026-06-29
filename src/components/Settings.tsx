@@ -34,7 +34,10 @@ import { getSavedKeyStatus, saveServerKeys } from '@/services/settingsKeys';
 import { apiFetch } from '@/services/apiClient';
 import {
   getSensorPermissionSnapshot,
+  isSensorEnabled,
   requestSensorPermission,
+  setSensorEnabled,
+  SENSOR_ACCESS_CHANGED,
   SENSOR_PERMISSIONS_CHANGED,
   type SensorPermissionState,
 } from '@/services/sensorPermissionService';
@@ -309,6 +312,8 @@ function HardwareSettings({ t }: { t: any }) {
   const ui = (zh: string, en: string) => (isZh ? zh : en);
   const [micStatus, setMicStatus] = useState<SensorPermissionState>('unknown');
   const [camStatus, setCamStatus] = useState<SensorPermissionState>('unknown');
+  const [micEnabled, setMicEnabled] = useState(() => isSensorEnabled('microphone'));
+  const [camEnabled, setCamEnabled] = useState(() => isSensorEnabled('camera'));
   const [isRequesting, setIsRequesting] = useState(false);
 
   useEffect(() => {
@@ -328,13 +333,36 @@ function HardwareSettings({ t }: { t: any }) {
       if (!detail?.microphone && !detail?.camera) void refresh();
     };
 
+    const refreshAccess = () => {
+      setMicEnabled(isSensorEnabled('microphone'));
+      setCamEnabled(isSensorEnabled('camera'));
+    };
+
+    const onSensorAccessChange = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<Record<'microphone' | 'camera', boolean>>>).detail;
+      if (typeof detail?.microphone === 'boolean') setMicEnabled(detail.microphone);
+      if (typeof detail?.camera === 'boolean') setCamEnabled(detail.camera);
+      if (typeof detail?.microphone !== 'boolean' && typeof detail?.camera !== 'boolean') refreshAccess();
+    };
+
+    const onStorageChange = (event: StorageEvent) => {
+      if (event.key === 'lumi_mic_enabled' || event.key === 'lumi_camera_enabled') refreshAccess();
+    };
+
     void refresh();
+    refreshAccess();
     window.addEventListener(SENSOR_PERMISSIONS_CHANGED, onSensorChange);
+    window.addEventListener(SENSOR_ACCESS_CHANGED, onSensorAccessChange);
+    window.addEventListener('storage', onStorageChange);
     window.addEventListener('visibilitychange', refresh);
+    window.addEventListener('visibilitychange', refreshAccess);
     return () => {
       disposed = true;
       window.removeEventListener(SENSOR_PERMISSIONS_CHANGED, onSensorChange);
+      window.removeEventListener(SENSOR_ACCESS_CHANGED, onSensorAccessChange);
+      window.removeEventListener('storage', onStorageChange);
       window.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('visibilitychange', refreshAccess);
     };
   }, []);
 
@@ -350,10 +378,33 @@ function HardwareSettings({ t }: { t: any }) {
       }
 
       toast.success(type === 'mic' ? (t.micAccessSynced || ui('麦克风权限已同步。', 'Microphone access synchronized.')) : (t.camAccessSynced || ui('摄像头权限已同步。', 'Camera access synchronized.')));
+      return true;
     } catch (err: any) {
       toast.error(`${t.sensorLinkFailed || ui('传感器连接失败', 'Sensor link failed')}: ${err.message}`);
+      return false;
     } finally {
       setIsRequesting(false);
+    }
+  };
+
+  const handleSensorToggle = async (type: 'mic' | 'camera', enabled: boolean) => {
+    const kind = type === 'mic' ? 'microphone' : 'camera';
+    setSensorEnabled(kind, enabled);
+    if (type === 'mic') setMicEnabled(enabled);
+    if (type === 'camera') setCamEnabled(enabled);
+
+    if (!enabled) {
+      toast.success(type === 'mic'
+        ? (t.audioReceptorsDisabled || ui('音频输入已停用。', 'Audio input disabled.'))
+        : (t.visualCortexDisabled || ui('视觉感知已停用。', 'Visual perception disabled.')));
+      return;
+    }
+
+    const ok = await requestPermissions(type);
+    if (!ok) {
+      setSensorEnabled(kind, false);
+      if (type === 'mic') setMicEnabled(false);
+      if (type === 'camera') setCamEnabled(false);
     }
   };
 
@@ -370,7 +421,8 @@ function HardwareSettings({ t }: { t: any }) {
             label={t.audioReceptors || ui('音频输入', 'Audio Receptors')}
             desc={t.audioReceptorsDesc || ui('启用语音识别和声音克隆相关能力。', 'Enable neural speech recognition and voice cloning.')}
             status={micStatus}
-            onEnable={() => requestPermissions('mic')}
+            enabled={micEnabled}
+            onToggle={(enabled) => void handleSensorToggle('mic', enabled)}
             disabled={isRequesting}
             t={t}
           />
@@ -379,7 +431,8 @@ function HardwareSettings({ t }: { t: any }) {
             label={t.visualCortex || ui('视觉感知', 'Visual Cortex')}
             desc={t.visualCortexDesc || ui('启用多模态视觉和手势控制。', 'Enable multimodal vision and gesture control.')}
             status={camStatus}
-            onEnable={() => requestPermissions('camera')}
+            enabled={camEnabled}
+            onToggle={(enabled) => void handleSensorToggle('camera', enabled)}
             disabled={isRequesting}
             t={t}
           />
@@ -399,23 +452,26 @@ function HardwareSettings({ t }: { t: any }) {
   );
 }
 
-function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
+function HardwareCapCard({ icon, label, desc, status, enabled, onToggle, disabled, t }: {
   icon: React.ReactNode,
   label: string,
   desc: string,
   status: SensorPermissionState,
-  onEnable: () => void,
+  enabled: boolean,
+  onToggle: (enabled: boolean) => void,
   disabled: boolean,
   t: any
 }) {
   const isZh = t?.langCode !== 'en';
   const ui = (zh: string, en: string) => (isZh ? zh : en);
   const isUnavailable = status === 'unavailable';
+  const isLinked = enabled && status === 'granted';
+  const isBlocked = status === 'denied';
   return (
     <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/5 flex flex-col justify-between gap-6 group hover:border-white/10 transition-all">
       <div className="space-y-4">
         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
-          status === 'granted' ? 'bg-celestial-saturn text-black' : 'bg-white/5 text-white/40'
+          isLinked ? 'bg-celestial-saturn text-black' : 'bg-white/5 text-white/40'
         }`}>
           {icon}
         </div>
@@ -427,12 +483,12 @@ function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-           {status === 'granted' ? (
+           {isLinked ? (
              <div className="flex items-center gap-1.5 text-celestial-saturn text-xs font-black uppercase tracking-widest">
                <CheckCircle size={12} />
                 {t.linked || ui('已连接', 'Linked')}
              </div>
-           ) : status === 'denied' ? (
+           ) : isBlocked ? (
              <div className="flex items-center gap-1.5 text-red-500 text-xs font-black uppercase tracking-widest">
                <AlertCircle size={12} />
                 {t.blocked || ui('已阻止', 'Blocked')}
@@ -440,22 +496,46 @@ function HardwareCapCard({ icon, label, desc, status, onEnable, disabled, t }: {
            ) : isUnavailable ? (
              <div className="flex items-center gap-1.5 text-white/35 text-xs font-black uppercase tracking-widest">
                <AlertCircle size={12} />
-                {t.unavailable || ui('不可用', 'Unavailable')}
+               {t.unavailable || ui('不可用', 'Unavailable')}
              </div>
+           ) : !enabled ? (
+              <div className="text-xs font-black uppercase tracking-widest text-white/45">{t.disabled || ui('已停用', 'Disabled')}</div>
            ) : (
               <div className="text-xs font-black uppercase tracking-widest text-white/45">{t.awaitingAccess || ui('等待授权', 'Awaiting Access')}</div>
            )}
         </div>
 
-        {status !== 'granted' && (
-          <Button
-            onClick={onEnable}
+        <div className="flex items-center gap-2">
+          {enabled && status !== 'granted' && !isUnavailable && (
+            <Button
+              onClick={() => onToggle(true)}
+              disabled={disabled}
+              className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-black uppercase tracking-widest px-4 h-9 rounded-xl"
+            >
+              {status === 'denied' ? (t.retryLink || ui('重新连接', 'Retry Link')) : (t.authorize || ui('授权', 'Authorize'))}
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => onToggle(!enabled)}
             disabled={disabled || isUnavailable}
-            className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-black uppercase tracking-widest px-4 h-9 rounded-xl"
+            aria-pressed={enabled}
+            aria-label={enabled ? ui(`停用${label}`, `Disable ${label}`) : ui(`启用${label}`, `Enable ${label}`)}
+            className={`relative h-9 w-16 rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+              enabled
+                ? 'border-celestial-saturn/40 bg-celestial-saturn/25 shadow-[0_0_18px_rgba(255,204,0,0.18)]'
+                : 'border-white/10 bg-white/5 hover:bg-white/10'
+            }`}
           >
-            {isUnavailable ? (t.unavailable || ui('不可用', 'Unavailable')) : status === 'denied' ? (t.retryLink || ui('重新连接', 'Retry Link')) : (t.authorize || ui('授权', 'Authorize'))}
-          </Button>
-        )}
+            <span
+              className={`absolute top-1 h-7 w-7 rounded-full transition-all ${
+                enabled
+                  ? 'left-8 bg-celestial-saturn'
+                  : 'left-1 bg-white/35'
+              }`}
+            />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -21,6 +21,17 @@ interface SnapshotOptions {
 }
 
 export const SENSOR_PERMISSIONS_CHANGED = 'lumi:sensor-permissions-changed';
+export const SENSOR_ACCESS_CHANGED = 'lumi:sensor-access-changed';
+
+const SENSOR_ENABLED_KEYS: Record<SensorKind, string> = {
+  microphone: 'lumi_mic_enabled',
+  camera: 'lumi_camera_enabled',
+};
+
+const activeStreams: Record<SensorKind, Set<MediaStream>> = {
+  microphone: new Set(),
+  camera: new Set(),
+};
 
 function hasNavigator() {
   return typeof navigator !== 'undefined';
@@ -28,6 +39,59 @@ function hasNavigator() {
 
 function hasWindow() {
   return typeof window !== 'undefined';
+}
+
+function readSensorEnabled(kind: SensorKind) {
+  if (!hasWindow()) return true;
+  try {
+    return window.localStorage.getItem(SENSOR_ENABLED_KEYS[kind]) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function stopActiveStreams(kind: SensorKind) {
+  for (const stream of activeStreams[kind]) {
+    stream.getTracks().forEach(track => track.stop());
+  }
+  activeStreams[kind].clear();
+}
+
+function trackActiveStream(kind: SensorKind, stream: MediaStream) {
+  activeStreams[kind].add(stream);
+  const removeWhenEnded = () => {
+    if (stream.getTracks().every(track => track.readyState === 'ended')) {
+      activeStreams[kind].delete(stream);
+    }
+  };
+  stream.getTracks().forEach(track => {
+    track.addEventListener('ended', removeWhenEnded);
+  });
+}
+
+export function isSensorEnabled(kind: SensorKind): boolean {
+  return readSensorEnabled(kind);
+}
+
+export function setSensorEnabled(kind: SensorKind, enabled: boolean) {
+  if (hasWindow()) {
+    try {
+      window.localStorage.setItem(SENSOR_ENABLED_KEYS[kind], String(enabled));
+    } catch {}
+  }
+
+  if (!enabled) stopActiveStreams(kind);
+  broadcastSensorAccessChange({ [kind]: enabled });
+}
+
+export function broadcastSensorAccessChange(detail?: Partial<Record<SensorKind, boolean>>) {
+  if (!hasWindow()) return;
+  window.dispatchEvent(new CustomEvent(SENSOR_ACCESS_CHANGED, {
+    detail: {
+      ...detail,
+      updatedAt: Date.now(),
+    },
+  }));
 }
 
 function getFallbackPermissionState(name: SensorKind | 'notifications'): SensorPermissionState {
@@ -85,6 +149,8 @@ export async function requestSensorPermission(kind: SensorKind): Promise<{
   state: SensorPermissionState;
   error?: string;
 }> {
+  setSensorEnabled(kind, true);
+
   if (!hasNavigator() || !navigator.mediaDevices?.getUserMedia) {
     const state: SensorPermissionState = 'unavailable';
     broadcastSensorPermissionChange({ [kind]: state } as Partial<SensorPermissionSnapshot>);
@@ -114,6 +180,10 @@ export async function requestSensorPermission(kind: SensorKind): Promise<{
 }
 
 export async function requestMicrophoneStream(audio: MediaStreamConstraints['audio'] = true): Promise<MediaStream> {
+  if (!isSensorEnabled('microphone')) {
+    throw new Error('Microphone is disabled in Lumi settings.');
+  }
+
   if (!hasNavigator() || !navigator.mediaDevices?.getUserMedia) {
     broadcastSensorPermissionChange({ microphone: 'unavailable' });
     throw new Error('Microphone is unavailable in this runtime.');
@@ -121,6 +191,7 @@ export async function requestMicrophoneStream(audio: MediaStreamConstraints['aud
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+    trackActiveStream('microphone', stream);
     broadcastSensorPermissionChange({ microphone: 'granted' });
     return stream;
   } catch (err) {
@@ -131,6 +202,10 @@ export async function requestMicrophoneStream(audio: MediaStreamConstraints['aud
 }
 
 export async function requestCameraStream(video: MediaStreamConstraints['video'] = true): Promise<MediaStream> {
+  if (!isSensorEnabled('camera')) {
+    throw new Error('Camera is disabled in Lumi settings.');
+  }
+
   if (!hasNavigator() || !navigator.mediaDevices?.getUserMedia) {
     broadcastSensorPermissionChange({ camera: 'unavailable' });
     throw new Error('Camera is unavailable in this runtime.');
@@ -138,6 +213,7 @@ export async function requestCameraStream(video: MediaStreamConstraints['video']
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    trackActiveStream('camera', stream);
     broadcastSensorPermissionChange({ camera: 'granted' });
     return stream;
   } catch (err) {
