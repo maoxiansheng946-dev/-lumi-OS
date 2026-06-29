@@ -49,6 +49,18 @@ const BUILTIN_ZH_TRANSLATIONS: Record<string, TranslationEntry> = {
     displayName: '电商运营包',
     description: '商品标题与卖点优化、订单利润分析、库存补货、平台结算复核、广告 ROI 和售后风险分析等电商运营能力。',
   },
+  'skill-education-teacher': {
+    displayName: '教师教培包',
+    description: '备课教案、评分量规、测验提纲、学生学习支持画像和家长沟通草稿等教师工作流能力。',
+  },
+  'skill-executive-ops': {
+    displayName: '企业负责人经营包',
+    description: '经营 KPI 简报、会议行动项、OKR 规划、决策备忘录、团队风险和现金跑道场景等管理能力。',
+  },
+  'skill-medical-admin': {
+    displayName: '医疗文书与随访包',
+    description: '病历结构化、就诊准备、患者说明草稿、随访计划和医学资料检索清单等医疗文书辅助能力，不替代医生诊疗。',
+  },
   'skill-hermes': {
     displayName: 'Hermes 助手',
     description: '研究、写作和编码等通用智能体能力，可作为 Lumi 的团队成员接入。',
@@ -144,6 +156,9 @@ const CATEGORY_ZH: Record<string, string> = {
   System: '系统',
   Finance: '财务',
   Ecommerce: '电商',
+  Education: '教育',
+  Management: '管理',
+  Healthcare: '医疗',
   Assistant: '助手',
   Media: '媒体',
   Legal: '法律',

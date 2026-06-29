@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, ShoppingBag, Cpu, Download, Trash2, Power, PowerOff, RefreshCw, Star, Wrench, CheckCircle, Globe, Search, Zap, Tag, Upload, Palette, Terminal, Monitor, Film, Key, ExternalLink, Github, AlertTriangle, X, ShieldCheck, Info, Mail, QrCode, Link, Image, FileText, CloudSun, Languages, Calculator, StickyNote, Timer, TrendingUp, Music } from 'lucide-react';
+import { Sparkles, ShoppingBag, Cpu, Download, Trash2, Power, PowerOff, RefreshCw, Star, Wrench, CheckCircle, Globe, Search, Zap, Tag, Upload, Palette, Terminal, Monitor, Film, Key, ExternalLink, Github, AlertTriangle, X, ShieldCheck, Info, Mail, QrCode, Link, Image, FileText, CloudSun, Languages, Calculator, StickyNote, Timer, TrendingUp, Music, GraduationCap, BriefcaseBusiness, Stethoscope } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
@@ -25,6 +25,9 @@ const ICON_CLASSES: Record<string, string> = {
   Palette: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   Sparkles: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   ShoppingBag: 'bg-lime-500/10 text-lime-400 border-lime-500/20',
+  GraduationCap: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+  BriefcaseBusiness: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  Stethoscope: 'bg-red-500/10 text-red-400 border-red-500/20',
   Terminal: 'bg-green-500/10 text-green-400 border-green-500/20',
   Monitor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   Search: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
@@ -44,6 +47,9 @@ const ICON_COMPONENTS: Record<string, React.ReactNode> = {
   QrCode: <QrCode size={18} />,
   Sparkles: <Sparkles size={18} />,
   ShoppingBag: <ShoppingBag size={18} />,
+  GraduationCap: <GraduationCap size={18} />,
+  BriefcaseBusiness: <BriefcaseBusiness size={18} />,
+  Stethoscope: <Stethoscope size={18} />,
   StickyNote: <StickyNote size={18} />,
   Terminal: <Terminal size={18} />,
   Timer: <Timer size={18} />,
@@ -332,6 +338,9 @@ const FEATURED_SKILLS = [
   { id: 'messaging-ops', name: 'Feishu WeChat Ops', zhName: '飞书/微信协作包', icon: 'Mail', iconColor: 'from-emerald-500 to-teal-500', desc: 'Remote collaboration pack for Feishu, WeChat, and WeCom. Triage requests, draft replies, handle file intake, and guide setup.', zhDesc: '飞书、微信和企业微信消息分诊、文件接收、回复草稿与远程协作。', prompt: '帮我把这条飞书消息分诊，判断要查资料还是要回复' },
   { id: 'finance-office', name: 'Finance & Tax Office', zhName: '财税办公包', icon: 'Calculator', iconColor: 'from-amber-500 to-orange-500', desc: 'Business finance and tax pack. Expense summaries, cash-flow forecasts, invoice VAT checks, AR/AP aging, e-commerce tax workpapers, and management report outlines.', zhDesc: '费用汇总、现金流预测、发票 VAT 复核、应收应付账龄、电商税务底稿和经营报告提纲。', prompt: '帮我把这些平台结算、发票和账款记录整理成电商税务底稿、VAT 复核和账龄风险' },
   { id: 'ecommerce-ops', name: 'E-commerce Ops', zhName: '电商运营包', icon: 'ShoppingBag', iconColor: 'from-lime-500 to-emerald-500', desc: 'E-commerce operations pack. Product listing optimization, order profit analysis, inventory restock, settlement reconciliation, campaign ROI, and after-sales risk.', zhDesc: '商品标题与卖点优化、订单利润分析、库存补货、平台结算复核、广告 ROI 和售后风险分析。', prompt: '帮我分析这些 SKU 的利润、广告 ROI、退款售后和库存补货优先级' },
+  { id: 'education-teacher', name: 'Teacher Copilot', zhName: '教师教培包', icon: 'GraduationCap', iconColor: 'from-sky-500 to-blue-500', desc: 'Teacher and tutoring pack. Lesson plans, rubrics, quiz outlines, learning profiles, and parent communication drafts.', zhDesc: '备课教案、评分量规、测验提纲、学生学习支持画像和家长沟通草稿。', prompt: '帮我为这节课生成教案、测验提纲、评分量规和家长沟通草稿' },
+  { id: 'executive-ops', name: 'Executive Ops', zhName: '企业负责人经营包', icon: 'BriefcaseBusiness', iconColor: 'from-emerald-500 to-teal-500', desc: 'Executive operations pack. KPI briefs, meeting actions, OKR planning, decision memos, team risk reviews, and cash runway scenarios.', zhDesc: '经营 KPI 简报、会议行动项、OKR 规划、决策备忘录、团队风险和现金跑道场景。', prompt: '帮我把这份周报整理成经营简报、行动项、风险和下周决策清单' },
+  { id: 'medical-admin', name: 'Medical Admin', zhName: '医疗文书与随访包', icon: 'Stethoscope', iconColor: 'from-red-500 to-rose-500', desc: 'Medical documentation and follow-up pack. Clinical note structuring, visit prep, patient instruction drafts, follow-up plans, and research checklists.', zhDesc: '病历结构化、就诊准备、患者说明草稿、随访计划和医学资料检索清单，不替代医生诊疗。', prompt: '帮我把这些问诊记录整理成 SOAP 病历草稿、缺失信息清单和随访计划' },
   { id: 'design-studio-pack', name: 'Design Studio Pack', zhName: '设计工作室包', icon: 'Palette', iconColor: 'from-fuchsia-500 to-rose-500', desc: 'Design workflow pack. Creative briefs, brand directions, UI review checklists, and production handoff planning.', zhDesc: '创意简报、视觉方向、UI/品牌审查和生产交付计划。', prompt: '帮我为这个品牌做三个视觉方向和设计审查清单' },
   { id: 'neteasemusic', name: 'Netease Cloud Music', zhName: '网易云音乐', icon: 'Music', iconColor: 'from-rose-500 to-pink-500', desc: 'Music companion pack. Search songs, lyrics, playback control, playlist context, and mood-aware listening workflows.', zhDesc: '歌曲搜索、歌词、播放控制、歌单语境和情绪化音乐推荐。', prompt: '根据我现在聊天的状态，放一首合适的歌并打开氛围层' },
 ];
