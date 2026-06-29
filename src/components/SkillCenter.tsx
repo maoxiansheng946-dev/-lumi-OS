@@ -787,7 +787,7 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
   const tabs: { id: SkillCenterTab; label: string; icon: React.ReactNode }[] = [
     { id: 'featured', label: t.recommendedTab || (lang === 'zh' ? '\u63a8\u8350' : 'Recommended'), icon: <Sparkles size={14} /> },
     { id: 'marketplace', label: t.marketplaceTab || 'Marketplace', icon: <ShoppingBag size={14} /> },
-    { id: 'installed', label: t.installedTab || 'Installed', icon: <Cpu size={14} /> },
+    { id: 'installed', label: t.skillManageTab || (lang === 'zh' ? '\u7ba1\u7406' : 'Manage'), icon: <Cpu size={14} /> },
     { id: 'mcp', label: t.mcp || 'MCP', icon: <Github size={14} /> },
     { id: 'generate', label: t.generateTab || 'Generate', icon: <Sparkles size={14} /> },
   ];
@@ -811,10 +811,10 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
     profile: lang === 'zh' ? '\u5de5\u4f5c\u753b\u50cf' : 'Work profile',
     signals: lang === 'zh' ? '\u804a\u5929\u4fe1\u53f7' : 'Chat signals',
     recommendations: lang === 'zh' ? '\u63a8\u8350\u5b89\u88c5' : 'Recommended installs',
-    installed: lang === 'zh' ? '\u5df2\u5b89\u88c5 Skill / MCP \u670d\u52a1' : 'Installed Skills / MCP services',
+    installed: lang === 'zh' ? '\u5df2\u5177\u5907\u7684\u80fd\u529b' : 'Available capabilities',
     installedHint: lang === 'zh'
-      ? '\u8fd9\u91cc\u7684\u5df2\u5b89\u88c5\u662f\u672c\u5730 Skill \u5305\uff1b\u5927\u591a\u6570 Skill \u4f1a\u901a\u8fc7\u672c\u5730 MCP server \u66b4\u9732\u5de5\u5177\u7ed9 Lumi \u8c03\u7528\u3002'
-      : 'Installed means local Skill packages. Most skills expose tools to Lumi through a local MCP server.',
+      ? '\u8fd9\u91cc\u53ea\u505a\u72b6\u6001\u6982\u89c8\uff1b\u542f\u505c\u3001\u4fee\u590d\u3001\u5378\u8f7d\u8bf7\u5230\u7ba1\u7406\u9875\u3002\u5df2\u5b89\u88c5\u7684 Skill \u901a\u5e38\u4f1a\u901a\u8fc7\u672c\u5730 MCP server \u66b4\u9732\u5de5\u5177\u7ed9 Lumi \u8c03\u7528\u3002'
+      : 'This is a status overview. Enable, repair, and uninstall from Manage. Installed skills usually expose tools to Lumi through a local MCP server.',
     noSignals: lang === 'zh'
       ? '\u6682\u65f6\u8fd8\u6ca1\u6709\u8db3\u591f\u7684\u804c\u4e1a\u6216\u5de5\u4f5c\u4fe1\u53f7\uff0c\u63a8\u8350\u4f1a\u5148\u4fdd\u6301\u4fdd\u5b88\u3002'
       : 'Not enough work signals yet, so recommendations stay conservative.',
@@ -823,6 +823,11 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
       : 'No strong recommendations yet. Talk with Lumi about your profession, recurring tasks, or workflows and this will populate automatically.',
     noInstalled: lang === 'zh' ? '\u8fd8\u6ca1\u6709\u5df2\u5b89\u88c5\u7684 Skill\u3002' : 'No installed skills yet.',
     refresh: lang === 'zh' ? '\u5237\u65b0\u63a8\u8350' : 'Refresh recommendations',
+    manage: lang === 'zh' ? '\u7ba1\u7406' : 'Manage',
+    managementTitle: lang === 'zh' ? 'Skill / MCP \u7ba1\u7406' : 'Skill / MCP Management',
+    managementHint: lang === 'zh'
+      ? '\u8fd9\u91cc\u5904\u7406\u672c\u5730 Skill \u5305\u7684\u542f\u7528\u3001\u505c\u7528\u3001\u4fee\u590d\u3001\u53d1\u5e03\u548c\u5378\u8f7d\u3002\u5927\u5385\u548c\u63a8\u8350\u9875\u53ea\u5c55\u793a\u72b6\u6001\u6216\u5b89\u88c5\u5165\u53e3\u3002'
+      : 'Enable, disable, repair, publish, and uninstall local Skill packages here. Hall and Recommended only show status or install entry points.',
   };
   const hasRecommendationSignals = professionProfiles.length > 0 || matchedWorkSignals.length > 0 || workSignalText.trim().length > 0;
 
@@ -1037,7 +1042,10 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                         key={skill.name}
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        onClick={() => setDetailSkill(skill)}
+                        onClick={() => {
+                          setActiveTab('installed');
+                          setDetailSkill(skill);
+                        }}
                         className="lumi-panel cursor-pointer p-5 transition-all hover:border-white/15 hover:bg-white/[0.06]"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -1050,26 +1058,9 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
                               <span className="text-xs font-mono text-white/45">{skill.toolCount} {t.toolsCount || 'tools'} &middot; {skill.source}</span>
                             </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            {shouldOfferRepair(skill) && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleRepair(skill.name); }}
-                                disabled={repairing === skill.name}
-                                className="rounded-lg p-2 text-amber-300 transition-colors hover:bg-amber-500/10 disabled:opacity-40"
-                                title={lang === 'zh' ? '\u4fee\u590d' : 'Repair'}
-                              >
-                                <RefreshCw size={13} className={repairing === skill.name ? 'animate-spin' : ''} />
-                              </button>
-                            )}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleToggle(skill.name, !skill.enabled); }}
-                              disabled={skill.broken || repairing === skill.name}
-                              className={`rounded-lg p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${skill.enabled ? 'text-green-400 hover:bg-green-500/10' : 'text-white/45 hover:bg-white/5'}`}
-                              title={skill.enabled ? (t.skillDisableBtn || 'Disable') : (t.skillEnableBtn || 'Enable')}
-                            >
-                              {skill.enabled ? <Power size={13} /> : <PowerOff size={13} />}
-                            </button>
-                          </div>
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-white/50">
+                            {recommendationCopy.manage}
+                          </span>
                         </div>
 
                         <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-white/50">{marketSkill?.description || skill.description}</p>
@@ -1365,6 +1356,13 @@ export function SkillCenter({ t, lang, initialTab = 'featured' }: { t: any; lang
 
         {activeTab === 'installed' && (
           <motion.div key="installed" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }} className="space-y-6">
+            <div className="lumi-panel p-5">
+              <div className="flex items-center gap-2">
+                <Cpu size={17} className="text-cyan-200" />
+                <h4 className="text-sm font-black uppercase tracking-normal text-white/85">{recommendationCopy.managementTitle}</h4>
+              </div>
+              <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/45">{recommendationCopy.managementHint}</p>
+            </div>
             {brokenSkillCount > 0 && (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/10 bg-red-500/5 p-4">
                 <div className="flex min-w-0 items-center gap-3">
