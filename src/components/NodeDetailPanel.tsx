@@ -21,6 +21,12 @@ interface FileEntry {
   extractionProvider?: string;
   extractionModel?: string;
   contentChars?: number;
+  sourceTitle?: string;
+  sourceAliases?: string[];
+  sourceTags?: string[];
+  sourceLinks?: string[];
+  sourceBacklinks?: string[];
+  sourceProperties?: Record<string, unknown>;
   updatedAt?: string;
   createdAt?: string;
 }
@@ -275,6 +281,56 @@ export function NodeDetailPanel({
                         {node.fileData.contentChars ? <p>Indexed text: {node.fileData.contentChars.toLocaleString()} chars</p> : null}
                         {node.fileData.extractionWarning && <p className="text-amber-200/75">{node.fileData.extractionWarning}</p>}
                         {node.fileData.extractionError && <p className="text-red-200/75">{node.fileData.extractionError}</p>}
+                      </div>
+                    </div>
+                  )}
+                  {(node.fileData.sourceTitle || node.fileData.sourceTags?.length || node.fileData.sourceAliases?.length || node.fileData.sourceLinks?.length || node.fileData.sourceBacklinks?.length) && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-white/45 uppercase tracking-widest">Source Map</label>
+                      <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-3 text-xs leading-5 text-white/58 space-y-2">
+                        {node.fileData.sourceTitle && (
+                          <p className="text-white/70">Title: {node.fileData.sourceTitle}</p>
+                        )}
+                        {node.fileData.sourceAliases && node.fileData.sourceAliases.length > 0 && (
+                          <div>
+                            <span className="text-white/40">Aliases</span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {node.fileData.sourceAliases.slice(0, 12).map(alias => (
+                                <span key={alias} className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/58">{alias}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {node.fileData.sourceTags && node.fileData.sourceTags.length > 0 && (
+                          <div>
+                            <span className="text-white/40">Tags</span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {node.fileData.sourceTags.slice(0, 16).map(tag => (
+                                <span key={tag} className="rounded-full border border-cyan-400/15 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-200/70">#{tag}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {node.fileData.sourceLinks && node.fileData.sourceLinks.length > 0 && (
+                          <div>
+                            <span className="text-white/40">Links</span>
+                            <div className="mt-1 space-y-0.5">
+                              {node.fileData.sourceLinks.slice(0, 8).map(link => (
+                                <p key={link} className="truncate text-white/58">{link}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {node.fileData.sourceBacklinks && node.fileData.sourceBacklinks.length > 0 && (
+                          <div>
+                            <span className="text-white/40">Backlinks</span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {node.fileData.sourceBacklinks.slice(0, 10).map(link => (
+                                <span key={link} className="rounded-full border border-amber-400/15 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200/70">{link}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

@@ -68,6 +68,7 @@ export class WeChatClawBotAdapter implements MessageAdapter {
   private config: WeChatClawBotConfig;
   private cursor: string = '';  // get_updates_buf
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
+  private pollingAbort: AbortController | null = null;
   private onMessage: ((msg: IncomingMessage) => Promise<OutgoingMessage | null>) | null = null;
 
   constructor(config: WeChatClawBotConfig) {
@@ -76,6 +77,10 @@ export class WeChatClawBotAdapter implements MessageAdapter {
 
   reload(config: WeChatClawBotConfig): void {
     this.config = config;
+  }
+
+  isPolling(): boolean {
+    return !!this.pollingTimer;
   }
 
   // ── Auth: get QR code for login ──
@@ -154,23 +159,27 @@ export class WeChatClawBotAdapter implements MessageAdapter {
     this.onMessage = onMessage;
     if (this.pollingTimer) return;
 
-    // Activate the bot session before polling
-    await this.activate();
-
     const running = { value: true };
     this.pollingTimer = running as any;
 
+    // Activate the bot session before polling
+    await this.activate();
+
     const poll = async () => {
       while (running.value) {
+        let timeout: ReturnType<typeof setTimeout> | null = null;
+        const controller = new AbortController();
+        this.pollingAbort = controller;
         try {
           const body: any = {};
           if (this.cursor) body.get_updates_buf = this.cursor;
+          timeout = setTimeout(() => controller.abort(), 40_000);
 
           const res = await fetch(`${this.config.baseUrl || 'https://ilinkai.weixin.qq.com'}/ilink/bot/getupdates`, {
             method: 'POST',
             headers: this.makeHeaders(),
             body: JSON.stringify(body),
-            signal: AbortSignal.timeout(40_000),
+            signal: controller.signal,
           });
 
           const data: GetUpdatesResponse = await res.json();
@@ -192,14 +201,19 @@ export class WeChatClawBotAdapter implements MessageAdapter {
             }
           }
         } catch (err: any) {
+          if (!running.value) break;
           if (err.name === 'AbortError' || err.name === 'TimeoutError') {
             // Expected on long-poll timeout — reconnect immediately
             continue;
           }
           console.error('[WeChat] Poll error:', err.message);
           await new Promise(r => setTimeout(r, 3000));
+        } finally {
+          if (timeout) clearTimeout(timeout);
+          if (this.pollingAbort === controller) this.pollingAbort = null;
         }
       }
+      if (this.pollingTimer === (running as any)) this.pollingTimer = null;
     };
 
     poll(); // start the loop
@@ -211,6 +225,8 @@ export class WeChatClawBotAdapter implements MessageAdapter {
       (this.pollingTimer as any).value = false;
       this.pollingTimer = null;
     }
+    this.pollingAbort?.abort();
+    this.pollingAbort = null;
   }
 
   // ── Event Parsing ──

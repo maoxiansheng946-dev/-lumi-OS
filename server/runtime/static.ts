@@ -20,8 +20,15 @@ export async function setupStatic(app: express.Express, __filename: string, __di
   if (!isProduction) {
     console.log(`Starting in DEVELOPMENT mode (Vite)...`);
     const { createServer: createViteServer } = await import("vite");
+    const hmrPort = Number.parseInt(process.env.LUMI_HMR_PORT || '', 10);
+    const serverOptions: Record<string, any> = { middlewareMode: true };
+    if (process.env.DISABLE_HMR === 'true') {
+      serverOptions.hmr = false;
+    } else if (Number.isFinite(hmrPort) && hmrPort > 0) {
+      serverOptions.hmr = { port: hmrPort };
+    }
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: serverOptions,
       appType: "mpa",
     });
     app.use(vite.middlewares);

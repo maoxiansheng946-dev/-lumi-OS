@@ -23,6 +23,11 @@ import { getUserPreferredVision, type VisionProvider } from '../server/llm/visio
 import { AUDIO_FILE_EXTS, isAudioTranscriptionUnavailable, transcribeAudioFile } from '../server/stt/file_transcription';
 import { extractPptxText } from '../server/knowledge/pptx';
 import { extractRtfText } from '../server/knowledge/rtf';
+import {
+  enrichMarkdownKnowledgeContent,
+  normalizeKnowledgeLinkTarget,
+  type MarkdownKnowledgeMetadata,
+} from '../server/knowledge/markdown';
 
 const PERSONAL_KNOWLEDGE_DIR = getDataPath('knowledge');
 fs.mkdirSync(PERSONAL_KNOWLEDGE_DIR, { recursive: true });
@@ -68,7 +73,7 @@ const MAX_UPLOAD_FILES = Math.max(20, Number(process.env.KNOWLEDGE_UPLOAD_MAX_FI
 const upload = multer({ dest: tmpDir, limits: { fileSize: 500 * 1024 * 1024, files: MAX_UPLOAD_FILES } });
 
 type KnowledgeStatus = 'ready' | 'indexing' | 'indexed' | 'partial' | 'unsupported' | 'failed';
-type ExtractionMethod = 'text' | 'rtf' | 'docx' | 'spreadsheet' | 'presentation' | 'pdf' | 'image-vision' | 'image-metadata' | 'audio-transcript' | 'unsupported';
+type ExtractionMethod = 'text' | 'markdown' | 'rtf' | 'docx' | 'spreadsheet' | 'presentation' | 'pdf' | 'image-vision' | 'image-metadata' | 'audio-transcript' | 'unsupported';
 
 interface KnowledgeExtractionResult {
   content: string | null;
@@ -78,6 +83,7 @@ interface KnowledgeExtractionResult {
   error?: string;
   provider?: VisionProvider | string;
   model?: string;
+  sourceMetadata?: MarkdownKnowledgeMetadata;
 }
 
 interface KnowledgeExtractionDeps {
@@ -126,6 +132,12 @@ interface KnowledgeEntry {
   extractionProvider?: string;
   extractionModel?: string;
   contentChars?: number;
+  sourceTitle?: string;
+  sourceAliases?: string[];
+  sourceTags?: string[];
+  sourceLinks?: string[];
+  sourceBacklinks?: string[];
+  sourceProperties?: Record<string, unknown>;
   updatedAt: string;
   createdAt: string;
 }
@@ -471,11 +483,38 @@ async function extractAudioKnowledge(filePath: string): Promise<KnowledgeExtract
   }
 }
 
+function extractTextKnowledge(filePath: string): KnowledgeExtractionResult {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  if (/\.md(?:own)?$/i.test(path.extname(filePath))) {
+    const enriched = enrichMarkdownKnowledgeContent(raw, repairFilename(path.basename(filePath)));
+    return {
+      content: enriched.content,
+      method: 'markdown',
+      status: 'indexed',
+      sourceMetadata: enriched.metadata,
+    };
+  }
+  return { content: raw, method: 'text', status: 'indexed' };
+}
+
+function extractGeneratedTextKnowledge(filename: string, content: string): KnowledgeExtractionResult {
+  if (/\.md(?:own)?$/i.test(path.extname(filename))) {
+    const enriched = enrichMarkdownKnowledgeContent(content, repairFilename(filename));
+    return {
+      content: enriched.content,
+      method: 'markdown',
+      status: 'indexed',
+      sourceMetadata: enriched.metadata,
+    };
+  }
+  return { content, method: 'text', status: 'indexed' };
+}
+
 async function extractKnowledgeFileContent(filePath: string, userId = 'anonymous'): Promise<KnowledgeExtractionResult> {
   const extName = path.extname(filePath);
   try {
     if (TEXT_KNOWLEDGE_EXTS.test(extName)) {
-      return { content: fs.readFileSync(filePath, 'utf-8'), method: 'text', status: 'indexed' };
+      return extractTextKnowledge(filePath);
     }
     if (RTF_KNOWLEDGE_EXTS.test(extName)) {
       return { content: extractRtfText(fs.readFileSync(filePath, 'utf-8')), method: 'rtf', status: 'indexed' };
@@ -568,20 +607,51 @@ function applyExtractionMeta(meta: any, extraction: KnowledgeExtractionResult, c
   meta.extractionProvider = extraction.provider || '';
   meta.extractionModel = extraction.model || '';
   meta.contentChars = content?.length || 0;
+  if (extraction.sourceMetadata) {
+    meta.sourceTitle = extraction.sourceMetadata.title;
+    meta.sourceAliases = extraction.sourceMetadata.aliases;
+    meta.sourceTags = extraction.sourceMetadata.tags;
+    meta.sourceLinks = extraction.sourceMetadata.links;
+    meta.sourceProperties = extraction.sourceMetadata.frontmatter;
+  } else {
+    delete meta.sourceTitle;
+    delete meta.sourceAliases;
+    delete meta.sourceTags;
+    delete meta.sourceLinks;
+    delete meta.sourceProperties;
+  }
   meta.updatedAt = new Date().toISOString();
 }
 
-function ensureOrgArticleFromFile(scope: FileScope, userId: string, filename: string, content: string | null, articleId?: string): any | null {
+function buildOrgArticleTags(filename: string, metadata?: MarkdownKnowledgeMetadata): string[] {
+  const ext = path.extname(filename).replace(/^\./, '');
+  return [
+    'upload',
+    ext,
+    ...(metadata?.tags || []),
+    ...(metadata?.aliases || []).map(alias => `alias:${alias}`),
+  ].map(tag => String(tag || '').trim()).filter(Boolean).slice(0, 20);
+}
+
+function ensureOrgArticleFromFile(
+  scope: FileScope,
+  userId: string,
+  filename: string,
+  content: string | null,
+  articleId?: string,
+  metadata?: MarkdownKnowledgeMetadata,
+): any | null {
   if (scope.domain !== 'work' || !scope.orgId) return null;
   const articleContent = (content && content.trim())
     ? content
     : `文件已上传到组织知识库。\n\n文件名：${repairFilename(filename)}`;
+  const articleTags = buildOrgArticleTags(filename, metadata);
   if (articleId && OrgKB.getArticle(scope.orgId, articleId)) {
     return OrgKB.updateArticle(scope.orgId, userId, articleId, {
       title: repairFilename(filename),
       content: articleContent,
       category: 'files',
-      tags: ['upload', path.extname(filename).replace(/^\./, '')].filter(Boolean),
+      tags: articleTags,
       status: 'published',
     });
   }
@@ -589,7 +659,7 @@ function ensureOrgArticleFromFile(scope: FileScope, userId: string, filename: st
     title: repairFilename(filename),
     content: articleContent,
     category: 'files',
-    tags: ['upload', path.extname(filename).replace(/^\./, '')].filter(Boolean),
+    tags: articleTags,
     status: 'published',
   });
 }
@@ -623,6 +693,12 @@ function buildEntry(filename: string, source: 'upload' | 'generated' | 'ingested
     extractionProvider: meta?.extractionProvider || undefined,
     extractionModel: meta?.extractionModel || undefined,
     contentChars: meta?.contentChars || undefined,
+    sourceTitle: meta?.sourceTitle || undefined,
+    sourceAliases: Array.isArray(meta?.sourceAliases) ? meta.sourceAliases : undefined,
+    sourceTags: Array.isArray(meta?.sourceTags) ? meta.sourceTags : undefined,
+    sourceLinks: Array.isArray(meta?.sourceLinks) ? meta.sourceLinks : undefined,
+    sourceBacklinks: Array.isArray(meta?.sourceBacklinks) ? meta.sourceBacklinks : undefined,
+    sourceProperties: meta?.sourceProperties || undefined,
     updatedAt: st.mtime.toISOString(),
     createdAt: st.birthtime.toISOString(),
   };
@@ -661,6 +737,49 @@ function findExistingFileMemories(
   });
 }
 
+function normalizedKnowledgeFileKeys(filename: string): string[] {
+  const repaired = repairFilename(filename);
+  const stem = path.basename(repaired, path.extname(repaired));
+  return [
+    normalizeKnowledgeLinkTarget(repaired),
+    normalizeKnowledgeLinkTarget(stem),
+  ].filter(Boolean);
+}
+
+function buildSourceBacklinkMap(metaByName: Record<string, any>, filenames: string[]): Map<string, string[]> {
+  const filenameByKey = new Map<string, string>();
+  for (const filename of filenames) {
+    for (const key of normalizedKnowledgeFileKeys(filename)) {
+      if (!filenameByKey.has(key)) filenameByKey.set(key, filename);
+    }
+  }
+
+  const backlinks = new Map<string, Set<string>>();
+  for (const sourceName of filenames) {
+    const meta = metaByName[sourceName];
+    const links = Array.isArray(meta?.sourceLinks) ? meta.sourceLinks : [];
+    for (const link of links) {
+      const targetName = filenameByKey.get(normalizeKnowledgeLinkTarget(link));
+      if (!targetName || targetName === sourceName) continue;
+      if (!backlinks.has(targetName)) backlinks.set(targetName, new Set());
+      backlinks.get(targetName)!.add(repairFilename(sourceName));
+    }
+  }
+
+  return new Map([...backlinks.entries()].map(([filename, sources]) => [filename, [...sources].sort()]));
+}
+
+function getSourceBacklinks(db: any, scope: FileScope, filename: string): string[] {
+  const scopedMeta: Record<string, any> = {};
+  const names = fs.existsSync(scope.dir)
+    ? fs.readdirSync(scope.dir).filter(name => !name.startsWith('.') && !name.startsWith('_'))
+    : [];
+  for (const m of db.knowledgeFiles || []) {
+    if (metaMatchesScope(m, scope)) scopedMeta[m.filename] = m;
+  }
+  return buildSourceBacklinkMap(scopedMeta, names).get(filename) || [];
+}
+
 router.get('/files/list', (req: Request, res: Response) => {
   try {
     const scope = getFileScope(req);
@@ -674,6 +793,8 @@ router.get('/files/list', (req: Request, res: Response) => {
     }
 
     const entries = fs.readdirSync(scope.dir);
+    const visibleNames = entries.filter(name => !name.startsWith('.') && !name.startsWith('_'));
+    const backlinkMap = buildSourceBacklinkMap(fileMeta, visibleNames);
     const files: KnowledgeEntry[] = [];
     for (const name of entries) {
       if (name.startsWith('.') || name.startsWith('_')) continue;
@@ -682,6 +803,7 @@ router.get('/files/list', (req: Request, res: Response) => {
       const meta = {
         ...(fileMeta[name] || { source: 'upload' as const, agentIds: [] as string[] }),
         agentIds: [...new Set([...(fileMeta[name]?.agentIds || []), ...inferredAgentIds])],
+        sourceBacklinks: backlinkMap.get(name) || [],
       };
       if (inferredMemories.length > 0 && (!meta.status || meta.status === 'ready' || meta.status === 'failed')) {
         meta.status = 'indexed';
@@ -791,7 +913,7 @@ router.post('/files/upload', requireAuth, upload.array('files', MAX_UPLOAD_FILES
           const meta = findFileMeta(db, finalName, scope);
           if (meta) applyExtractionMeta(meta, extraction, extractedContent);
           if (extractedContent?.trim()) {
-            const article = ensureOrgArticleFromFile(scope, userId, finalName, extractedContent, meta?.orgArticleId);
+            const article = ensureOrgArticleFromFile(scope, userId, finalName, extractedContent, meta?.orgArticleId, extraction.sourceMetadata);
             if (meta) {
               if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
               meta.orgArticleId = article?.id;
@@ -815,6 +937,7 @@ router.post('/files/upload', requireAuth, upload.array('files', MAX_UPLOAD_FILES
             filePath: dest,
             domain: scope.domain,
             orgId: scope.orgId || '',
+            sourceMetadata: extraction.sourceMetadata,
           });
           const meta = findFileMeta(db, finalName, scope);
           if (meta) {
@@ -886,11 +1009,12 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
       });
     }
     const meta = findFileMeta(db, safeName, scope);
-    const generatedExtraction: KnowledgeExtractionResult = { content: contentText, method: 'text', status: 'indexed' };
-    if (meta) applyExtractionMeta(meta, generatedExtraction, contentText);
+    const generatedExtraction = extractGeneratedTextKnowledge(safeName, contentText);
+    const generatedKnowledgeContent = generatedExtraction.content || contentText;
+    if (meta) applyExtractionMeta(meta, generatedExtraction, generatedKnowledgeContent);
     let orgArticleId: string | undefined;
     if (scope.domain === 'work') {
-      const article = ensureOrgArticleFromFile(scope, userId, safeName, contentText, meta?.orgArticleId);
+      const article = ensureOrgArticleFromFile(scope, userId, safeName, generatedKnowledgeContent, meta?.orgArticleId, generatedExtraction.sourceMetadata);
       orgArticleId = article?.id;
       if (meta) {
         if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
@@ -900,15 +1024,16 @@ router.post('/files/save', requireAuth, async (req: Request, res: Response) => {
       }
     } else if (meta) {
       try {
-        const result = await ingestDocument(userId, 'lumi', safeName, contentText, {
+        const result = await ingestDocument(userId, 'lumi', safeName, generatedKnowledgeContent, {
           filePath,
           domain: scope.domain,
           orgId: scope.orgId || '',
+          sourceMetadata: generatedExtraction.sourceMetadata,
         });
         if (!Array.isArray(meta.agentIds)) meta.agentIds = [];
         if (!meta.agentIds.includes('lumi')) meta.agentIds.push('lumi');
         meta.status = 'indexed';
-        applyExtractionMeta(meta, generatedExtraction, contentText);
+        applyExtractionMeta(meta, generatedExtraction, generatedKnowledgeContent);
         console.log(`[AutoIngest] "${safeName}" -> ${result.chunkCount} chunks`);
       } catch (ingestErr: any) {
         console.warn(`[AutoIngest] Failed for generated "${safeName}": ${ingestErr.message}`);
@@ -1072,6 +1197,12 @@ router.get('/files/info/:id', (req: Request, res: Response) => {
       extractionProvider: meta?.extractionProvider || undefined,
       extractionModel: meta?.extractionModel || undefined,
       contentChars: meta?.contentChars || undefined,
+      sourceTitle: meta?.sourceTitle || undefined,
+      sourceAliases: Array.isArray(meta?.sourceAliases) ? meta.sourceAliases : undefined,
+      sourceTags: Array.isArray(meta?.sourceTags) ? meta.sourceTags : undefined,
+      sourceLinks: Array.isArray(meta?.sourceLinks) ? meta.sourceLinks : undefined,
+      sourceBacklinks: getSourceBacklinks(db, scope, safeName),
+      sourceProperties: meta?.sourceProperties || undefined,
       updatedAt: st.mtime.toISOString(),
       createdAt: meta?.createdAt || st.birthtime.toISOString(),
     });
@@ -1149,7 +1280,7 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
     writeDB(db);
 
     if (scope.domain === 'work') {
-      const article = ensureOrgArticleFromFile(scope, userId, safeName, content, meta?.orgArticleId);
+      const article = ensureOrgArticleFromFile(scope, userId, safeName, content, meta?.orgArticleId, extraction.sourceMetadata);
       if (!meta.agentIds.includes('org-kb')) meta.agentIds.push('org-kb');
       meta.orgArticleId = article?.id;
       meta.status = extraction.status === 'partial' ? 'partial' : 'indexed';
@@ -1164,6 +1295,7 @@ router.post('/files/ingest', requireAuth, async (req: Request, res: Response) =>
       filePath,
       domain: scope.domain,
       orgId: scope.orgId || '',
+      sourceMetadata: extraction.sourceMetadata,
     });
 
     // Mark as indexed

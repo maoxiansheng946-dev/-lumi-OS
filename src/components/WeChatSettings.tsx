@@ -1,5 +1,5 @@
 // Personal WeChat connection — QR code login flow
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -10,6 +10,16 @@ export function WeChatSettings({ t }: { t?: any }) {
   const [qrId, setQrId] = useState<string | null>(null);
   const [step, setStep] = useState<'idle' | 'show_qr' | 'scanning' | 'connected'>('idle');
   const [loading, setLoading] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRunRef = useRef(0);
+
+  const clearPolling = () => {
+    pollRunRef.current += 1;
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
 
   const loadStatus = () => {
     fetch('/api/wechat/status', { credentials: 'include' })
@@ -20,9 +30,13 @@ export function WeChatSettings({ t }: { t?: any }) {
       })
       .catch(() => {});
   };
-  useEffect(() => { loadStatus(); }, []);
+  useEffect(() => {
+    loadStatus();
+    return () => clearPolling();
+  }, []);
 
   const handleGetQR = async () => {
+    clearPolling();
     setLoading(true);
     try {
       const res = await fetch('/api/wechat/qrcode', { credentials: 'include' });
@@ -43,11 +57,18 @@ export function WeChatSettings({ t }: { t?: any }) {
   };
 
   const startPolling = (qrId: string) => {
+    const runId = ++pollRunRef.current;
     setStep('scanning');
+    const schedule = (delay: number) => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = setTimeout(check, delay);
+    };
     const check = async () => {
+      if (runId !== pollRunRef.current) return;
       try {
         const res = await fetch(`/api/wechat/qrcode/status?qrcode_id=${encodeURIComponent(qrId)}`, { credentials: 'include' });
         const data = await res.json();
+        if (runId !== pollRunRef.current) return;
         if (data.status === 'confirmed') {
           setStep('connected');
           loadStatus();
@@ -60,10 +81,10 @@ export function WeChatSettings({ t }: { t?: any }) {
           toast.error(t?.qrExpired || 'QR code expired');
           return;
         }
-        setTimeout(check, 2000);
-      } catch { setTimeout(check, 3000); }
+        schedule(2000);
+      } catch { schedule(3000); }
     };
-    setTimeout(check, 2000);
+    schedule(2000);
   };
 
   return (
@@ -77,6 +98,7 @@ export function WeChatSettings({ t }: { t?: any }) {
           <p className="text-xs text-white/40">{t?.wechatConnected || 'Lumi is listening on WeChat.'}</p>
           <button
             onClick={async () => {
+              clearPolling();
               try {
                 await fetch('/api/wechat/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botToken: '', botId: '' }) });
               } catch {}

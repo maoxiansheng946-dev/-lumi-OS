@@ -48,6 +48,7 @@ export function createWeChatRoutes(
         // Persist the login credentials
         updateMessagingConfig({ wechat: conf });
         Object.assign(config, conf);
+        adapter.reload(config);
         // Start polling in background
         startWeChatPolling(adapter, config, options);
       }
@@ -62,6 +63,7 @@ export function createWeChatRoutes(
     res.json({
       platform: 'wechat',
       configured: !!(config.botToken && config.botId),
+      listening: adapter.isPolling(),
       botId: config.botId ? `${config.botId.slice(0, 12)}...` : null,
     });
   });
@@ -82,6 +84,11 @@ export function createWeChatRoutes(
       const updated = updateMessagingConfig({ wechat: { botToken, botId, baseUrl: 'https://ilinkai.weixin.qq.com' } });
       Object.assign(config, updated.wechat);
       adapter.reload(config);
+      if (updated.wechat.enabled) {
+        startWeChatPolling(adapter, config, options);
+      } else {
+        adapter.stopPolling();
+      }
       res.json({ success: true, configured: updated.wechat.enabled });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

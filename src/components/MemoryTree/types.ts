@@ -36,6 +36,12 @@ export interface FileEntry {
   extractionProvider?: string;
   extractionModel?: string;
   contentChars?: number;
+  sourceTitle?: string;
+  sourceAliases?: string[];
+  sourceTags?: string[];
+  sourceLinks?: string[];
+  sourceBacklinks?: string[];
+  sourceProperties?: Record<string, unknown>;
   updatedAt?: string;
   createdAt?: string;
 }
